@@ -162,6 +162,15 @@
  
  // ---- runtime services (runtime/*.c)
  void rt_dispatch(Cpu *c);                 // call function at c->pc
+@@ -38,6 +40,8 @@
+ void rt_brk(Cpu *c, uint32_t imm, uint64_t pc) __attribute__((noreturn));
+ void rt_udf(Cpu *c, uint64_t pc) __attribute__((noreturn));
+ uint64_t rt_ticks(void);
++
++void snap_random_range(Cpu *cpu); // verified integer-operation entry bridge
+ 
+ // ---- dynamic frame-rate patch helpers (runtime/frame_rate.c), called by @fn/@fnz patch sites
+ uint32_t rt_fps_ticks(void);        // whole 30 fps ticks this frame (integer part of the accumulated step)
 --- a/runtime/ov_system.c
 +++ b/runtime/ov_system.c
 @@ -681,7 +681,7 @@
@@ -617,7 +626,54 @@
  from check_content import GENERATED_MARKER  # noqa: E402
  from layout import base_of, layout, romfs_size, write as write_layout  # noqa: E402
  from lifter import Insn, hx  # noqa: E402
-@@ -219,6 +220,7 @@
+@@ -206,6 +207,46 @@
+ 
+ # ------------------------------------------------------------------------------------------------ emission
+ 
++
++def snap_random_range_verify(mod, table, name, path):
++    import hashlib
++    expected_set = ('snap_random_range', 'AC_SNAP_RANDOM_RANGE', 1)
++    matching = [i for i, item in enumerate(table.sets) if item[0] == expected_set[0]]
++    uses_helper = any(isinstance(w, tuple) and len(w) == 2 and
++                      w[0] in ('fn', 'fnz') and w[1] == 'snap_random_range'
++                      for sites in table.sites.values() for alts in sites.values()
++                      for _index, words, _original in alts for w in words)
++    if not matching and not uses_helper:
++        return
++    if len(matching) != 1 or table.sets[matching[0]] != expected_set:
++        raise ValueError('Random-range bridge unexpected patch set')
++    expected = [(matching[0], [('fn', 'snap_random_range'), 0xd65f03c0], 0xf81b0ff9)]
++    if table.sites.get('main', {}).get(6211168) != expected:
++        raise ValueError('Random-range bridge unexpected entry patch')
++    for module_name, sites in table.sites.items():
++        for offset, alternatives in sites.items():
++            if module_name == 'main' and 6211168 < offset < 6211584:
++                raise ValueError('Random-range bridge original body has another patch')
++            for _index, words, _original in alternatives:
++                for word in words:
++                    if (isinstance(word, tuple) and len(word) == 2 and
++                            word[0] in ('fn', 'fnz') and word[1] == 'snap_random_range' and
++                            (module_name != 'main' or offset != 6211168)):
++                        raise ValueError('Random-range bridge helper used at an unexpected site')
++    for back_edge, head in table.spins.get('main', {}).items():
++        if (6211168 <= back_edge < 6211584 or
++                6211168 <= head < 6211584):
++            raise ValueError('Random-range bridge original function has a spin gate')
++    # Validate the global table before any module-specific return. SDK-only
++    # generation must neither hide a foreign helper site nor bypass main pins.
++    main_path = Path(path) if name == 'main' else Path(path).parent / 'main'
++    if hashlib.sha256(main_path.read_bytes()).hexdigest() != 'ef20d6317d909bde106fec0958b58ccfdf4c46f36d9fa5ef8785ce54fff75443':
++        raise ValueError('Random-range bridge original main/build/span differs')
++    verified = mod if name == 'main' else Module('main', main_path, 0, 'c')
++    if (verified.nso.build_id != 'ddb900ff04a912ed42430508389853cfaf1accce' or
++            hashlib.sha256(verified.image[6211168:6211584]).hexdigest() != 'c6464b70510a63ad4decfc4336e75fa4ed37fb72e5292a9e8e2d5c3973276c23'):
++        raise ValueError('Random-range bridge original main/build/span differs')
++
+ class Emitter:
+     """C for the functions of one module. starts is the set of every function start of the module."""
+ 
+@@ -219,6 +260,7 @@
          self.uses_patches = False
          self.stats = Counter()
          self.unsupported = Counter()
@@ -625,7 +681,7 @@
  
      def scan(self, insns, entry, end):
          """Labels and jump tables of one function: {pc: sorted targets} for resolved tables, 'all' for an
-@@ -376,6 +378,7 @@
+@@ -376,6 +418,7 @@
          mod, starts = self.mod, self.starts
          insns = [mod.lift(a) for a in range(entry, end, 4)]
          labels, tables = self.scan(insns, entry, end)
@@ -633,7 +689,7 @@
          refs = set()
          all_labels = 'all' in tables.values()
          if all_labels:
-@@ -383,7 +386,9 @@
+@@ -383,7 +426,9 @@
          # An unresolved computed br re-enters the function through fb_<entry>, a C function of its own, which local
          # flags would not survive; such functions keep NZCV in c->nzcv.
          # The same holds for registers in locals (recomp/regs.py): fb_<entry> keeps them in the Cpu too.
@@ -644,7 +700,7 @@
          spill, reload, reload_call = (regs.SPILL, regs.RELOAD, regs.RELOAD_CALL) if local else ('', '', '')
          succ = self.flow(insns, entry, end, tables) if local else None
          fp = self.flag_plan(insns, entry, end, tables, succ) if local else None
-@@ -426,13 +431,13 @@
+@@ -426,13 +471,13 @@
          else:
              redispatch = f'{MUSTTAIL} rt_dispatch(c);'
              out = [f'void {fname(entry)}(Cpu *c) {{', f'    FN_ENTER({hx(entry)});']
@@ -660,7 +716,7 @@
              self.stats['external_calls'] += 1
              return f'c->x[30] = {hx(a + 4)}; {spill}c->pc = {hx(t)}; rt_dispatch(c);{reload_call}'
  
-@@ -497,6 +502,8 @@
+@@ -497,6 +542,8 @@
                  emit(i, '    ' + call(ins.target, a))
              elif k == 'blr':
                  emit(i, f'    c->pc = {ins.target}; c->x[30] = {hx(a + 4)}; {spill}rt_dispatch(c);{reload_call}')
@@ -669,7 +725,7 @@
              elif k == 'br':
                  jt = tables.get(a)
                  if jt == 'all':
-@@ -535,7 +542,7 @@
+@@ -535,7 +582,7 @@
          out.append('}')
          self.stats['functions'] += 1
          self.stats['instructions'] += len(insns)
@@ -678,7 +734,7 @@
  
  
  def chunk_text(name, number, emitter, fns):
-@@ -550,7 +557,7 @@
+@@ -550,7 +597,7 @@
      protos = ''.join(f'void {fname(r)}(Cpu *c);\n' for r in sorted(refs))
      if emitter.uses_patches:
          protos += 'extern uint8_t rt_patch_on[];\n'
@@ -687,6 +743,14 @@
              + '\n\n'.join(body) + '\n')
  
  
+@@ -714,6 +761,7 @@
+         path = args.exefs / name
+         mod = Module(name, path, base, 'c')
+         patches.check(table, mod, name)
++        snap_random_range_verify(mod, table, name, path)
+         starts, dstats = discover(mod)
+         est = estimate_sizes(mod, starts)
+         abs_starts = mod.lo + starts * 4
 --- a/runtime/input_map.c
 +++ b/runtime/input_map.c
 @@ -16,7 +16,7 @@
@@ -1613,6 +1677,18 @@
      opt_end();
  }
  
+@@ -1008,9 +962,8 @@
+                                         ImGuiWindowFlags_NoSavedSettings);
+     ImGui::TextColored(ImVec4(0.93f, 0.76f, 0.33f, 1), "%s", menu_text(UI_MENU_TITLE));
+     // the port version and the game update, right-aligned on the title line: what a bug report needs first
+-    char game[16], version[96];
+-    snprintf(game, sizeof game, "%d.%d.%d", rt_game_version / 100, rt_game_version / 10 % 10, rt_game_version % 10);
+-    snprintf(version, sizeof version, menu_text(UI_MENU_VERSION), rt_port_version, game);
++    char version[96];
++    snprintf(version, sizeof version, "NewSnapRecomp %s | Snap 2.0.1", rt_port_version);
+     ImGui::SameLine(ImGui::GetWindowWidth() - ImGui::GetStyle().WindowPadding.x - ImGui::CalcTextSize(version).x);
+     ImGui::TextDisabled("%s", version);
+ 
 --- a/runtime/vk_color.c
 +++ b/runtime/vk_color.c
 @@ -136,15 +136,38 @@
@@ -2074,3 +2150,14 @@
          if (pending && oneshot < 0 && !vk_exec_targets_recent(ex, skip >= 1)) {
              perf_count(PERF_CNT_ONESHOT_WAIT);
              why = "one-shot";
+--- a/runtime/patches.c
++++ b/runtime/patches.c
+@@ -48,6 +48,8 @@
+         const char *e = cfg_get(sets[i].env);
+         // a set with a row in the settings table takes its default from there; the generated default serves the rest
+         rt_patch_on[i] = (uint8_t)(cfg_meta(sets[i].env) ? cfg_bool(sets[i].env) : e && *e ? strcmp(e, "0") != 0 : sets[i].on);
++        // Function-entry profiling retains every original recursive callback.
++        if (g_fnprof && !strcmp(sets[i].name, "snap_random_range")) rt_patch_on[i] = 0;
+         n += (size_t)snprintf(list + n, sizeof list - n, "%s%s %s", i ? ", " : "", sets[i].name,
+                               rt_patch_on[i] ? "on" : "off");
+         if (n >= sizeof list) n = sizeof list - 1;

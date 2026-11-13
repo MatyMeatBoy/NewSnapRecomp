@@ -36,9 +36,12 @@ class CameraInputTests(unittest.TestCase):
             self.skipTest('clang required for native camera-input regression')
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
-            (root / 'fixture.c').write_text(source, encoding='utf-8')
+            (root / 'fixture.c').write_text('#include <stddef.h>\n' + source, encoding='utf-8')
             executable = root / 'fixture.exe'
-            result = subprocess.run([compiler, str(root / 'fixture.c'), '-o', str(executable)], capture_output=True)
+            command = [compiler, str(root / 'fixture.c'), '-o', str(executable)]
+            if os.name != 'nt':
+                command.append('-lm')
+            result = subprocess.run(command, capture_output=True)
             self.assertEqual(result.returncode, 0, result.stderr.decode(errors='replace'))
             for scenario in scenarios:
                 with self.subTest(scenario=scenario):

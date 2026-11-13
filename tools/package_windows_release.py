@@ -43,7 +43,7 @@ def package():
         'Extrae toda esta carpeta. Copia tu carpeta GameData junto a NewSnapLauncher.exe.\n'
         'Abre NewSnapLauncher.exe. Conserva _internal y las otras carpetas de la release.\n'
         'No requiere instalar Python. GameData no se incluye en GitHub.\n\n'
-        '0.4: color original de Snap, sin contraste/gamma/saturacion/HDR/nitidez añadidos por el port.\n'
+        'Color original de Snap, sin contraste/gamma/saturacion/HDR/nitidez añadidos por el port.\n'
         'FSR 3.1, FSR 4 compatible y DLSS: preset Nativo/Native AA (DLAA), Calidad, Equilibrado y Rendimiento.\n'
         'Si el runtime necesita actualizarse, el launcher obtiene el kit de esta misma version y recompila localmente.\n'
         'Conserva tus datos propios, perfiles y partidas. El kit no incluye el juego.\n'

@@ -8,6 +8,7 @@ import tempfile
 import threading
 import unittest
 from unittest.mock import patch
+from urllib.parse import quote
 import zipfile
 
 from newsnap import build_kit as kit
@@ -27,6 +28,7 @@ class BuildKitAcquisitionTests(unittest.TestCase):
         self.root.mkdir()
         self.cache = self.base / 'cache'
         self.revision = 'a' * 40
+        self.tag = 'v' + VERSION
         (self.root / 'MANIFEST.json').write_text(json.dumps({'version': VERSION, 'source_revision': self.revision}))
         self.name = f'NewSnapBuildKit-{VERSION}-aaaaaaaa.zip'
         self.data = {name: b'public fixture' for name in (
@@ -62,8 +64,58 @@ class BuildKitAcquisitionTests(unittest.TestCase):
 
     def lookup(self, url):
         self.calls.append(url)
-        self.assertEqual(url, kit.updater.REPO_URL + '/releases/tags/v' + VERSION)
+        self.assertEqual(url, kit.updater.REPO_URL + '/releases/tags/' + quote(self.tag, safe=''))
         return self.release
+
+    def select_installed_version(self, version, *, prerelease):
+        self.tag = 'v' + version
+        self.name = f'NewSnapBuildKit-{version}-aaaaaaaa.zip'
+        (self.root / 'MANIFEST.json').write_text(json.dumps({
+            'version': version, 'source_revision': self.revision, 'tag_name': self.tag}))
+        self.manifest['runtime_version'] = version
+        self.payload = self.archive()
+        self.release.update(tag_name=self.tag, prerelease=prerelease)
+        self.release['assets'][0]['name'] = self.name
+        self.release['assets'][1]['name'] = self.name + '.sha256'
+
+    def test_installed_prerelease_gets_its_exact_published_kit_and_offline_cache(self):
+        for version in ('0.5.0-alpha.2', '0.5.0-dev.1'):
+            with self.subTest(version=version), patch.object(kit, 'VERSION', version), \
+                    patch('newsnap.maintenance.VERSION', version):
+                self.select_installed_version(version, prerelease=True)
+                self.calls.clear()
+                result = kit.ensure_build_kit(self.root)
+                self.assertEqual(result.name, version + '-' + self.revision)
+                self.assertEqual(len(self.calls), 3)
+                self.calls.clear()
+                self.assertEqual(kit.ensure_build_kit(self.root), result)
+                self.assertEqual(self.calls, [])
+
+    def test_stable_installed_version_cannot_acquire_a_prerelease(self):
+        # A hyphen in build metadata does not make a stable version prerelease.
+        for version in ('0.5.0', '0.5.0+build-with-hyphen'):
+            with self.subTest(version=version), patch.object(kit, 'VERSION', version):
+                self.select_installed_version(version, prerelease=True)
+                with self.assertRaisesRegex(kit.updater.UpdateError, 'release'):
+                    kit.ensure_build_kit(self.root)
+        self.assertEqual(list(self.cache.iterdir()), [])
+
+    def test_installed_prerelease_still_rejects_drafts_foreign_tags_and_revision(self):
+        version = '0.5.0-alpha.2'
+        with patch.object(kit, 'VERSION', version):
+            for changes in ({'draft': True}, {'tag_name': 'v0.6.0-alpha.2'},
+                            {'target_commitish': 'b' * 40}, {'prerelease': None},
+                            {'prerelease': 0}, {'prerelease': 'true'}):
+                self.select_installed_version(version, prerelease=True)
+                self.release.update(draft=False, target_commitish=self.revision)
+                self.release.update(changes)
+                with self.subTest(changes=changes), self.assertRaises(kit.updater.UpdateError):
+                    kit.ensure_build_kit(self.root)
+            self.select_installed_version(version, prerelease=True)
+            self.release['assets'][0]['name'] = 'NewSnapBuildKit-0.6.0-alpha.2-aaaaaaaa.zip'
+            with self.assertRaisesRegex(kit.updater.UpdateError, 'matching'):
+                kit.ensure_build_kit(self.root)
+        self.assertEqual(list(self.cache.iterdir()), [])
 
     def download(self, url, path, limit, **kwargs):
         self.calls.append(url)
@@ -108,7 +160,7 @@ class BuildKitAcquisitionTests(unittest.TestCase):
 
     def test_release_tag_and_asset_filename_cannot_select_latest_recipe(self):
         self.release['tag_name'] = 'v999.0'
-        with self.assertRaisesRegex(kit.updater.UpdateError, 'stable'):
+        with self.assertRaisesRegex(kit.updater.UpdateError, 'release'):
             kit.ensure_build_kit(self.root)
         self.release['tag_name'] = 'v' + VERSION
         self.release['assets'][0]['name'] = 'NewSnapBuildKit-999-windows-aaaaaaaa.zip'
