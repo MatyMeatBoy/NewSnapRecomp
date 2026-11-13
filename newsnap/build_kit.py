@@ -86,7 +86,9 @@ def _release(root, revision, tag):
     if isinstance(target, str) and re.fullmatch('[0-9a-fA-F]{40}', target) and target.lower() != revision:
         raise updater.UpdateError('Release revision differs from the installed launcher')
     assets = metadata.get('assets')
-    name = f'NewSnapBuildKit-{VERSION}-windows-{revision[:8]}.zip'
+    # Legacy launcher clients select one ZIP containing "windows". Keep the
+    # separate tool kit outside that selector so they can still update.
+    name = f'NewSnapBuildKit-{VERSION}-{revision[:8]}.zip'
     if not isinstance(assets, list):
         raise updater.UpdateError('Release has no build-kit assets')
     urls = []

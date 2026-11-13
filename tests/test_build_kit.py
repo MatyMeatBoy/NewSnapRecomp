@@ -28,7 +28,7 @@ class BuildKitAcquisitionTests(unittest.TestCase):
         self.cache = self.base / 'cache'
         self.revision = 'a' * 40
         (self.root / 'MANIFEST.json').write_text(json.dumps({'version': VERSION, 'source_revision': self.revision}))
-        self.name = f'NewSnapBuildKit-{VERSION}-windows-aaaaaaaa.zip'
+        self.name = f'NewSnapBuildKit-{VERSION}-aaaaaaaa.zip'
         self.data = {name: b'public fixture' for name in (
             'python/python.exe', 'source/newsnap/maintenance.py', 'source/newsnap/build.py',
             'source/third_party/astral/tools/build_game.py', 'sdk/llvm/bin/clang.exe', 'sdk/bin/ninja.exe')}
