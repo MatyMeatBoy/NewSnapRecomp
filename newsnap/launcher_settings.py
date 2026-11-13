@@ -227,7 +227,15 @@ def preparation_command(root):
 def load_profile(root):
     root = Path(root)
     try:
-        value = json.loads((root / 'build/launcher.json').read_text(encoding='utf-8'))['profile']
+        record = json.loads((root / 'build/launcher.json').read_text(encoding='utf-8'))
+        if not isinstance(record, dict):
+            raise ValueError('Invalid launcher preferences')
+        relative = record.get('profile_relative')
+        if isinstance(relative, str) and relative and not Path(relative).is_absolute():
+            candidate = (root / relative).resolve()
+            if candidate.is_relative_to(root.resolve()):
+                return candidate
+        value = record.get('profile')
         if isinstance(value, str) and value and Path(value).is_absolute():
             return Path(value)
     except (OSError, ValueError, KeyError, TypeError):
@@ -236,5 +244,7 @@ def load_profile(root):
 
 
 def save_profile(root, profile):
-    _atomic_write(Path(root) / 'build/launcher.json',
-                  json.dumps({'profile': str(Path(profile).resolve())}, ensure_ascii=False).encode('utf-8'))
+    root, profile = Path(root).resolve(), Path(profile).resolve()
+    record = ({'profile_relative': profile.relative_to(root).as_posix()} if profile.is_relative_to(root)
+              else {'profile': str(profile)})
+    _atomic_write(root / 'build/launcher.json', json.dumps(record, ensure_ascii=False).encode('utf-8'))

@@ -13,6 +13,7 @@ import sys
 import zipfile
 
 ROOT = Path(__file__).resolve().parent.parent
+VERSION = '0.1.1-alpha'
 sys.path.insert(0, str(ROOT))
 
 
@@ -42,7 +43,7 @@ def source_files(target):
             copy_file(source, target / 'third_party/astral' / name)
 
 
-def private_files(target, profile):
+def private_files(target, profile, version):
     from newsnap.provenance import verify_import
     from newsnap.launcher_settings import ProfileLock, load_settings, save_settings
     verify_import(ROOT / 'build/extracted/updated')
@@ -88,7 +89,7 @@ def private_files(target, profile):
         '@echo off\ncd /d "%~dp0"\n"%~dp0python\\python.exe" -E -s -m newsnap launcher\npause\n',
         encoding='ascii')
     (target / 'LEEME-PORTABLE.txt').write_text(
-        'NewSnapRecomp 0.1 alpha - paquete privado de MatyMeatBoy\n\n'
+        f'NewSnapRecomp {version} - paquete privado de MatyMeatBoy\n\n'
         'Extrae toda la carpeta y abre Iniciar NewSnap.cmd. No requiere instalar Python.\n'
         'Windows x64, CPU con AVX2 y GPU/controlador Vulkan. El segundo PC no esta verificado.\n'
         'La primera preparacion reconstruye shaders para su GPU y puede tardar.\n'
@@ -103,16 +104,16 @@ def package(private=False, profile=None):
         raise ValueError('Commit or preserve tracked source changes before identifying a release revision')
     revision = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip()
     suffix = 'private-portable' if private else 'source'
-    name = f'NewSnapRecomp-0.1-alpha-{suffix}-{revision[:8]}'
+    name = f'NewSnapRecomp-{VERSION}-{suffix}-{revision[:8]}'
     target = ROOT / 'build/releases' / name
     target.mkdir(parents=True, exist_ok=False)
     source_files(target)
     if private:
-        private_files(target, Path(profile or ROOT / 'build/profile').resolve())
+        private_files(target, Path(profile or ROOT / 'build/profile').resolve(), VERSION)
     files = {p.relative_to(target).as_posix(): {'size': p.stat().st_size, 'sha256': digest(p)}
              for p in sorted(target.rglob('*')) if p.is_file()}
     (target / 'MANIFEST.json').write_text(json.dumps({
-        'version': '0.1-alpha', 'source_revision': revision, 'private_game_data': private,
+        'version': VERSION, 'source_revision': revision, 'private_game_data': private,
         'files': files}, indent=2) + '\n', encoding='utf-8')
     archive = target.parent / (target.name + '.zip')
     with zipfile.ZipFile(archive, 'x', compression=zipfile.ZIP_DEFLATED, compresslevel=1) as output:
