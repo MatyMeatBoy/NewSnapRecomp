@@ -478,15 +478,16 @@
      {KEY_1, B_LEFT}, {KEY_2, B_UP}, {KEY_3, B_RIGHT}, {KEY_4, B_DOWN}, \
 --- a/runtime/input.c
 +++ b/runtime/input.c
-@@ -18,6 +18,7 @@
+@@ -18,6 +18,8 @@
  #include "input.h"
  #include "input_map.h"
  #include "input_wsys.h"
 +#include "snap_input_trace.h"
++#include "snap_controller_db.h"
  #include "nvn_api.h"
  #include "ui/menu.h"
  #include "vk.h"
-@@ -304,6 +305,7 @@
+@@ -304,6 +306,7 @@
              double dt = age < 0.004 ? 0.004 : age > 0.1 ? 0.1 : age;
              ikb_mouse_take(&dx, &dy);
              input_mouse_stick(dx, dy, dt, mouse_sens_get(), held);
@@ -494,7 +495,15 @@
              frame = fr;
              t0 = now;
          } else if (age > 0.1) {
-@@ -586,6 +588,8 @@
+@@ -489,6 +492,7 @@
+     if (e && !strcmp(e, "none")) { state = -1; rt_log("input: disabled (AC_INPUT=none)"); return; }
+     if (!SDL_Init(SDL_INIT_GAMEPAD)) { state = -1; rt_log("input: SDL gamepad init failed (%s), keyboard only", SDL_GetError()); }
+     else state = 1;
++    if (state == 1) snap_controller_db_load();
+     if (state == 1) test_pad_attach();
+     if (state == 1) {
+         scan_pads();
+@@ -586,6 +590,8 @@
      }
      script_apply(&b, sl, sr);
      rec_apply(b, sl, sr);
@@ -503,6 +512,14 @@
      // Minus and Plus held together (gamepad or keys) open or close the menu and never reach the game
      static int combo_held, overlay_held;
      int32_t st[4] = {sl[0], sl[1], sr[0], sr[1]};
+@@ -682,6 +688,7 @@
+         rt_log("input: auto prompts: SDL gamepad init failed (%s)", SDL_GetError());
+         return PAD_KIND_NONE;
+     }
++    snap_controller_db_load();
+     SDL_UpdateGamepads();
+     int n = 0, kind = PAD_KIND_NONE;
+     SDL_JoystickID *ids = SDL_GetGamepads(&n);
 --- a/runtime/vk_texture.c
 +++ b/runtime/vk_texture.c
 @@ -27,6 +27,7 @@
