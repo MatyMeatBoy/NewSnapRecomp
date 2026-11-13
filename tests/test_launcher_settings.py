@@ -147,7 +147,8 @@ int main(void) {
 }
 ''', encoding='utf-8')
             exe = folder / ('bindings.exe' if os.name == 'nt' else 'bindings')
-            subprocess.run([compiler, str(folder / 'test.c'), '-o', str(exe)], check=True, capture_output=True)
+            subprocess.run([compiler, str(folder / 'test.c'), '-o', str(exe),
+                            *([] if os.name == 'nt' else ['-lm'])], check=True, capture_output=True)
             result = subprocess.run([str(exe)], capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
