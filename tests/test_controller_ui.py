@@ -30,6 +30,22 @@ class ControllerOwnershipTests(TestCase):
         panel.lock=SimpleNamespace(__exit__=Mock(side_effect=OSError('lock close failed')))
         panel._release()
         panel.launcher._set_busy.assert_called_once_with(False)
+
+    def test_disconnect_clears_picture_and_selects_another_connected_pad(self):
+        panel=self.panel();panel.art=SimpleNamespace(set_buttons=Mock())
+        panel.selector=SimpleNamespace(configure=Mock(),current=Mock(),set=Mock())
+        panel.controller_ids=[];panel.controllers={};panel.selected_controller=None
+        first={'id':11,'connected':True,'name':'First'}
+        second={'id':22,'connected':True,'name':'Second'}
+        panel.show_controllers([first,second])
+        panel.selector.current.return_value=1
+        panel.select_controller()
+        panel.art.set_buttons.assert_called_with(second)
+        panel.show_controllers([first,{**second,'connected':False}])
+        panel.art.set_buttons.assert_called_with(first)
+        panel.show_controllers([])
+        panel.art.set_buttons.assert_called_with(None)
+        self.assertIsNone(panel.selected_controller)
         self.assertIsNone(panel.session)
         self.assertIsNone(panel.lock)
         panel._release()

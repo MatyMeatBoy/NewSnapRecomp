@@ -37,3 +37,13 @@ Prueba real de red/transacción en
 No equivale a una entrega 0.5 ni a validación física de mando/AMD. La prueba de
 instalación ejercita la API del updater; el reinicio del ejecutable congelado se
 volverá a comprobar al empaquetar el candidato final.
+
+El launcher de desarrollo también fue congelado y su `--selftest-launcher`
+terminó con código 0 usando un PATH sin Python instalado. Los fingerprints de
+fuentes coinciden y el PNG de mando incluido conserva el SHA original. Evidencia:
+`build/launcher-audit-v05/frozen-verification.json`. No se publicó este ejecutable;
+su identidad continúa en 0.4 mientras la puerta de salida 0.5 permanece abierta.
+
+La prueba visual del mando, con entradas sintéticas y sin sensores físicos, está
+en `build/launcher-audit-v05/controller-switch-after.jpg`. La selección entre
+mandos, desconexión y liberación exclusiva del estado ocupado tienen regresiones.
