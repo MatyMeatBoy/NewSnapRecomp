@@ -57,6 +57,32 @@
      // Shaders and pipelines recorded in earlier runs are made ready while the modules load; the guest waits for them.
      PlatThread *warm = plat_thread_new(prewarm_main, NULL, "prewarm");
      ldr_load(rt_config()->exefs);
+--- a/runtime/ov_fsp.c
++++ b/runtime/ov_fsp.c
+@@ -18,6 +18,12 @@
+         logs++;
+     }
+     switch (rq->cmd) {
++    case 202: // OpenDataStorageByDataId must return an IStorage object on success.
++        // No system-data mount exists yet. Success without an object made Snap
++        // dereference a null storage while opening the naming dictionary.
++        rt_log("fsp-srv: system-data storage unavailable; no object returned");
++        rs->result = 0x7d402u; // nn::fs::ResultTargetNotFound
++        return;
+     case 1004:   // SetGlobalAccessLogMode
+     case 1006:   // OutputAccessLogToSdCard
+     case 1016:   // FlushAccessLogOnSdCard
+--- a/runtime/gfx_present.c
++++ b/runtime/gfx_present.c
+@@ -82,6 +82,8 @@
+ // (plat_restart), and the new process waits until this one is gone (main.c) before it moves the log and opens the
+ // RomFS and the saves.
+ void gfx_window_closed(void) {
++    extern int snap_exit_begin_close(void);
++    if (!snap_exit_begin_close()) return;
+     int restart = plat_cas32(&g_restart, 0, 0) != 0;
+     rt_log("gfx: window closed; %s", restart ? "restarting" : "exiting");
+     fs_save_flush();
 --- a/runtime/vk_pipeline.c
 +++ b/runtime/vk_pipeline.c
 @@ -2138,7 +2138,7 @@

@@ -38,6 +38,20 @@ def adapt_sources(destination, *, patch_output=None):
         snap_decode_requested(c);
         if (rt_config()->seconds) return;   // --seconds: the run goes on into the game'''),
         ],
+        'runtime/ov_fsp.c': [
+            ('switch (rq->cmd) {', '''switch (rq->cmd) {
+    case 202: // OpenDataStorageByDataId must return an IStorage object on success.
+        // No system-data mount exists yet. Success without an object made Snap
+        // dereference a null storage while opening the naming dictionary.
+        rt_log("fsp-srv: system-data storage unavailable; no object returned");
+        rs->result = 0x7d402u; // nn::fs::ResultTargetNotFound
+        return;'''),
+        ],
+        'runtime/gfx_present.c': [
+            ('void gfx_window_closed(void) {', '''void gfx_window_closed(void) {
+    extern int snap_exit_begin_close(void);
+    if (!snap_exit_begin_close()) return;'''),
+        ],
         'runtime/vk_pipeline.c': [
             ('int vk_pipeline_async_on(void) { return A.on; }', 'int vk_pipeline_async_on(void) { return A.on && !rt_config()->shot; }'),
             ('return graphics(s, info, A.on, pending, wait_ms);', 'return graphics(s, info, vk_pipeline_async_on(), pending, wait_ms);'),

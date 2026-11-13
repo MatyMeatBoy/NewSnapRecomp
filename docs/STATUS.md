@@ -14,6 +14,9 @@ The intended deliverable remains a playable native New Pokémon Snap recompilati
 - clang 23/x64-v3 private executable builds. Initial clean compile: 179.2 seconds, process-tree peak about 1,259 MiB. These are build measurements, not gameplay performance gains.
 - Runtime memory/dispatch selftest and loader probe pass. No strong unresolved imports. Boot reaches the first NVN call.
 - Initial stable 15-second rendering probe displays the autosave notice with text/icons and emits audio. That run reported zero shader failures and zero validation errors. This does not establish later gameplay, photography evaluation, save round-tripping, timing or long-session correctness.
+- Local-name mode, explicitly selected by the owner, bypasses loading Nintendo's profanity dictionary by reporting the real missing-content error before entering the SDK mount. The PC keyboard retains length, disabled-character and cancellation handling. A scripted `Snap` name (1–12 UTF-16 units required by the game) reaches character confirmation, with zero shader failures and zero validation errors. The filter object remains uninitialized; its original destructor is retained.
+- The equivalent confirmation sequence, after the OE binding fix, completes its initial save transaction (five changed files) and reaches the rendered title scene. The 60-second scripted run exits successfully: 3,312 presents, zero unimplemented NVN calls, zero validation errors, zero shader failures and zero skipped draws. The final eight-second frame-time sample is only the title scene; it is not gameplay performance evidence.
+- The fetched Astral Chain upstream `main` is identical to the selected commit. Release 1.14.0's source is already included. `docs/UPSTREAM.md` distinguishes included infrastructure from unverified Snap engine features.
 - Source fixtures cover wrong titles, damaged containers, stale imports, control metadata tampering, stale/generated-source tampering and CMIF/domain framing. An independent review identified three provenance defects; fixes now verify all imported outputs and bind generated C to its input hashes and source recipe.
 
 ## Adaptations
@@ -28,7 +31,7 @@ The intended deliverable remains a playable native New Pokémon Snap recompilati
 ## Remaining work
 
 - Verify title, initial setup and a complete playable route, including identifying/evaluating photographed Pokémon.
-- Current setup blocker: `nn::ngc::ProfanityFilter::Initialize` requests a firmware system-data dictionary; the backend does not yet mount it. Naming then crashes in the SDK contents reader. The owner's firmware dump location is pending. Do not replace the filter with an unconditional success result.
+- Validate close/restart during actual protected work. OE enter/leave now maintain nested host exit sections; window closure defers until holders leave, then blocks new sections through the final save flush. Native fixtures cover nesting, deferred closure and underflow; real concurrent closure remains untested. Independent review found no confirmed defects in these additions.
 - Check remaining SDK/NVN paths and save/reload behavior; online network services currently report unavailable.
 - Resolve geometry-stage support and verify actual texture-answer variants and complete pipelines across routes; measure misses with cold and warm caches.
 - Compare equivalent workloads before selecting performance changes. Do not treat startup UI FPS as gameplay evidence.

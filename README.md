@@ -2,7 +2,7 @@
 
 Work in progress: a native Windows x64 recompilation of **New Pokémon Snap** using the infrastructure of [Astral Chain Recomp](https://github.com/captainj-sparrow/astral-chain-pc-recomp), which builds on [TotK Recomp](https://github.com/valentderah/totk-pc-recomp).
 
-**Status:** the owner's base and update **2.0.1** import with verified integrity. A private Windows x64 executable builds, passes its memory/dispatch and loader checks, boots into `nnMain`, and displays the autosave notice with audio. Runtime adaptation is in progress. This is **not yet a verified playable port**; no gameplay FPS or stutter-free result is claimed.
+**Status:** the owner's base and update **2.0.1** import with verified integrity. A private Windows x64 executable builds, passes its memory/dispatch and loader checks, accepts a local character/name, commits the initial save and reaches the rendered title scene. Runtime adaptation is in progress. This is **not yet a verified playable port**; no gameplay FPS or stutter-free result is claimed.
 
 The upstream is pinned as a submodule. Snap-specific offsets, SDK bindings, shader formats and timing must be verified against Snap; Astral Chain patches are not interchangeable.
 
@@ -49,7 +49,9 @@ The tools can decode the 3,138 shader libraries locally, using the original deco
 
 The local test prepared 3,493 variants in the RTX 4060 driver cache, with zero translation or driver-preparation failures. Two geometry-stage entries are explicitly unsupported by the current backend. Default answers cannot establish coverage for every unseen texture type or pipeline combination. `prepare` without `--all` uses only recorded variants; startup also rebuilds recorded pipelines before guest execution (38 in the tested setup sequence).
 
-The next setup blocker is the SDK profanity filter's system dictionary, loaded when entering the player's name. A firmware-backed mount is still needed. No playable route or first-use coverage across the game is verified.
+The current local-name mode uses the PC keyboard's length and character validation without Nintendo's profanity dictionary, as requested by the owner. It reaches character/name confirmation without firmware. This intentionally does not provide Nintendo's word filtering. No playable route or first-use coverage across the game is verified.
+
+The selected base already includes release 1.14.0 and matches upstream `main` at the latest check. See [feature compatibility](docs/UPSTREAM.md) for what is inherited, what has been exercised and what needs Snap-specific adaptation.
 
 Optimization will compare identical scenes and settings, preserving photography evaluation, event order, audio, camera motion and saves. Frame-time percentiles, startup time, memory use and compilation misses matter alongside FPS.
 
