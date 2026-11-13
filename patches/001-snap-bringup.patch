@@ -74,7 +74,15 @@
      case 1016:   // FlushAccessLogOnSdCard
 --- a/runtime/gfx_present.c
 +++ b/runtime/gfx_present.c
-@@ -82,12 +82,16 @@
+@@ -26,6 +26,7 @@
+ #include "platform/platform.h"
+ #include "ui/menu.h"
+ #include "vk.h"
++#include "snap_vrr.h"
+ 
+ #define FRAMES 2
+ #define MAX_IMAGES 16
+@@ -82,12 +83,16 @@
  // (plat_restart), and the new process waits until this one is gone (main.c) before it moves the log and opens the
  // RomFS and the saves.
  void gfx_window_closed(void) {
@@ -91,7 +99,7 @@
          plat_setenv("AC_REEXEC", NULL);   // the new process counts its own address-space retries (memory.c)
          if (!plat_restart()) rt_log("gfx: the restart could not start the game again");
      }
-@@ -266,7 +270,8 @@
+@@ -266,7 +271,8 @@
  static VkPresentModeKHR pick_present_mode(VkPhysicalDevice pd) {
      const char *e = cfg_value("AC_VK_PRESENT");
      VkPresentModeKHR want = !strcmp(e, "mailbox") ? VK_PRESENT_MODE_MAILBOX_KHR
@@ -101,7 +109,7 @@
      uint32_t n = 0;
      vkGetPhysicalDeviceSurfacePresentModesKHR(pd, g_surface, &n, NULL);
      VkPresentModeKHR m[16];
-@@ -274,7 +279,7 @@
+@@ -274,7 +280,7 @@
      vkGetPhysicalDeviceSurfacePresentModesKHR(pd, g_surface, &n, m);
      VkPresentModeKHR got = VK_PRESENT_MODE_FIFO_KHR;
      for (uint32_t i = 0; i < n; i++) if (m[i] == want) got = want;
@@ -110,6 +118,39 @@
      __atomic_store_n(&g_present_got, name, __ATOMIC_RELEASE);
      static int logged = -1;   // the mode last logged: a change from the menu shows in the log
      if ((int)got != logged) {
+@@ -298,6 +304,7 @@
+     vk_queue_lock();
+     VkResult r = vkQueuePresentKHR(vk_ctx()->gfx_queue, &pi);
+     vk_queue_unlock();
++    snap_vrr_after_present(vk_ctx()->device, g_sc, r); // g_pl held: serialize against swapchain destruction
+     vk_device_fault_report(r);
+     if (r == VK_ERROR_OUT_OF_DATE_KHR || r == VK_SUBOPTIMAL_KHR) plat_xchg32(&g_dirty, 1);
+ }
+@@ -362,6 +369,7 @@
+         if (g_sc_view[i]) vkDestroyImageView(c->device, g_sc_view[i], NULL);
+         g_sc_view[i] = VK_NULL_HANDLE;
+     }
++    snap_vrr_swapchain_changed(g_sc, gfx_window_present_mode());
+     if (old) vkDestroySwapchainKHR(c->device, old, NULL);
+     g_sc_fmt = sf.format;
+     g_sc_hdr = hdr;
+@@ -673,7 +681,7 @@
+     // Colour adjustment (AC_COLOR_*, vk_color.c), or on an HDR10 swapchain the PQ encode (vk_hdr.c; the adjustment is
+     // for SDR): a copy of the crop takes the game image's place below
+     VkImage graded = !general ? VK_NULL_HANDLE : g_sc_hdr ? vk_hdr_encode(cb, slot, src, fmt, rect)
+-                                                         : vk_color_record(cb, slot, src, fmt, rect);
++                                                         : vk_color_record(cb, slot, src, fmt, g_sc_fmt, rect);
+     const int grect[4] = {0, 0, cw, ch};
+     VkImage psrc = graded ? graded : src;
+     VkFormat pfmt = graded ? VK_FORMAT_R16G16B16A16_SFLOAT : fmt;
+@@ -826,6 +834,7 @@
+             g_sc_view[i] = VK_NULL_HANDLE;
+         }
+         if (g_pool) vkDestroyCommandPool(c->device, g_pool, NULL);
++        snap_vrr_shutdown();
+         if (g_sc) vkDestroySwapchainKHR(c->device, g_sc, NULL);
+         if (g_surface) vkDestroySurfaceKHR(c->instance, g_surface, NULL);
+         g_sc = VK_NULL_HANDLE; g_surface = VK_NULL_HANDLE; g_pool = VK_NULL_HANDLE; g_sc_n = 0;
 --- a/runtime/cpu.h
 +++ b/runtime/cpu.h
 @@ -30,6 +30,8 @@
@@ -668,7 +709,23 @@
  #include "nvn_api.h"
  #include "ui/menu.h"
  #include "vk.h"
-@@ -304,6 +306,7 @@
+@@ -291,7 +293,15 @@
+ static void mouse_camera(int32_t out[2]) {
+     static uint64_t frame = ~0ull, t0;
+     static int32_t held[2];
++    static uint32_t capture_epoch;
+     uint64_t now = plat_now_ns();
++    uint32_t epoch = ikb_capture_epoch();
++    if (capture_epoch != epoch) {
++        capture_epoch = epoch;
++        held[0] = held[1] = 0;
++        frame = ~0ull;
++        t0 = now;
++    }
+     int32_t dx, dy;
+     if (!ikb_captured()) {
+         ikb_mouse_take(&dx, &dy);
+@@ -304,6 +314,7 @@
              double dt = age < 0.004 ? 0.004 : age > 0.1 ? 0.1 : age;
              ikb_mouse_take(&dx, &dy);
              input_mouse_stick(dx, dy, dt, mouse_sens_get(), held);
@@ -676,7 +733,7 @@
              frame = fr;
              t0 = now;
          } else if (age > 0.1) {
-@@ -489,6 +492,7 @@
+@@ -489,6 +500,7 @@
      if (e && !strcmp(e, "none")) { state = -1; rt_log("input: disabled (AC_INPUT=none)"); return; }
      if (!SDL_Init(SDL_INIT_GAMEPAD)) { state = -1; rt_log("input: SDL gamepad init failed (%s), keyboard only", SDL_GetError()); }
      else state = 1;
@@ -684,7 +741,7 @@
      if (state == 1) test_pad_attach();
      if (state == 1) {
          scan_pads();
-@@ -586,6 +590,8 @@
+@@ -586,6 +598,8 @@
      }
      script_apply(&b, sl, sr);
      rec_apply(b, sl, sr);
@@ -693,7 +750,7 @@
      // Minus and Plus held together (gamepad or keys) open or close the menu and never reach the game
      static int combo_held, overlay_held;
      int32_t st[4] = {sl[0], sl[1], sr[0], sr[1]};
-@@ -682,6 +688,7 @@
+@@ -682,6 +696,7 @@
          rt_log("input: auto prompts: SDL gamepad init failed (%s)", SDL_GetError());
          return PAD_KIND_NONE;
      }
@@ -701,6 +758,102 @@
      SDL_UpdateGamepads();
      int n = 0, kind = PAD_KIND_NONE;
      SDL_JoystickID *ids = SDL_GetGamepads(&n);
+@@ -781,6 +796,11 @@
+     sensor_ok =SDL_GamepadHasSensor(pad, SDL_SENSOR_GYRO) && SDL_GamepadHasSensor(pad, SDL_SENSOR_ACCEL) &&
+                 SDL_SetGamepadSensorEnabled(pad, SDL_SENSOR_GYRO, true) &&
+                 SDL_SetGamepadSensorEnabled(pad, SDL_SENSOR_ACCEL, true);
++    if (!sensor_ok) {
++        // An accelerometer-enable failure must not leave just the gyro on.
++        SDL_SetGamepadSensorEnabled(pad, SDL_SENSOR_GYRO, false);
++        SDL_SetGamepadSensorEnabled(pad, SDL_SENSOR_ACCEL, false);
++    }
+     if (sensor_ok) rt_log("input: motion sensors on (gyro %.0f Hz, accelerometer %.0f Hz)",
+                           (double)SDL_GetGamepadSensorDataRate(pad, SDL_SENSOR_GYRO),
+                           (double)SDL_GetGamepadSensorDataRate(pad, SDL_SENSOR_ACCEL));
+@@ -790,36 +810,62 @@
+ }
+ 
+ int input_motion_enabled(void) {
+-    static int on = -1;
+-    static unsigned seen;
+-    unsigned v = cfg_version();
+-    if (on < 0 || v != seen) {
+-        seen = v;
+-        on = cfg_bool("AC_MOTION");
+-    }
+-    return on;
++    // cfg already publishes live values atomically. A second shared cache here
++    // races between the gyro thread and guest six-axis readers.
++    return cfg_bool("AC_MOTION");
+ }
+ 
+ // 250 Hz: the gamepads update (reports read, rumble expiry) and the newest gyro and accelerometer sample goes into the
+ // fusion. Without a gamepad with sensors, or with motion off (AC_MOTION=0, live), nothing is fed and the six-axis
+ // sensor reads at rest.
++// One sensor poll under the input lock. A different/missing source must not
++// inherit another controller's orientation or return its recent ring samples.
++static void snap_motion_poll(void) {
++    static SDL_JoystickID source;
++    static int fed;
++    float a[3], g[3];
++    plat_mutex_lock(&lock);
++    int connected = pad && SDL_GamepadConnected(pad);
++    SDL_JoystickID id = connected ? SDL_GetGamepadID(pad) : 0;
++    if (!input_motion_enabled() || !id) {
++        if (connected && sensor_pad == id && sensor_pad) {
++            SDL_SetGamepadSensorEnabled(pad, SDL_SENSOR_GYRO, false);
++            SDL_SetGamepadSensorEnabled(pad, SDL_SENSOR_ACCEL, false);
++        }
++        if (source || sensor_pad) motion_restart(motion_global());
++        sensor_pad = 0;
++        sensor_ok = 0;
++        source = 0;
++        fed = 0;
++        plat_mutex_unlock(&lock);
++        return;
++    }
++    // scan_pads also clears sensor_pad on a close/reopen between sensor polls.
++    if (source != id || sensor_pad != id) {
++        motion_restart(motion_global());
++        source = id;
++        fed = 0;
++    }
++    SDL_UpdateGamepads();
++    int have = sensors_ready() && SDL_GetGamepadSensorData(pad, SDL_SENSOR_ACCEL, a, 3) &&
++               SDL_GetGamepadSensorData(pad, SDL_SENSOR_GYRO, g, 3);
++    if (have) {
++        double acc[3], gyro[3];
++        input_motion_axes(a, g, acc, gyro);
++        motion_feed(motion_global(), acc, gyro, kern_now_ns());
++        fed = 1;
++    } else if (fed) {
++        motion_restart(motion_global());
++        fed = 0;
++    }
++    plat_mutex_unlock(&lock);
++}
++
+ static void motion_main(void *arg) {
+     (void)arg;
+     for (;;) {
+         plat_wait_ns(4000000);
+-        float a[3], g[3];
+-        int have = 0;
+-        plat_mutex_lock(&lock);
+-        if (pad && SDL_GamepadConnected(pad)) {
+-            SDL_UpdateGamepads();
+-            have = sensors_ready() && SDL_GetGamepadSensorData(pad, SDL_SENSOR_ACCEL, a, 3) &&
+-                   SDL_GetGamepadSensorData(pad, SDL_SENSOR_GYRO, g, 3);
+-        }
+-        plat_mutex_unlock(&lock);
+-        if (!have || !input_motion_enabled()) continue;
+-        double acc[3], gyro[3];
+-        input_motion_axes(a, g, acc, gyro);
+-        motion_feed(motion_global(), acc, gyro, kern_now_ns());
++        snap_motion_poll();
+     }
+ }
+ 
 --- a/runtime/vk_texture.c
 +++ b/runtime/vk_texture.c
 @@ -27,6 +27,7 @@
@@ -870,6 +1023,83 @@
      Tex **list = malloc(sizeof *list * (size_t)(by_key.n + 1));
      int n = 0;
      for (uint32_t i = 0; i < by_key.cap; i++) {
+@@ -2051,6 +2166,68 @@
+ }
+ 
+ // Image <-> caller rows through a staging buffer; the GPU copy is waited for. The region is in the image's texels.
++
++// FOTO-01: explicitly enabled, local diagnostic images only. At most eight
++// captures per path; staging owned by diagnostics survives until its fence.
++static int snap_photo_format(VkFormat format) {
++    return format == VK_FORMAT_R8G8B8A8_UNORM || format == VK_FORMAT_R8G8B8A8_SRGB ? 1 :
++           format == VK_FORMAT_B8G8R8A8_UNORM || format == VK_FORMAT_B8G8R8A8_SRGB ? 2 : 0;
++}
++static void snap_photo_pair(const char *directory, const char *path, unsigned number, uint64_t frame,
++                            uint32_t w, uint32_t h, VkFormat format,
++                            const uint8_t *source, size_t source_pitch, const uint8_t *copy, size_t copy_pitch) {
++    if (!directory || !*directory || !w || !h || w > 8192 || h > 8192 ||
++            (uint64_t)w * h > 4u * 1024u * 1024u || !snap_photo_format(format)) return;
++    size_t row = (size_t)w * 4, bytes = row * h;
++    if (source_pitch < row || copy_pitch < row) return;
++    uint8_t *rgba = malloc(bytes);
++    if (!rgba) return;
++    uint64_t mismatch = 0, hash[2] = {14695981039346656037ull, 14695981039346656037ull};
++    unsigned black[2] = {0};
++    const uint8_t *inputs[2] = {source, copy};
++    size_t pitches[2] = {source_pitch, copy_pitch};
++    plat_file_mkdir_p(directory);
++    for (int image = 0; image < 2; image++) {
++        for (uint32_t y = 0; y < h; y++) {
++            const uint8_t *in = inputs[image] + (size_t)y * pitches[image];
++            int empty = 1;
++            for (uint32_t x = 0; x < w; x++) {
++                uint8_t *out = rgba + ((size_t)y * w + x) * 4;
++                for (unsigned c = 0; c < 4; c++) {
++                    unsigned component = snap_photo_format(format) == 2 && c < 3 ? 2 - c : c;
++                    uint8_t value = in[(size_t)x * 4 + component];
++                    out[c] = c == 3 ? 255 : value;
++                    hash[image] = (hash[image] ^ value) * 1099511628211ull;
++                    if (c < 3 && value) empty = 0;
++                    if (!image && in[(size_t)x * 4 + c] != copy[(size_t)y * copy_pitch + (size_t)x * 4 + c]) mismatch++;
++                }
++            }
++            black[image] += empty;
++        }
++        char filename[1024];
++        int length = snprintf(filename, sizeof filename, "%s/%s-%02u-f%llu-%s.png", directory, path, number,
++                              (unsigned long long)frame, image ? "buffer" : "source");
++        if (length > 0 && (size_t)length < sizeof filename) rt_write_png(filename, rgba, w, h);
++    }
++    rt_log("photo_trace: %s %u frame %llu %ux%u fmt %d pitches %llu/%llu mismatch_bytes=%llu "
++           "black_rows=%u/%u hashes=%016llx/%016llx", path, number, (unsigned long long)frame, w, h, (int)format,
++           (unsigned long long)source_pitch, (unsigned long long)copy_pitch, (unsigned long long)mismatch,
++           black[0], black[1], (unsigned long long)hash[0], (unsigned long long)hash[1]);
++    free(rgba);
++}
++
++static void snap_photo_trace_cpu(const Tex *e, const Region *g, const NVNcopyRegion *region,
++                                  const uint8_t *staging, const uint8_t *output) {
++    const char *directory = getenv("NEWSNAP_PHOTO_TRACE_DIR");
++    static unsigned captures;
++    if (!directory || !*directory || captures >= 8 || g->nz != 1 || g->bw != 1 || g->bh != 1 || g->bpb != 4 ||
++            region->width < 128 || region->height < 96 || region->width > 8192 || region->height > 8192 ||
++            (uint64_t)region->width * region->height > 4u * 1024u * 1024u || !snap_photo_format(e->pub.format)) return;
++    uint64_t frame = __atomic_load_n(&gfx_counters.frames, __ATOMIC_RELAXED);
++    snap_photo_pair(directory, "cpu-read", captures++, frame, (uint32_t)region->width, (uint32_t)region->height,
++                    e->pub.format, staging, g->wb, output, g->row);
++}
++
+ static int image_texels_at(Tex *e, const Region *g, const NVNcopyRegion *r, uint8_t *mem, int write) {
+     static volatile int32_t n_astc, n_ds;
+     VkCtx *c = vk_ctx();
+@@ -2167,6 +2344,7 @@
+             }
+         }
+     }
++    if (!write && !rgb && !astc) snap_photo_trace_cpu(e, g, r, stg, mem);
+     free(rg);
+     vmaDestroyBuffer(c->vma, sb, sa);
+     return 1;
 --- a/runtime/vk_exec.c
 +++ b/runtime/vk_exec.c
 @@ -27,6 +27,7 @@
@@ -1158,15 +1388,25 @@
      if (M.timed) M.ns[0] += t1 - t0;
 --- a/runtime/vk_device.c
 +++ b/runtime/vk_device.c
-@@ -13,6 +13,7 @@
+@@ -13,6 +13,8 @@
  #include "cfg.h"
  #include "host.h"
  #include "vk.h"
++#include "snap_vrr.h"
 +#include "snap_fsr_sdk.h"
  #include "platform/platform.h"
  #include "vk_dlaa.h"
  #include "vk_xess.h"
-@@ -226,6 +227,15 @@
+@@ -88,6 +90,8 @@
+     if (vk_hdr_wanted() && instance_ext_present(VK_EXT_SWAPCHAIN_COLOR_SPACE_EXTENSION_NAME))   // HDR10 surface formats
+         ext[n_ext++] = VK_EXT_SWAPCHAIN_COLOR_SPACE_EXTENSION_NAME;
+     vk_xess_instance_exts(ext, &n_ext, 24);
++    snap_vrr_instance_capabilities = instance_ext_present(VK_KHR_GET_SURFACE_CAPABILITIES_2_EXTENSION_NAME) &&
++        snap_vrr_append_extension(ext, &n_ext, 24, VK_KHR_GET_SURFACE_CAPABILITIES_2_EXTENSION_NAME);
+     VkApplicationInfo app = {.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO, .pApplicationName = "Astral Chain Recomp",
+                              .pEngineName = "Astral Chain Recomp", .apiVersion = VK_API_VERSION_1_3};
+     VkInstanceCreateInfo ci = {.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO, .pApplicationInfo = &app,
+@@ -226,6 +230,19 @@
      VkPhysicalDeviceAttachmentFeedbackLoopLayoutFeaturesEXT fbl;
      VkPhysicalDeviceDynamicRenderingLocalReadFeaturesKHR lr;
      VkPhysicalDeviceMutableDescriptorTypeFeaturesEXT mut;   // XeSS (vk_xess.c) only
@@ -1179,10 +1419,14 @@
 +#ifdef VK_EXT_shader_float8
 +    VkPhysicalDeviceShaderFloat8FeaturesEXT fsr_float8;
 +#endif
++#if defined(VK_EXT_present_timing) && defined(VK_KHR_present_id2)
++    VkPhysicalDevicePresentTimingFeaturesEXT snap_present_timing;
++    VkPhysicalDevicePresentId2FeaturesKHR snap_present_id;
++#endif
  } FeatureChain;
  
  static int create_device(void) {
-@@ -284,6 +294,24 @@
+@@ -284,6 +301,36 @@
      }
      // GPU breadcrumbs for a lost device (vk_crumbs.c): AMD's drivers and RADV report it.
      if (has_ext(ep, ne, VK_AMD_BUFFER_MARKER_EXTENSION_NAME)) { g_vk.has_buffer_marker = 1; ext[n_ext++] = VK_AMD_BUFFER_MARKER_EXTENSION_NAME; }
@@ -1204,10 +1448,22 @@
 +        CHAIN(fsr_float8, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_FLOAT8_FEATURES_EXT);
 +    }
 +#endif
++    int snap_vrr_negotiated = 0;
++#if defined(VK_EXT_present_timing) && defined(VK_KHR_present_id2)
++    // Exact EXT dependencies: swapchain, present_id2, calibrated_timestamps, instance capabilities2.
++    if (n_ext <= 75 && snap_vrr_extension_bundle(ep, ne)) { // reserve three dependencies and two GPL slots
++        snap_vrr_append_extension(ext, &n_ext, 80, VK_EXT_PRESENT_TIMING_EXTENSION_NAME);
++        snap_vrr_append_extension(ext, &n_ext, 80, VK_KHR_PRESENT_ID_2_EXTENSION_NAME);
++        snap_vrr_append_extension(ext, &n_ext, 80, VK_KHR_CALIBRATED_TIMESTAMPS_EXTENSION_NAME);
++        CHAIN(snap_present_timing, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRESENT_TIMING_FEATURES_EXT);
++        CHAIN(snap_present_id, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRESENT_ID_2_FEATURES_KHR);
++        snap_vrr_negotiated = 1;
++    }
++#endif
      // Graphics pipeline library: chained last so it can be dropped again when vk_caps_gpl declines it.
      void **gpl_link = NULL;
      if (has_ext(ep, ne, VK_KHR_PIPELINE_LIBRARY_EXTENSION_NAME) && has_ext(ep, ne, VK_EXT_GRAPHICS_PIPELINE_LIBRARY_EXTENSION_NAME)) {
-@@ -297,6 +325,12 @@
+@@ -297,6 +344,19 @@
      // The driver fills the chain with what it supports; the same chain then enables all of it (robustBufferAccess
      // stays on: guest shaders index constant buffers freely and out-of-range reads must stay harmless).
      vkGetPhysicalDeviceFeatures2(g_vk.phys, &c->f2);
@@ -1217,6 +1473,604 @@
 +    // Its provider query/create determines model compatibility; do not invent extra model requirements.
 +    snap_fsr_sdk_int8_enabled = c->fsr_derivatives.computeDerivativeGroupLinear;
 +#endif
++#if defined(VK_EXT_present_timing) && defined(VK_KHR_present_id2)
++    snap_vrr_negotiated = snap_vrr_negotiated && c->snap_present_timing.presentTiming;
++    // Status queries need no absolute/relative scheduling features and emit no present IDs.
++    c->snap_present_timing.presentAtAbsoluteTime = VK_FALSE;
++    c->snap_present_timing.presentAtRelativeTime = VK_FALSE;
++    c->snap_present_id.presentId2 = VK_FALSE;
++#endif
      vk_caps_driver(g_vk.phys);
      vk_caps_features(&c->f2.features);
      if (gpl_link) {
+@@ -348,6 +408,7 @@
+     VkResult r = vkCreateDevice(g_vk.phys, &di, NULL, &g_vk.device);
+     free(c);
+     if (r != VK_SUCCESS) { rt_log("vk: vkCreateDevice failed (%d)", (int)r); return 0; }
++    snap_vrr_device_ready(g_vk.device, snap_vrr_negotiated);
+     vkGetDeviceQueue(g_vk.device, g_vk.gfx_family, 0, &g_vk.gfx_queue);
+     if (g_vk.xfer_family != g_vk.gfx_family) vkGetDeviceQueue(g_vk.device, g_vk.xfer_family, 0, &g_vk.xfer_queue);
+     else { g_vk.xfer_queue = g_vk.gfx_queue; g_vk.xfer_shared = 1; }
+--- a/runtime/ui/menu.cpp
++++ b/runtime/ui/menu.cpp
+@@ -544,13 +544,13 @@
+ // (SMAA, or off) applies while no upscaler runs and is greyed out otherwise. Off Windows, DLSS and XeSS are not offered.
+ static void rows_upscaling(void) {
+ #ifdef _WIN32
+-    static const char *const vals[] = {"off", "auto", "dlss", "xess", "fsr3"};
+-    const char *names[] = {menu_text(UI_MENU_UPSCALING_OFF), menu_text(UI_MENU_UPSCALING_AUTO), "NVIDIA DLSS",
+-                           "Intel XeSS", "AMD FSR 3"};
++    static const char *const vals[] = {"off", "auto", "dlss", "fsr3", "fsr4"};
++    const char *names[] = {"Original", menu_text(UI_MENU_UPSCALING_AUTO), "NVIDIA DLSS",
++                           "AMD FSR 3.1", "AMD FSR 4"};
+     const UiTextId desc = UI_MENU_UPSCALING_DESC;
+ #else
+-    static const char *const vals[] = {"off", "auto", "fsr3"};
+-    const char *names[] = {menu_text(UI_MENU_UPSCALING_OFF), menu_text(UI_MENU_UPSCALING_AUTO), "AMD FSR 3"};
++    static const char *const vals[] = {"off", "auto", "fsr3", "fsr4"};
++    const char *names[] = {"Original", menu_text(UI_MENU_UPSCALING_AUTO), "AMD FSR 3.1", "AMD FSR 4"};
+     const UiTextId desc = UI_MENU_UPSCALING_DESC_OTHER;
+ #endif
+     enum { N = sizeof vals / sizeof *vals };
+@@ -571,13 +571,12 @@
+     }
+     opt_choice_list("AC_UPSCALING", UI_MENU_UPSCALING, vals, names, N, desc, cur, note);
+     {
+-        static const char *const qv[] = {"native", "quality", "balanced", "performance", "ultra_performance"};
+-        const char *qn[] = {menu_text(UI_MENU_UPSCALING_NATIVE), menu_text(UI_MENU_DLSS_QUALITY),
+-                            menu_text(UI_MENU_DLSS_BALANCED), menu_text(UI_MENU_DLSS_PERFORMANCE),
+-                            menu_text(UI_MENU_UPSCALING_ULTRA)};
++        static const char *const qv[] = {"native", "quality", "balanced", "performance"};
++        const char *qn[] = {"Native AA / DLAA (100%)", menu_text(UI_MENU_DLSS_QUALITY),
++                            menu_text(UI_MENU_DLSS_BALANCED), menu_text(UI_MENU_DLSS_PERFORMANCE)};
+         const char *q = cfg_upscaling_quality();
+         int qcur = -1;
+-        for (int i = 0; i < 5; i++)
++        for (int i = 0; i < 4; i++)
+             if (!strcmp(q, qv[i])) qcur = i;
+         static char note_q[48];
+         unsigned sz[2];
+@@ -585,7 +584,7 @@
+         snprintf(note_q, sizeof note_q, "%u × %u", sz[0], sz[1]);   // U+00D7, the multiplication sign
+         bool off = !strcmp(up, "off") && !res_scene_reduced();
+         if (off) opt_disable_next(UI_MENU_UPSCALING_MODE_OFF);
+-        opt_choice_list("AC_UPSCALING_QUALITY", UI_MENU_UPSCALING_QUALITY, qv, qn, 5, UI_MENU_UPSCALING_QUALITY_DESC, qcur,
++        opt_choice_list("AC_UPSCALING_QUALITY", UI_MENU_UPSCALING_QUALITY, qv, qn, 4, UI_MENU_UPSCALING_QUALITY_DESC, qcur,
+                         off ? nullptr : note_q);
+     }
+     {
+@@ -594,12 +593,6 @@
+         if (vk_dlaa_running()) opt_disable_next(UI_MENU_AA_BY_UPSCALER);
+         opt_choice_list("AC_ANTI_ALIASING", UI_MENU_AA, av, an, 2, UI_MENU_AA_DESC, cfg_smaa() ? 1 : 0);
+     }
+-}
+-
+-static void row_shadow_scale(void) {
+-    static const char *const vals[] = {"1", "2", "3", "4"};
+-    static const char *const names[] = {"2048 (1x)", "4096 (2x)", "6144 (3x)", "8192 (4x)"};
+-    opt_choice_list("AC_SHADOW_SCALE", UI_MENU_SHADOW_SCALE, vals, names, 4, UI_MENU_SHADOW_SCALE_DESC);
+ }
+ 
+ static void row_gpu(void) {
+@@ -674,33 +667,6 @@
+ // ---- the tabs
+ // Colour adjustment (vk_color.c): a profile writes the four values (STS78721's presets, issue #136); moving one of them
+ // makes the profile Custom.
+-static void rows_color(void) {
+-    static const struct { const char *name, *b, *c, *s, *g; } presets[] = {
+-        {"default", "0", "100", "100", "1"}, {"vivid", "0", "115", "135", "0.95"}, {"clarity", "2", "110", "115", "1"}};
+-    static const UiTextId names[] = {UI_MENU_COLOR_DEFAULT, UI_MENU_COLOR_VIVID, UI_MENU_COLOR_CLARITY,
+-                                     UI_MENU_COLOR_CUSTOM};
+-    opt_group(UI_MENU_COLOR);
+-    if (opt_choice("AC_COLOR_PRESET", UI_MENU_COLOR_PRESET, names, 4, UI_MENU_COLOR_PRESET_DESC)) {
+-        const char *p = cfg_value("AC_COLOR_PRESET");
+-        for (const auto &e : presets)
+-            if (!strcmp(p, e.name)) {
+-                cfg_set("AC_COLOR_BRIGHTNESS", e.b), cfg_set("AC_COLOR_CONTRAST", e.c);
+-                cfg_set("AC_COLOR_SATURATION", e.s), cfg_set("AC_COLOR_GAMMA", e.g);
+-                cfg_save();
+-            }
+-    }
+-    bool moved = opt_slider("AC_COLOR_BRIGHTNESS", UI_MENU_COLOR_BRIGHTNESS, -30, 30, UI_MENU_COLOR_BRIGHTNESS_DESC, 1,
+-                            "%+.0f %%");
+-    moved |= opt_slider("AC_COLOR_CONTRAST", UI_MENU_COLOR_CONTRAST, 70, 150, UI_MENU_COLOR_CONTRAST_DESC, 5, "%.0f %%");
+-    moved |= opt_slider("AC_COLOR_SATURATION", UI_MENU_COLOR_SATURATION, 50, 200, UI_MENU_COLOR_SATURATION_DESC, 5,
+-                        "%.0f %%");
+-    moved |= opt_slider("AC_COLOR_GAMMA", UI_MENU_COLOR_GAMMA, 0.8f, 1.2f, UI_MENU_COLOR_GAMMA_DESC, 0.02f, "%.2f");
+-    if (moved && strcmp(cfg_value("AC_COLOR_PRESET"), "custom")) {
+-        cfg_set("AC_COLOR_PRESET", "custom");
+-        cfg_save();
+-    }
+-}
+-
+ static void tab_screen(float scale) {
+     opt_begin("##screen", scale);
+     opt_toggle("AC_FULLSCREEN", UI_MENU_FULLSCREEN, UI_MENU_FULLSCREEN_DESC);
+@@ -713,24 +679,12 @@
+     opt_group(UI_MENU_GRAPHICS);
+     row_output_res();
+     rows_upscaling();
+-    static const UiTextId up[] = {UI_MENU_UPSCALER_FSR, UI_MENU_UPSCALER_BILINEAR};
+-    opt_choice("AC_UPSCALER", UI_MENU_UPSCALER, up, 2, UI_MENU_UPSCALER_DESC);
+-    opt_slider("AC_SHARPNESS", UI_MENU_SHARPNESS, 0, 100, UI_MENU_SHARPNESS_DESC, 5, "%.0f %%");
++    // Snap presents its original SDR output without an additional spatial FSR/sharpening stage.
+     opt_slider("AC_FOV", UI_MENU_FOV, 70, 140, UI_MENU_FOV_DESC, 5, "%.0f %%");
+     static const char *const aniso[] = {"auto", "game", "2", "4", "8", "16"};
+     const char *aniso_names[] = {menu_text(UI_MENU_ANISO_AUTO), menu_text(UI_MENU_ANISO_GAME), "2x", "4x", "8x", "16x"};
+     opt_choice_list("AC_ANISO", UI_MENU_ANISO, aniso, aniso_names, 6, UI_MENU_ANISO_DESC);
+-    row_shadow_scale();
+-    static const UiTextId ao[] = {UI_MENU_AO_OFF, UI_MENU_AO_LOW, UI_MENU_AO_HIGH};
+-    opt_choice("AC_AO", UI_MENU_AO, ao, 3, UI_MENU_AO_DESC);
+-    rows_color();
+-    opt_group(UI_MENU_HDR_GROUP);
+-    opt_toggle("AC_HDR", UI_MENU_HDR, UI_MENU_HDR_DESC);
+-    opt_slider("AC_HDR_PEAK_NITS", UI_MENU_HDR_PEAK, 400, 10000, UI_MENU_HDR_PEAK_DESC, 50, "%.0f");
+-    // 1-nit steps; held, a row moves ten at a time over this range (option_rows.cpp opt_slider)
+-    opt_slider("AC_HDR_GAME_NITS", UI_MENU_HDR_GAME, 80, 500, UI_MENU_HDR_GAME_DESC, 1, "%.0f");
+-    opt_slider("AC_HDR_UI_NITS", UI_MENU_HDR_UI, 80, 500, UI_MENU_HDR_UI_DESC, 1, "%.0f");
+-    opt_slider("AC_HDR_HUE", UI_MENU_HDR_HUE, 0, 100, UI_MENU_HDR_HUE_DESC, 5, "%.0f %%");
++    // Original Snap color, shadows and SDR output are preserved by the neutral native policy.
+     opt_end();
+ }
+ 
+--- a/runtime/vk_color.c
++++ b/runtime/vk_color.c
+@@ -136,15 +136,38 @@
+     vkCmdPipelineBarrier2(cb, &d);
+ }
+ 
+-VkImage vk_color_record(VkCommandBuffer cb, unsigned slot, VkImage src, VkFormat fmt, const int crop[4]) {
+-    if (!adjusting()) return VK_NULL_HANDLE;
++// Snap final SDR pixels are already display encoded. Colour images in
++// vk_texture.c use MUTABLE_FORMAT. Match the source view's transfer class to
++// the actual swapchain: neither decode nor encode for UNORM, or decode followed
++// by encode for an sRGB-only surface. Matching pairs need no identity copy.
++static VkFormat snap_present_encoded_format(VkFormat format, VkFormat destination) {
++    int srgb = destination == VK_FORMAT_R8G8B8A8_SRGB || destination == VK_FORMAT_B8G8R8A8_SRGB;
++    int unorm = destination == VK_FORMAT_R8G8B8A8_UNORM || destination == VK_FORMAT_B8G8R8A8_UNORM;
++    if (!srgb && !unorm) return format;
++    if (format == VK_FORMAT_R8G8B8A8_SRGB || format == VK_FORMAT_R8G8B8A8_UNORM)
++        return srgb ? VK_FORMAT_R8G8B8A8_SRGB : VK_FORMAT_R8G8B8A8_UNORM;
++    if (format == VK_FORMAT_B8G8R8A8_SRGB || format == VK_FORMAT_B8G8R8A8_UNORM)
++        return srgb ? VK_FORMAT_B8G8R8A8_SRGB : VK_FORMAT_B8G8R8A8_UNORM;
++    return format;
++}
++
++VkImage vk_color_record(VkCommandBuffer cb, unsigned slot, VkImage src, VkFormat fmt, VkFormat dstfmt, const int crop[4]) {
++    int adjust = adjusting();
++    VkFormat encoded_format = snap_present_encoded_format(fmt, dstfmt);
++    if (!adjust && encoded_format == fmt) return VK_NULL_HANDLE;
++    static VkFormat reported = VK_FORMAT_UNDEFINED, reported_dst = VK_FORMAT_UNDEFINED;
++    if (encoded_format != fmt && (reported != fmt || reported_dst != dstfmt)) {
++        reported = fmt, reported_dst = dstfmt;
++        rt_log("vk: final SDR byte transfer: source %d, destination %d, sampled view %d, identity coefficients %d",
++               (int)fmt, (int)dstfmt, (int)encoded_format, !adjust);
++    }
+     VkCtx *c = vk_ctx();
+     if (!C.tried) init(c);
+     if (!C.ok || !ensure_image(c, (uint32_t)crop[2], (uint32_t)crop[3])) return VK_NULL_HANDLE;
+     slot %= SLOTS;
+     if (C.src_view[slot]) vkDestroyImageView(c->device, C.src_view[slot], NULL);
+     VkImageViewCreateInfo vi = {.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO, .image = src,
+-                                .viewType = VK_IMAGE_VIEW_TYPE_2D, .format = fmt,
++                                .viewType = VK_IMAGE_VIEW_TYPE_2D, .format = encoded_format,
+                                 .subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1}};
+     if (vkCreateImageView(c->device, &vi, NULL, &C.src_view[slot]) != VK_SUCCESS) {
+         C.src_view[slot] = VK_NULL_HANDLE;
+--- a/runtime/vk.h
++++ b/runtime/vk.h
+@@ -124,7 +124,7 @@
+ // Colour adjustment on the present (vk_color.c): with AC_COLOR_* away from their defaults, records a pass that writes
+ // src's crop rectangle {x, y, w, h}, adjusted, into an RGBA16F image of that size in GENERAL and returns it (the caller
+ // scales that one instead, crop {0, 0, w, h}); VK_NULL_HANDLE = nothing recorded. src is in GENERAL, fmt its format.
+-VkImage vk_color_record(VkCommandBuffer cb, unsigned slot, VkImage src, VkFormat fmt, const int crop[4]);
++VkImage vk_color_record(VkCommandBuffer cb, unsigned slot, VkImage src, VkFormat fmt, VkFormat dstfmt, const int crop[4]);
+ void vk_color_release(void);   // before the device goes away
+ // HDR output (vk_hdr.c). vk_hdr_wanted: AC_HDR, read once. vk_hdr_surface_format: the HDR10 surface format when wanted
+ // and offered (1). vk_hdr_set_active: gfx_present.c says whether the swapchain is HDR10 (vk_hdr_active). vk_hdr_encode:
+--- a/runtime/vk_exec_xfer.c
++++ b/runtime/vk_exec_xfer.c
+@@ -45,6 +45,8 @@
+ #include "tex.h"
+ #include "vk.h"
+ #include "vk_exec.h"
++#include "gfx.h"
++#include "platform/platform.h"
+ 
+ enum { W_FORMAT, W_REGION, W_BUFFER, W_OVERLAP, W_COPY, W_CLEAR, W_QUERY, W_COUNT };
+ 
+@@ -414,6 +416,123 @@
+     return 1;
+ }
+ 
++
++// FOTO-01: explicitly enabled, local diagnostic images only. At most eight
++// captures per path; staging owned by diagnostics survives until its fence.
++static int snap_photo_format(VkFormat format) {
++    return format == VK_FORMAT_R8G8B8A8_UNORM || format == VK_FORMAT_R8G8B8A8_SRGB ? 1 :
++           format == VK_FORMAT_B8G8R8A8_UNORM || format == VK_FORMAT_B8G8R8A8_SRGB ? 2 : 0;
++}
++static void snap_photo_pair(const char *directory, const char *path, unsigned number, uint64_t frame,
++                            uint32_t w, uint32_t h, VkFormat format,
++                            const uint8_t *source, size_t source_pitch, const uint8_t *copy, size_t copy_pitch) {
++    if (!directory || !*directory || !w || !h || w > 8192 || h > 8192 ||
++            (uint64_t)w * h > 4u * 1024u * 1024u || !snap_photo_format(format)) return;
++    size_t row = (size_t)w * 4, bytes = row * h;
++    if (source_pitch < row || copy_pitch < row) return;
++    uint8_t *rgba = malloc(bytes);
++    if (!rgba) return;
++    uint64_t mismatch = 0, hash[2] = {14695981039346656037ull, 14695981039346656037ull};
++    unsigned black[2] = {0};
++    const uint8_t *inputs[2] = {source, copy};
++    size_t pitches[2] = {source_pitch, copy_pitch};
++    plat_file_mkdir_p(directory);
++    for (int image = 0; image < 2; image++) {
++        for (uint32_t y = 0; y < h; y++) {
++            const uint8_t *in = inputs[image] + (size_t)y * pitches[image];
++            int empty = 1;
++            for (uint32_t x = 0; x < w; x++) {
++                uint8_t *out = rgba + ((size_t)y * w + x) * 4;
++                for (unsigned c = 0; c < 4; c++) {
++                    unsigned component = snap_photo_format(format) == 2 && c < 3 ? 2 - c : c;
++                    uint8_t value = in[(size_t)x * 4 + component];
++                    out[c] = c == 3 ? 255 : value;
++                    hash[image] = (hash[image] ^ value) * 1099511628211ull;
++                    if (c < 3 && value) empty = 0;
++                    if (!image && in[(size_t)x * 4 + c] != copy[(size_t)y * copy_pitch + (size_t)x * 4 + c]) mismatch++;
++                }
++            }
++            black[image] += empty;
++        }
++        char filename[1024];
++        int length = snprintf(filename, sizeof filename, "%s/%s-%02u-f%llu-%s.png", directory, path, number,
++                              (unsigned long long)frame, image ? "buffer" : "source");
++        if (length > 0 && (size_t)length < sizeof filename) rt_write_png(filename, rgba, w, h);
++    }
++    rt_log("photo_trace: %s %u frame %llu %ux%u fmt %d pitches %llu/%llu mismatch_bytes=%llu "
++           "black_rows=%u/%u hashes=%016llx/%016llx", path, number, (unsigned long long)frame, w, h, (int)format,
++           (unsigned long long)source_pitch, (unsigned long long)copy_pitch, (unsigned long long)mismatch,
++           black[0], black[1], (unsigned long long)hash[0], (unsigned long long)hash[1]);
++    free(rgba);
++}
++
++typedef struct {
++    VkBuffer source_buffer, copy_buffer;
++    VmaAllocation source_alloc, copy_alloc;
++    uint8_t *source, *copy;
++    uint32_t w, h;
++    size_t pitch;
++    VkFormat format;
++    uint64_t frame;
++    unsigned number;
++    char directory[1024];
++} SnapPhotoTransfer;
++static void snap_photo_transfer_done(void *argument) {
++    SnapPhotoTransfer *trace = argument;
++    VkCtx *c = vk_ctx();
++    vmaInvalidateAllocation(c->vma, trace->source_alloc, 0, VK_WHOLE_SIZE);
++    vmaInvalidateAllocation(c->vma, trace->copy_alloc, 0, VK_WHOLE_SIZE);
++    snap_photo_pair(trace->directory, "gpu-t2b", trace->number, trace->frame, trace->w, trace->h, trace->format,
++                    trace->source, (size_t)trace->w * 4, trace->copy, trace->pitch);
++    vmaDestroyBuffer(c->vma, trace->source_buffer, trace->source_alloc);
++    vmaDestroyBuffer(c->vma, trace->copy_buffer, trace->copy_alloc);
++    free(trace);
++}
++static void snap_photo_trace_t2b(VkExec *ex, const Sub *s, uint64_t size,
++                                const VkBufferImageCopy *original, const VkMemSpan *destination) {
++    const char *directory = getenv("NEWSNAP_PHOTO_TRACE_DIR");
++    static unsigned captures;
++    if (!directory || !*directory || captures >= 8 || !snap_photo_format(s->img->format) ||
++            s->nz != 1 || s->img->samples != 1 || s->w < 128 || s->h < 96 ||
++            s->w > 8192 || s->h > 8192 || (uint64_t)s->w * s->h > 4u * 1024u * 1024u ||
++            !size || size > 32u * 1024u * 1024u) return;
++    size_t row = (size_t)s->w * 4;
++    size_t pitch = original->bufferRowLength ? (size_t)original->bufferRowLength * 4 : row;
++    if (pitch < row || (uint64_t)pitch * (s->h - 1) + row > size) return;
++    SnapPhotoTransfer *trace = calloc(1, sizeof *trace);
++    if (!trace) return;
++    trace->w = s->w, trace->h = s->h, trace->pitch = pitch, trace->format = s->img->format;
++    trace->frame = __atomic_load_n(&gfx_counters.frames, __ATOMIC_RELAXED);
++    trace->number = captures++;
++    int length = snprintf(trace->directory, sizeof trace->directory, "%s", directory);
++    if (length < 0 || (size_t)length >= sizeof trace->directory) { free(trace); return; }
++    trace->source = vk_staging(row * s->h, &trace->source_buffer, &trace->source_alloc);
++    trace->copy = vk_staging(size, &trace->copy_buffer, &trace->copy_alloc);
++    VkBufferImageCopy tight = *original;
++    tight.bufferOffset = 0, tight.bufferRowLength = 0, tight.bufferImageHeight = 0;
++    vkCmdCopyImageToBuffer(ex->cb, s->img->image, VK_IMAGE_LAYOUT_GENERAL, trace->source_buffer, 1, &tight);
++    // The original transfer wrote the destination: make those bytes visible to
++    // this diagnostic read without accessing mutable/freed guest CPU addresses.
++    VkMemoryBarrier2 memory = {.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2,
++        .srcStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT, .srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT,
++        .dstStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT, .dstAccessMask = VK_ACCESS_2_TRANSFER_READ_BIT};
++    VkDependencyInfo dependency = {.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
++                                   .memoryBarrierCount = 1, .pMemoryBarriers = &memory};
++    vkCmdPipelineBarrier2(ex->cb, &dependency);
++    VkBufferCopy range = {destination->offset, 0, size};
++    vkCmdCopyBuffer(ex->cb, destination->buffer, trace->copy_buffer, 1, &range);
++    memory.dstStageMask = VK_PIPELINE_STAGE_2_HOST_BIT;
++    memory.dstAccessMask = VK_ACCESS_2_HOST_READ_BIT;
++    vkCmdPipelineBarrier2(ex->cb, &dependency);
++    vk_completion_add(ex->fence, snap_photo_transfer_done, trace);
++    ex->recorded += 2;
++    rt_log("photo_trace: queued gpu-t2b %u frame %llu source_addr=%#llx source_fmt=%d "
++           "region=%d,%d %ux%u stride=%llu bytes=%llu fence=%llu", trace->number,
++           (unsigned long long)trace->frame, (unsigned long long)s->img->addr, (int)trace->format,
++           s->x, s->y, s->w, s->h, (unsigned long long)pitch, (unsigned long long)size,
++           (unsigned long long)ex->fence);
++}
++
+ static void copy_buffer_image(VkExec *ex, const p_copy_b2t *p, int to_image) {
+     Sub s;
+     if (!sub_resolve(p->tex, &p->view, p->has_view, &p->r, 1, &s)) return;
+@@ -433,6 +552,7 @@
+     ex->recorded++;
+     if (to_image) vk_texture_gpu_written(p->tex);
+     else vk_mem_gpu_wrote(&m, size), note_gpu_write(ex, p->src, size);
++    if (!to_image) snap_photo_trace_t2b(ex, &s, size, &c, &m);
+ }
+ 
+ static void copy_t2t(VkExec *ex, const p_copy_t2t *p) {
+--- a/runtime/vk_memory.c
++++ b/runtime/vk_memory.c
+@@ -79,6 +79,28 @@
+ 
+ static void mirror_forget(PoolRec *r);   // pool_lock exclusive: off the mirrored list
+ static int shadow_on;                    // shadow mode: imported pools get shadow storage instead (vk_mem_class_log)
++
++// Direct host pointers have no Vulkan map/flush/invalidate ownership here.
++// Keep unsupported imports in managed storage, per pool, without forcing the
++// normal coherent imports to change policy. The indicator only enables shadow
++// synchronization/completion work when an automatic fallback exists.
++static volatile int32_t snap_shadow_fallback;
++static int snap_shadow_active(void) {
++    return shadow_on || __atomic_load_n(&snap_shadow_fallback, __ATOMIC_ACQUIRE);
++}
++static void snap_import_report(const VkCtx *c, int type, uint32_t compatible, uint64_t alignment) {
++    static unsigned reported;
++    const char *trace = getenv("NEWSNAP_PHOTO_TRACE_DIR");
++    if (!trace || !*trace) return;
++    unsigned count = __atomic_load_n(&reported, __ATOMIC_RELAXED);
++    do {
++        if (count >= 8) return;
++    } while (!__atomic_compare_exchange_n(&reported, &count, count + 1, 1,
++                                          __ATOMIC_RELAXED, __ATOMIC_RELAXED));
++    rt_log("photo_trace: host import type=%d properties=%#x compatible_bits=%#x min_alignment=%llu", type,
++           type < 0 ? 0 : c->mem_props.memoryTypes[type].propertyFlags, compatible, (unsigned long long)alignment);
++}
++
+ static int shadow_pool(VkCtx *c, PoolRec *r, uint64_t addr, uint64_t size);
+ static void shadow_touch(PoolRec *r);
+ static void shadow_forget(PoolRec *r);
+@@ -114,9 +136,7 @@
+ static int memory_type(const VkCtx *c, uint32_t bits, VkMemoryPropertyFlags want) {
+     for (uint32_t i = 0; i < c->mem_props.memoryTypeCount; i++)
+         if ((bits >> i & 1) && (c->mem_props.memoryTypes[i].propertyFlags & want) == want) return (int)i;
+-    for (uint32_t i = 0; i < c->mem_props.memoryTypeCount; i++)
+-        if (bits >> i & 1) return (int)i;
+-    return -1;
++    return -1; // Never waive required host visibility/coherence for direct guest pointers.
+ }
+ 
+ // CPU-visible storage: the guest pages themselves become the buffer's memory (VK_EXT_external_memory_host).
+@@ -148,7 +168,18 @@
+     vkGetBufferMemoryRequirements(c->device, r->buf, &req);
+     int type = memory_type(c, req.memoryTypeBits & hp.memoryTypeBits,
+                            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+-    if (type < 0 || req.size > n) {
++    snap_import_report(c, type, req.memoryTypeBits & hp.memoryTypeBits, al);
++    if (type < 0) {
++        vkDestroyBuffer(c->device, r->buf, NULL);
++        r->buf = VK_NULL_HANDLE;
++        int managed = shadow_pool(c, r, addr, size);
++        if (managed) __atomic_store_n(&snap_shadow_fallback, 1, __ATOMIC_RELEASE);
++        rt_log("vk: pool %#llx: no coherent CPU-visible import type (compatible %#x, alignment %#llx); "
++               "managed shadow %s", (unsigned long long)addr, req.memoryTypeBits & hp.memoryTypeBits,
++               (unsigned long long)al, managed ? "enabled" : "allocation failed");
++        return managed;
++    }
++    if (req.size > n) {
+         rt_log("vk: pool %#llx: no memory type for the import (buffer %#x, host %#x, size %#llx of %#llx)",
+                (unsigned long long)addr, req.memoryTypeBits, hp.memoryTypeBits, (unsigned long long)req.size,
+                (unsigned long long)n);
+@@ -405,7 +436,7 @@
+         out->cls = h->cls;
+         out->pool = h->pool;
+         if (h->alloc) out->alloc_offset = out->offset;
+-        if (shadow_on && h->pool && !((PoolRec *)h->pool)->stouched) shadow_touch(h->pool);
++        if (h->pool && ((PoolRec *)h->pool)->smap && !((PoolRec *)h->pool)->stouched) shadow_touch(h->pool);
+         if (resolve_check_on()) {
+             VkMemSpan s;
+             if (!resolve_locked(addr, size, &s) || memcmp(&s, out, sizeof s))
+@@ -1015,7 +1046,7 @@
+ }
+ 
+ void vk_mem_shadow_sync(void) {
+-    if (!shadow_on) return;
++    if (!snap_shadow_active()) return;
+     uint64_t t0 = qpc();
+     plat_mutex_lock(&shadow_lock);
+     if (nstouch) {
+@@ -1030,7 +1061,7 @@
+ }
+ 
+ void vk_mem_gpu_pending(uint64_t addr, uint64_t size) {
+-    if (!shadow_on || !size) return;
++    if (!snap_shadow_active() || !size) return;
+     plat_mutex_lock(&shadow_lock);
+     if (nspend == cspend) grow((void **)&spend, &cspend, sizeof *spend);
+     spend[nspend++] = (SRange){addr, addr + size};
+@@ -1063,7 +1094,7 @@
+ // an earlier write costs nothing.
+ #define HOLD_MIN (1ull << 20)
+ static void gpu_written(uint64_t addr, uint64_t size, int hold) {
+-    if (shadow_on && size) {
++    if (snap_shadow_active() && size) {
+         plat_mutex_lock_shared(&pool_lock);
+         const pidx_ent *e = pidx_find(&pool_index, addr, size);
+         PoolRec *r = e ? e->buf : NULL;
+@@ -1095,7 +1126,7 @@
+ void vk_gpu_stored(uint64_t addr, uint64_t size) { gpu_written(addr, size, 1); }
+ 
+ static void shadow_log(uint64_t frame) {
+-    if (!shadow_on) return;
++    if (!snap_shadow_active()) return;
+     plat_mutex_lock(&shadow_lock);
+     int held_now;
+     uint64_t holds, fetched;
+@@ -2377,6 +2408,7 @@
+     nm = npend = nwbl = 0;   // mirrors went with their pools
+     plat_mutex_lock(&shadow_lock);
+     nstouch = nspend = 0;   // shadows too
++    __atomic_store_n(&snap_shadow_fallback, 0, __ATOMIC_RELEASE);
+     s_live_n = s_live_bytes = 0;
+     plat_mutex_unlock(&shadow_lock);
+     for (int i = 0; i < nretiring; i++) destroy_rec(c, retiring[i]);   // finalized ones whose callback never ran
+--- a/runtime/input_wsys.h
++++ b/runtime/input_wsys.h
+@@ -7,6 +7,7 @@
+ int ikb_foreground(void);                     // the game window is in front: keys count
+ int ikb_down(int key);                        // key id (input_map.h KEY_*) held, mouse buttons included
+ int ikb_escape(void);                         // Esc held (no key id: it belongs to the menu)
++uint32_t ikb_capture_epoch(void);              // changes on every release/recapture, even between polls
+ int ikb_captured(void);                       // the cursor is captured for the mouse camera
+ void ikb_mouse_take(int32_t *dx, int32_t *dy);   // raw mouse motion since the last call, in counts
+ void ikb_cursor_update(void);                 // what input_cursor_allowed says may have changed
+--- a/runtime/input_win.c
++++ b/runtime/input_win.c
+@@ -83,6 +83,7 @@
+ 
+ // ---- mouse camera: raw motion accumulated by the window thread, one stick sample per presented frame
+ static volatile LONG mouse_dx, mouse_dy;   // raw counts since the last frame sample
++static volatile LONG snap_capture_epoch;
+ static volatile LONG cur_captured;         // cursor hidden and confined to the client area
+ static volatile LONG cur_active;           // WM_ACTIVATEAPP: the window's application is active
+ // Bits: CUR_REL, Esc or activation by a click on the title bar or border: until a client click; CUR_ESC, set with CUR_REL
+@@ -103,6 +104,7 @@
+ // or the menu, and the mouse camera is on; release it otherwise. Safe from any thread.
+ static void cursor_update(HWND h) {
+     AcquireSRWLockExclusive(&cur_lock);
++    int was_captured = cur_captured != 0;
+     int want = h && cur_active && !(cur_rel & CUR_REL) && !cur_suspend && input_cursor_allowed() &&
+                GetForegroundWindow() == h && !IsIconic(h);
+     RECT r;
+@@ -116,6 +118,7 @@
+         if (cur_captured) ClipCursor(NULL);
+         InterlockedExchange(&cur_captured, 0);
+     }
++    if (was_captured != (cur_captured != 0)) InterlockedIncrement(&snap_capture_epoch);
+     ReleaseSRWLockExclusive(&cur_lock);
+ }
+ 
+@@ -201,6 +204,7 @@
+ 
+ int ikb_escape(void) { return key_down(VK_ESCAPE); }
+ 
++uint32_t ikb_capture_epoch(void) { return (uint32_t)InterlockedCompareExchange(&snap_capture_epoch, 0, 0); }
+ int ikb_captured(void) { return cur_captured != 0; }
+ 
+ void ikb_mouse_take(int32_t *dx, int32_t *dy) {
+--- a/runtime/input_sdl.c
++++ b/runtime/input_sdl.c
+@@ -22,6 +22,7 @@
+ static volatile int32_t esc_held, f8_held, focused;
+ static volatile int32_t mouse_dx, mouse_dy;   // relative motion since the last ikb_mouse_take, whole counts
+ static float rem_x, rem_y;                    // window thread: the fractions SDL reported beyond them
++static volatile int32_t snap_capture_epoch;
+ static volatile int32_t captured;             // relative mouse mode is on
+ enum { CUR_REL = 1, CUR_ESC = 2 };            // as input_win.c: released by Esc or a click elsewhere; by Esc
+ static volatile int32_t cur_rel, cur_suspend, cur_pending;
+@@ -131,6 +132,7 @@
+     plat_xchg32(&mouse_dy, 0);
+     rem_x = rem_y = 0;
+     plat_xchg32(&captured, want);
++    plat_inc32(&snap_capture_epoch);
+ }
+ 
+ // Any thread: the window thread applies the change at its next event.
+@@ -216,6 +218,7 @@
+ int ikb_foreground(void) { return focused != 0; }
+ int ikb_down(int key) { return key > 0 && key < KEY_COUNT && key_held[key]; }
+ int ikb_escape(void) { return esc_held != 0; }
++uint32_t ikb_capture_epoch(void) { return (uint32_t)plat_cas32(&snap_capture_epoch, 0, 0); }
+ int ikb_captured(void) { return captured != 0; }
+ 
+ void ikb_mouse_take(int32_t *dx, int32_t *dy) {
+--- a/runtime/vk_exec_draw.c
++++ b/runtime/vk_exec_draw.c
+@@ -2299,6 +2299,31 @@
+     return 0;
+ }
+ 
++
++static int snap_shader_writes(const GfxShader *shader) {
++    if (!shader) return 0;
++    const GfxShaderRes *resources;
++    int count = gfx_shader_resources(shader, GFX_RES_SSBO, &resources);
++    for (int i = 0; i < count; i++)
++        if (resources[i].flags & 1) return 1;
++    count = gfx_shader_resources(shader, GFX_RES_IMG, &resources);
++    for (int i = 0; i < count; i++)
++        if (resources[i].flags & 4) return 1;
++    return 0;
++}
++
++static VkPipeline snap_required_pipeline(const VkPipeState *state, const VkPipeInfo **info, int *pending) {
++    VkPipeline pipeline;
++    // Reuse the donor's promotion/condition wait, including an entry already
++    // building asynchronously. A time slice expiring is not a compile failure
++    // and must never discard an authoritative storage write.
++    do {
++        pipeline = vk_pipeline_graphics_async(state, info, pending, ONESHOT_WAIT_MS);
++    } while (*pending);
++    // NULL with pending=0 is an actual creation failure; keep donor reporting.
++    return pipeline;
++}
++
+ // Pass, shaders, pipeline, fixed state and resources for a draw. 0: the draw is skipped.
+ static int prepare_draw(VkExec *ex, int prim, int32_t count, int restart) {
+     if (ex->render_disabled) return drop_draw(ex, VK_DROP_DISABLED, "rendering disabled");
+@@ -2351,14 +2376,16 @@
+     // one-shot draws (volumes and LUTs generated once, later only sampled) would leave their target empty for the
+     // session. A draw into per-frame targets is skipped until they are ready and comes back next frame.
+     int oneshot = -1, skip = pipe_skip_mode();   // -1: not looked up
++    // Until translation completes, storage effects are unknown.
++    // Recent colour/depth targets cannot establish that this draw is safe to skip.
+     if (vs_wait || fs_wait) {
+-        if (!(oneshot = !vk_exec_targets_recent(ex, skip >= 1))) return perf_count(PERF_CNT_SHADER_SKIP), 0;   // skipped until ready
+-        perf_count(PERF_CNT_ONESHOT_WAIT);
++        oneshot = !vk_exec_targets_recent(ex, skip >= 1);
+         if (vs_wait) vs = shader_for(ex, NVN_STAGE_VS, &has_vs, NULL, 1);
+         if (fs_wait) fs = shader_for(ex, NVN_STAGE_FS, &has_fs, NULL, 1);
+     }
+     if (!vs || (has_fs && !fs)) return drop_draw(ex, VK_DROP_OTHER, "a shader failed to translate");
+     if (vk_dlaa_skip_draw(ex, fs)) return drop_draw(ex, VK_DROP_OTHER, "SMAA set aside for the temporal AA");   // vk_dlaa.c
++    int storage_write = snap_shader_writes(vs) || snap_shader_writes(fs);
+     uint32_t fbl = feedback_prepare(ex, fs);
+     VkPipeState s = ex->pipe;
+     // AC_FORCE_BLEND=<prog>: debug switch, the enemy-death effect (prog 268) is opaque at 1x and 2x; force
+@@ -2394,7 +2421,7 @@
+     static uint64_t wait_left_ns;
+     uint32_t wait_ms = 0;
+     uint64_t t0 = 0;
+-    if (oneshot > 0) {
++    if (storage_write || oneshot > 0) {
+         wait_ms = ONESHOT_WAIT_MS;
+     } else if (skip < 2 && count <= 6 && (uint64_t)sc.extent.width * sc.extent.height * 2 >= (uint64_t)ex->pass_w * ex->pass_h) {
+         uint64_t f = __atomic_load_n(&gfx_counters.frames, __ATOMIC_RELAXED);
+@@ -2413,12 +2440,13 @@
+         p = __atomic_load_n(&info->pipeline, __ATOMIC_ACQUIRE);
+     } else {
+         w0 = t0 ? t0 : wait_ms ? kern_now_ns() : 0;   // the clock is read only for draws that may wait
+-        p = vk_pipeline_graphics_async(&s, &info, &pending, wait_ms);
++        p = storage_write ? snap_required_pipeline(&s, &info, &pending)
++                          : vk_pipeline_graphics_async(&s, &info, &pending, wait_ms);
+         if (t0) {
+             uint64_t spent = kern_now_ns() - t0;
+             wait_left_ns = spent < wait_left_ns ? wait_left_ns - spent : 0;
+         }
+-        why = oneshot > 0 ? "one-shot, shader" : wait_ms ? "full-screen" : NULL;
++        why = storage_write ? "storage write" : oneshot > 0 ? "one-shot, shader" : wait_ms ? "full-screen" : NULL;
+         if (pending && oneshot < 0 && !vk_exec_targets_recent(ex, skip >= 1)) {
+             perf_count(PERF_CNT_ONESHOT_WAIT);
+             why = "one-shot";

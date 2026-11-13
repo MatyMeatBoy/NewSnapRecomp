@@ -14,6 +14,12 @@ from .temporal_adapt import edits as temporal_edits
 from .upscaler_adapt import edits as upscaler_edits
 from .texture_adapt import adapt_texture_source
 from .neutral_adapt import edits as neutral_edits
+from .vrr_adapt import edits as vrr_edits
+from .menu_adapt import edits as menu_edits
+from .color_transfer_adapt import edits as color_transfer_edits
+from .photo_readback_adapt import edits as photo_readback_edits
+from .camera_input_adapt import edits as camera_input_edits
+from .graphics_effects_adapt import edits as graphics_effects_edits
 from .version import VERSION
 
 
@@ -209,7 +215,9 @@ def adapt_sources(destination, *, patch_output=None):
         edits.setdefault(name, []).extend(changes)
     for name, changes in output_edits().items():
         edits.setdefault(name, []).extend(changes)
-    for adapter in (temporal_edits, upscaler_edits, neutral_edits):
+    for adapter in (temporal_edits, upscaler_edits, neutral_edits, vrr_edits,
+                    menu_edits, color_transfer_edits, photo_readback_edits, camera_input_edits,
+                    graphics_effects_edits):
         for name, changes in adapter().items():
             edits.setdefault(name, []).extend(changes)
     for folder in ('runtime', 'recomp', 'tools'):
