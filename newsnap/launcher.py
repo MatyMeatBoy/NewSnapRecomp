@@ -12,6 +12,7 @@ from tkinter import filedialog, messagebox, ttk
 from . import launcher_settings as settings
 from .paths import runtime_dir
 from .upstream import ROOT
+from .version import VERSION
 
 GREEN, CREAM, AMBER, INK = '#163d32', '#f5f1e5', '#dfa648', '#203c34'
 PAGE_SIZE = 12
@@ -20,7 +21,7 @@ PRESENTATION_LABELS = {'Sincronizado': 'fifo', 'Fluido': 'mailbox', 'Sin sincron
 
 
 class Launcher:
-    def __init__(self, root, project=ROOT):
+    def __init__(self, root, project=ROOT, check_updates=True):
         from PIL import Image, ImageTk
         self.Image, self.ImageTk = Image, ImageTk
         self.root, self.project = root, Path(project)
@@ -32,7 +33,7 @@ class Launcher:
         self.photos, self.thumbnails = [], []
         self.page, self.album_generation, self.preview_generation = 0, 0, 0
         self.preview = None
-        self.root.title('NewSnap · 0.2 alpha · Cámara y álbum')
+        self.root.title(f'NewSnap · {VERSION} · Cámara y álbum')
         self.root.geometry('1020x790')
         self.root.minsize(860, 730)
         self.root.configure(bg=CREAM)
@@ -55,9 +56,13 @@ class Launcher:
         self.play_tab, self.album_tab, self.video_tab, self.audio_tab, self.game_tab, self.controls_tab = [ttk.Frame(self.tabs, padding=16) for _ in range(6)]
         for frame, title in zip((self.play_tab, self.album_tab, self.video_tab, self.audio_tab, self.game_tab, self.controls_tab), ('Jugar', 'Álbum', 'Vídeo', 'Audio', 'Juego', 'Controles')):
             self.tabs.add(frame, text=title)
+        self.update_tab = ttk.Frame(self.tabs, padding=16)
+        self.tabs.add(self.update_tab, text='Actualizar')
         self._play()
         self._album()
         self._options()
+        from .update_ui import UpdatePanel
+        self.updates = UpdatePanel(self, self.update_tab, automatic=check_updates)
         self.root.after(100, self._poll)
         self.refresh_album()
 
@@ -67,9 +72,9 @@ class Launcher:
         style.configure('.', font=('Segoe UI', 11), background=CREAM, foreground=INK)
         style.configure('TFrame', background=CREAM)
         style.configure('TNotebook', background=CREAM, borderwidth=0, tabmargins=(0, 0, 0, 0))
-        style.configure('TNotebook.Tab', padding=(24, 10), background='#e5e5d9', expand=(0, 0, 0, 0))
+        style.configure('TNotebook.Tab', padding=(18, 10), background='#e5e5d9', expand=(0, 0, 0, 0))
         style.map('TNotebook.Tab', background=[('selected', GREEN)], foreground=[('selected', CREAM)],
-                  padding=[('selected', (24, 10)), ('!selected', (24, 10))],
+                  padding=[('selected', (18, 10)), ('!selected', (18, 10))],
                   expand=[('selected', (0, 0, 0, 0)), ('!selected', (0, 0, 0, 0))])
         style.configure('TButton', padding=(15, 9), background='#e5e5d9')
         style.configure('Accent.TButton', background=GREEN, foreground=CREAM, font=('Segoe UI', 13, 'bold'), padding=(25, 14))
@@ -586,7 +591,7 @@ class Launcher:
 
     def close(self):
         if self.busy:
-            messagebox.showinfo('Expedición en curso', 'Espera a que termine la preparación o cierra la ventana del juego antes de cerrar el launcher.', parent=self.root)
+            messagebox.showinfo('Operación en curso', 'Espera a que termine la preparación o actualización, o cierra la ventana del juego antes de cerrar el launcher.', parent=self.root)
             return
         self.root.destroy()
 

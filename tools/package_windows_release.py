@@ -7,6 +7,7 @@ import subprocess
 import zipfile
 
 from tools.build_launcher import ROOT, source_fingerprints
+from newsnap.version import VERSION, RUNTIME_API, RUNTIME_CAPABILITIES
 
 
 def digest(path):
@@ -34,11 +35,11 @@ def package():
     if receipt['inputs'] != source_fingerprints():
         raise ValueError('Stale launcher executable; rebuild before packaging')
     verify_public_tree(candidate)
-    name = f'NewSnapRecomp-0.2-alpha-windows-{revision[:8]}'
+    name = f'NewSnapRecomp-{VERSION}-windows-{revision[:8]}'
     destination = ROOT / 'build/releases' / name
     shutil.copytree(candidate, destination)
     (destination / 'LEEME.txt').write_text(
-        'NewSnapRecomp 0.2 alpha - MatyMeatBoy\n\n'
+        f'NewSnapRecomp {VERSION} - MatyMeatBoy\n\n'
         'Extrae toda esta carpeta. Copia tu carpeta GameData junto a NewSnapLauncher.exe.\n'
         'Abre NewSnapLauncher.exe. Conserva _internal y las otras carpetas de la release.\n'
         'No requiere instalar Python. GameData no se incluye en GitHub.\n\n'
@@ -49,8 +50,10 @@ def package():
         'Preparar shaders antes de jugar reconstruye la cache para tu GPU; puede tardar.\n', encoding='utf-8')
     files = {p.relative_to(destination).as_posix(): {'size': p.stat().st_size, 'sha256': digest(p)}
              for p in sorted(destination.rglob('*')) if p.is_file()}
-    (destination / 'MANIFEST.json').write_text(json.dumps({'version': '0.2-alpha',
-        'source_revision': revision, 'contains_game_data': False, 'files': files}, indent=2) + '\n', encoding='utf-8')
+    (destination / 'MANIFEST.json').write_text(json.dumps({'version': VERSION,
+        'source_revision': revision, 'runtime_api': RUNTIME_API,
+        'runtime_capabilities': list(RUNTIME_CAPABILITIES),
+        'contains_game_data': False, 'files': files}, indent=2) + '\n', encoding='utf-8')
     archive = destination.parent / (name + '.zip')
     with zipfile.ZipFile(archive, 'x', zipfile.ZIP_DEFLATED, compresslevel=6) as output:
         for file in sorted(destination.rglob('*')):

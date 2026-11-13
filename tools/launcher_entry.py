@@ -8,6 +8,11 @@ def main():
     from newsnap.upstream import ROOT
     from newsnap.paths import runtime_dir
     os.chdir(ROOT)
+    if '--apply-update' in sys.argv[1:]:
+        from newsnap.update_worker import apply_job
+        if len(sys.argv) != 3 or sys.argv[1] != '--apply-update':
+            return 1
+        return apply_job(Path(sys.argv[2]))
     if '--prepare' in sys.argv[1:]:
         from newsnap.shaders import prepare_observed
         logs = runtime_dir(ROOT) / 'logs'
@@ -31,7 +36,7 @@ def main():
         with tempfile.TemporaryDirectory() as folder:
             window = tkinter.Tk()
             window.withdraw()
-            Launcher(window, Path(folder))
+            Launcher(window, Path(folder), check_updates=False)
             window.update_idletasks()
             window.destroy()
         return 0
