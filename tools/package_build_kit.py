@@ -49,7 +49,7 @@ def package(sdk_root, destination=None, shader_tools=None, allow_dirty=False):
     donor = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT / 'third_party/astral', text=True).strip()
     if donor != COMMIT:
         raise ValueError('The donor checkout differs from the pinned source revision')
-    target = Path(destination) if destination else ROOT / 'build/releases' / f'NewSnapBuildKit-{VERSION}-windows-{revision[:8]}'
+    target = Path(destination) if destination else ROOT / 'build/releases' / f'NewSnapBuildKit-{VERSION}-{revision[:8]}'
     target.mkdir(parents=True, exist_ok=False)
     for name in ('newsnap', 'patches', 'profiles', 'assets/icons', 'LICENSE', 'THIRD_PARTY_NOTICES.md'):
         _copy(ROOT / name, target / 'source' / name)

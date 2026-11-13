@@ -52,6 +52,9 @@ class UpdaterTests(unittest.TestCase):
             release['assets'].append({'name': 'NewSnapBuildKit-0.3-windows.zip',
                                       'browser_download_url': self.release().archive_url})
             self.assertEqual(updater.check_stable().version, '0.3')
+            release['assets'][-1]['name'] = 'NewSnapBuildKit-0.3-aaaaaaaa.zip'
+            legacy_candidates = [a for a in release['assets'] if a['name'].endswith('.zip') and 'windows' in a['name']]
+            self.assertEqual(len(legacy_candidates), 1)
             release['prerelease'] = True
             self.assertIsNone(updater.check_stable())
             release['prerelease'] = False
