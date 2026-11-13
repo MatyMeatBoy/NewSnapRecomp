@@ -102,6 +102,11 @@ recorridos. No se compiló código nativo ni se usó GPU en ese ensayo: **no mid
   una publicación. Su aceptación usa su propio hash final, sin heredar la
   aceptación fotográfica de los binarios anteriores. Protocolo físico en
   `v05-owner-validation.md`.
+- El ejecutable final `76f08005…`, productor `555d6258…`, completó su propio
+  ensayo normal de 540 s: dos fotos y dos miniaturas limpias, cuatro pares GPU
+  exactos, evaluación/tutorial y primera expedición. Los 75 archivos protegidos
+  de perfil/respaldo siguen intactos. Fuente de evidencia y límites en
+  `v05-dev1-acceptance.md`; aceptación AMD/mando/FreeSync todavía pendiente.
 
 Conservar pendientes AMD, aceptación física de entrada, retícula/foco y escenarios
 fotográficos no cubiertos. El ensayo final de 540 s aporta aceptación local

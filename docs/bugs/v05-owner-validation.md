@@ -9,6 +9,9 @@ completar las puertas de `docs/PENDIENTES.md`.
 - Usar una copia completa de la carpeta portable y de GameData. Conservar la
   instalación 0.4 y su perfil originales sin cambios. No mezclar un ejecutable
   candidato con el marcador o launcher de una receta distinta.
+- Antes de lanzar, comprobar en Home que datos y perfil apuntan a esa copia.
+  `launcher.json` puede conservar un perfil absoluto externo; usar «Elegir
+  perfil» para seleccionar el perfil copiado y confirmar la ruta mostrada.
 - Registrar SHA256 del ejecutable, revisión del candidato, versión del driver
   AMD, resolución, escala de Windows, modo de pantalla y estado HDR/FreeSync.
 - Comenzar en Original, escala 100 %, modo TV, límite 60 FPS y movimiento
