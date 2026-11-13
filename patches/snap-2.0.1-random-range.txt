@@ -1,0 +1,4 @@
+# Exact Snap 2.0.1 main; full main/build/span verified before generation/cache.
+# Preserve bounded random output/state and all Cpu registers; keep original opt-out.
+set snap_random_range AC_SNAP_RANDOM_RANGE 1
+site snap_random_range main 5ec660 f81b0ff9 @fn:snap_random_range d65f03c0

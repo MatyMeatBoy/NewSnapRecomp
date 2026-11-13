@@ -77,6 +77,32 @@ recorridos. No se compiló código nativo ni se usó GPU en ese ensayo: **no mid
 
 ## Puertas pendientes
 
+### Actualizaciones de revisión y medición
+
+- PR #1 de Claude integrado en `4f421cf`: la auditoría CPU de bancos/fotos y sus
+  tres correcciones de revisión están aprobadas (25 pruebas). Sigue pendiente
+  auditar bytes de las fotos afectadas en AMD; el estado de implementación no
+  sustituye esa evidencia. Ver `photo-audit-review.md`.
+- `build/v05-managed-shadow-positive-control/` añade un ensayo real de 540 s
+  con `AC_SHADOW=1`, binario `06a8d9df…`: cuatro pares GPU exactos, dos fotos y
+  dos miniaturas limpias, tutorial/primera expedición y 75 archivos protegidos
+  intactos. Ejecuta la ruta gestionada real en RTX; no valida la elección
+  automática de fallback por pool ni un flush físico no coherente en AMD.
+- `build/v05-rng-pacing-ab/comparison.json` compara el puente entero verificado
+  activado/desactivado en el **mismo** binario `5b6671c9…`, con dos pares de 40 s
+  en orden inverso, calentamiento separado, misma semilla/caché restaurada,
+  Original y swapchain 1920×1055. El p99 agrupado baja de **42,970 a 25,469 ms**;
+  ambos pares mejoran esa cola. Media 17,088→16,736 ms, mediana ≈16,67 ms;
+  cuadros >50 ms: 40→14. Aún hay un pico de 107,692 ms con el puente activado.
+  GPU ocupada ≈1,1 ms en ambos. Esto es una mejora local acotada de ese recorrido
+  RTX, no la eliminación de todos los tirones ni una medición AMD. La evidencia
+  anterior 0.4→`06a8d9df…` sigue siendo válida para esos binarios: no se reemplaza
+  retrospectivamente por esta comparación de un cambio posterior.
+- El candidato privado se identifica como `0.5.0-dev.1`; esa identidad no es
+  una publicación. Su aceptación usa su propio hash final, sin heredar la
+  aceptación fotográfica de los binarios anteriores. Protocolo físico en
+  `v05-owner-validation.md`.
+
 Conservar pendientes AMD, aceptación física de entrada, retícula/foco y escenarios
 fotográficos no cubiertos. El ensayo final de 540 s aporta aceptación local
 acotada de esa ruta; un fixture verde o una corrección de contrato no permite

@@ -26,6 +26,8 @@ class MenuTests(unittest.TestCase):
         for control in ('AC_HDR','AC_AO','AC_COLOR_PRESET','AC_COLOR_BRIGHTNESS','AC_COLOR_CONTRAST','AC_COLOR_GAMMA','AC_COLOR_SATURATION','AC_SHADOW_SCALE','AC_CONTACT_SHADOWS','AC_PCSS'):
             self.assertNotRegex(text, r'opt_(?:choice(?:_list)?|slider|toggle)\("'+control+r'"')
         self.assertIn('"AMD FSR 3.1", "AMD FSR 4"',text)
+        self.assertIn('"NewSnapRecomp %s | Snap 2.0.1"',text)
+        self.assertNotIn('menu_text(UI_MENU_VERSION), rt_port_version, game',text)
 
     def test_actual_native_rows_show_fsr4_and_report_unavailable(self):
         kit=ROOT/'toolchain/astral-release/Astral Chain-Setup';compiler=kit/'llvm/bin/clang++.exe'

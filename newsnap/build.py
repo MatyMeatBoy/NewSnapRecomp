@@ -13,6 +13,7 @@ from .importer import write_json
 from .upstream import ROOT
 from .provenance import verify_import, generation_recipe, record_generation, verify_generation
 from .importer import source_digest
+from .random_range_adapt import verify_original as verify_random_range_original
 
 
 def python_script_command(script, *arguments):
@@ -120,9 +121,11 @@ def build(sdk_root, shader_tools=None, jobs=0, generate=True, cpu='v3', *, owner
     main_hash = next(f['sha256'] for f in manifest['files'] if f['name'] == 'main')
     patches = work / 'snap-runtime-patches.txt'
     write_changed(patches, '\n'.join((ROOT / 'patches' / name).read_text(encoding='utf-8')
-                                    for name in ('snap-2.0.1-render.txt', 'snap-2.0.1-supersample.txt')))
+                                    for name in ('snap-2.0.1-render.txt', 'snap-2.0.1-supersample.txt',
+                                                 'snap-2.0.1-random-range.txt')))
     if main_hash != profile['main_sha256']:
         raise ValueError('This runtime adaptation requires the verified Snap 2.0.1 code module')
+    verify_random_range_original(exefs)
     gen = work / 'generated' if owner_data else ROOT / 'generated/updated'
     recipe = generation_recipe(source, manifest, patches)
     cache, identity, restored = None, None, False

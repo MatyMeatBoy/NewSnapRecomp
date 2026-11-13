@@ -79,9 +79,16 @@ def _verify(kit, root, revision, cancel_event):
 
 def _release(root, revision, tag):
     metadata = updater._read_json(updater.REPO_URL + '/releases/tags/' + quote(tag, safe=''))
+    # The installed manifest/tag is already bound to this launcher in _identity.
+    # Fetching its exact kit must also work after an explicit alpha/dev install;
+    # this does not discover newer prereleases or change automatic update policy.
+    installed_prerelease = bool(re.fullmatch(
+        r'\d+\.\d+\.\d+-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*(?:\+[0-9A-Za-z.-]+)?', VERSION))
     if (not isinstance(metadata, dict) or metadata.get('tag_name') != tag
-            or metadata.get('draft') is not False or metadata.get('prerelease') is not False):
-        raise updater.UpdateError('Matching stable build-kit release is unavailable')
+            or metadata.get('draft') is not False
+            or not (metadata.get('prerelease') is False
+                    or installed_prerelease and metadata.get('prerelease') is True)):
+        raise updater.UpdateError('Matching published build-kit release is unavailable')
     target = metadata.get('target_commitish')
     if isinstance(target, str) and re.fullmatch('[0-9a-fA-F]{40}', target) and target.lower() != revision:
         raise updater.UpdateError('Release revision differs from the installed launcher')

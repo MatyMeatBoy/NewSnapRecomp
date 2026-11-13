@@ -242,7 +242,8 @@ class BuildCacheIntegrationTests(TestCase):
                 'exefs_sha256':{'main':digest(owner/'exefs/main')},'romfs_sha256':digest(owner/'romfs/romfs.bin'),
                 'verified_control':{'display_version':'2.0.1','save_size':42,'journal_size':2}}))
             (root/'patches').mkdir()
-            for name in ('snap-2.0.1-render.txt','snap-2.0.1-supersample.txt'):(root/'patches'/name).write_text('')
+            for name in ('snap-2.0.1-render.txt','snap-2.0.1-supersample.txt','snap-2.0.1-random-range.txt'):
+                (root/'patches'/name).write_text('')
             sdk=root/'sdk'
             (sdk/'bin').mkdir(parents=True)
             for name in ('SDL3.dll','libopus-0.dll','ac_xlate.exe','ac_xlate.id'):(sdk/'bin'/name).write_bytes(b'fixture tool')
@@ -266,11 +267,19 @@ class BuildCacheIntegrationTests(TestCase):
                     (output/'newsnap.exe').write_bytes(b'newly compiled fixture')
             with patch.object(builder,'ROOT',root),patch.object(builder,'adapt_sources',side_effect=adapt),\
                  patch.object(builder,'stage_runtime_shaders',return_value=True),patch.object(builder,'run_logged',side_effect=run),\
+                 patch.object(builder,'verify_random_range_original') as verify_bridge,\
                  patch('newsnap.upstream.extractor',return_value=SimpleNamespace(index_romfs=lambda _:[])),\
                  patch('tools.fetch_upscaler_sdk.verify',return_value=True),patch('newsnap.upscaler_adapt.stage_sdk'),\
                  patch('tools.fetch_dlss.verify',return_value=False):
                 first=builder.build(sdk,owner_data=owner,work_dir=root/'cold',generation_cache_root=root/'cache')
                 second=builder.build(sdk,owner_data=owner,work_dir=root/'warm',generation_cache_root=root/'cache')
+                self.assertEqual(verify_bridge.call_count,2)
+                verify_bridge.assert_called_with(owner/'exefs')
+                with patch.object(builder,'verify_random_range_original',side_effect=ValueError('unverified original span')),\
+                     patch('newsnap.generation_cache.GenerationCache.restore') as restore:
+                    with self.assertRaisesRegex(ValueError,'unverified original span'):
+                        builder.build(sdk,owner_data=owner,work_dir=root/'refused',generation_cache_root=root/'cache')
+                    restore.assert_not_called()
             self.assertEqual(calls,{'generate':1,'compile':2})
             self.assertTrue(first.is_file() and second.is_file())
             self.assertEqual(json.loads((root/'warm/logs/generation-cache.json').read_text())['restored'],True)

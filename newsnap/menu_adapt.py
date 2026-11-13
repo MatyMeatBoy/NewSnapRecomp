@@ -3,6 +3,11 @@
 
 def edits():
     return {'runtime/ui/menu.cpp': [
+        ('''    char game[16], version[96];
+    snprintf(game, sizeof game, "%d.%d.%d", rt_game_version / 100, rt_game_version / 10 % 10, rt_game_version % 10);
+    snprintf(version, sizeof version, menu_text(UI_MENU_VERSION), rt_port_version, game);''',
+         '''    char version[96];
+    snprintf(version, sizeof version, "NewSnapRecomp %s | Snap 2.0.1", rt_port_version);'''),
         ('''    static const char *const vals[] = {"off", "auto", "dlss", "xess", "fsr3"};
     const char *names[] = {menu_text(UI_MENU_UPSCALING_OFF), menu_text(UI_MENU_UPSCALING_AUTO), "NVIDIA DLSS",
                            "Intel XeSS", "AMD FSR 3"};''',
