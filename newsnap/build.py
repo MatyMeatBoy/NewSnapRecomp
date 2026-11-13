@@ -18,11 +18,28 @@ def run_logged(command, logfile, env=None):
         process = subprocess.Popen([str(x) for x in command], cwd=ROOT, env=env,
                                    stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                    text=True, encoding='utf-8', errors='replace')
-        for line in process.stdout:
-            log.write(line)
-            if line.startswith(('main:', 'sdk:', 'total ', 'emitted ', 'emitting ', 'compile:', 'link:', 'objects verified:', 'romfs index:')):
-                print(line.rstrip(), flush=True)
-        code = process.wait()
+        try:
+            for line in process.stdout:
+                log.write(line)
+                if line.startswith(('main:', 'sdk:', 'total ', 'emitted ', 'emitting ', 'compile:', 'link:', 'objects verified:', 'romfs index:')):
+                    print(line.rstrip(), flush=True)
+            code = process.wait()
+        except BaseException:
+            # Callers may restore previous outputs immediately after we raise.
+            # The owned producer must have stopped writing before that rollback.
+            if process.poll() is None:
+                try:
+                    process.terminate()
+                except ProcessLookupError:
+                    pass
+                try:
+                    process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    process.wait()
+            raise
+        finally:
+            process.stdout.close()
     if code:
         print('\n'.join(logfile.read_text(encoding='utf-8').splitlines()[-25:]))
         raise ValueError(f'Build command failed ({code}); see {logfile}')
