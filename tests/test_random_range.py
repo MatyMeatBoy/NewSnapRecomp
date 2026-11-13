@@ -21,6 +21,11 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class RandomRangeTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        # A clean source checkout has no ignored build directory yet.
+        (ROOT / 'build').mkdir(exist_ok=True)
+
     def test_sdk_only_guard_rejects_foreign_helper_before_reading_originals(self):
         namespace = {'Path':Path}
         exec(GENERATOR_GUARD, namespace)
