@@ -1,0 +1,104 @@
+--- a/recomp/layout.py
++++ b/recomp/layout.py
+@@ -24,6 +24,7 @@
+ # game boots; the modules that follow (sdk) go above the end of the image. The address moved with 1.0.1 (its data
+ # segment starts there), so it is chosen per game version, never guessed.
+ ROMFS_BASES = {
++    'snap': 0,  # No Astral Chain fixed-address RomFS mapping in Snap.
+     'v0': 0x7000d1b000,      # 1.0.0
+     'v101': 0x7000d35000,    # 1.0.1
+ }
+@@ -43,7 +44,7 @@
+ 
+     The image lives at <exefs>/../romfs/romfs.bin next to the extracted ExeFS."""
+     romfs = Path(exefs) / '..' / 'romfs' / 'romfs.bin'
+-    return romfs.stat().st_size if romfs.exists() else 0
++    return 0  # Snap uses nn::fs; a fixed image mapping has not been observed.
+ 
+ 
+ def align_up(v, a=ALIGN):
+--- a/runtime/boot.c
++++ b/runtime/boot.c
+@@ -41,8 +41,8 @@
+     memcpy(&stack, npdm + 0x1C, 4);
+     int prio = npdm[0xE], core = npdm[0xF];
+     free(npdm);
+-    if (prio != 44 || core != 0 || stack != 0x100000)
+-        rt_fatal("boot: main.npdm asks for priority %d, core %d, stack %#x; kernel.c builds 44, 0, 0x100000", prio,
++    if (prio != 44 || core != 0 || stack != 0x4000)
++        rt_fatal("boot: main.npdm asks for priority %d, core %d, stack %#x; kernel.c builds 44, 0, 0x4000", prio,
+                  core, stack);
+ }
+ 
+--- a/runtime/kernel.c
++++ b/runtime/kernel.c
+@@ -32,7 +32,7 @@
+ #define TLR_SIZE 0x200
+ #define THREAD_OBJ_SIZE 0x400            // "current thread object" at TLR+0x1F8 (d2r-mobile thread.c)
+ #define TLS_SIZE 0x2000
+-#define MAIN_STACK (1ull << 20)          // main.npdm META+0x1C
++#define MAIN_STACK 0x4000ull          // main.npdm META+0x1C
+ #define MAIN_PRIO 44                     // META+0xE
+ #define MAIN_CORE 0                      // META+0xF
+ #define FIBER_MAX 1024
+--- a/runtime/frame_rate.c
++++ b/runtime/frame_rate.c
+@@ -1259,7 +1259,7 @@
+         rt_log("frame rate: test freeze of %u ms, the sound with it, in a cutscene frame every %u ms", fm, fe);
+     freeze_ms = fm, freeze_every_ms = fe;
+     int hz = cfg_int("AC_FPS");
+-    int on = hz >= 60;
++    int on = hz >= 60 && rt_patch_set("fps60") >= 0; // Snap has no inherited timing patch.
+     if (on == fps60_on && fps_hz) return;
+     fps60_on = on;
+     // the timer does not run at 30: it ends the cutscene run it was in and starts anew at its next call (rt_fps_timer)
+@@ -1291,7 +1291,7 @@
+ int frame_step_cutscene(void) { return fps60_on && in_cutscene && !cut60_now; }
+ 
+ static void cutscene_rate(void) {
+-    if (!fps60_on) return;
++    if (!fps60_on || rt_patch_set("fps60") < 0) return;
+     uintptr_t base = (uintptr_t)MOD_MAIN_BASE;
+     uint32_t want = frame_step_cutscene() ? 2u : 1u;
+     void *volatile *slot = (void *volatile *)(base + 0xCCB7B08ull);
+--- a/runtime/nvn_api_core.c
++++ b/runtime/nvn_api_core.c
+@@ -654,4 +654,4 @@
+     uint64_t f = __atomic_load_n(&lod_fence[e % LOD_RING], __ATOMIC_RELAXED);
+     if (gfx_backend()->fence_done() < f) gfx_backend()->fence_wait(f, 200000000ull);
+ }
+-HOST_OBSERVER("_ZN2nn2os15ReleaseReadLockEPNS0_20ReaderWriterLockTypeE", obs_release_read);
++// Snap: Astral Chain/TotK address-specific LOD observer intentionally not registered.
+--- a/runtime/gfx_window_win.c
++++ b/runtime/gfx_window_win.c
+@@ -312,7 +312,7 @@
+     // button flashes until it is brought up, and AC_FULLSCREEN waits for that first activation.
+     // AC_BACKGROUND_WINDOW=1 (test runs): no flashing, never fullscreen at start, and F11 keeps the window's place.
+     int background = g_background = cfg_get("AC_BACKGROUND_WINDOW") && atoi(cfg_get("AC_BACKGROUND_WINDOW"));
+-    g_hwnd = CreateWindowExW(0, wc.lpszClassName, L"Astral Chain Recomp", WND_STYLE, CW_USEDEFAULT, CW_USEDEFAULT, ow, oh, NULL,
++    g_hwnd = CreateWindowExW(0, wc.lpszClassName, L"NewSnapRecomp", WND_STYLE, CW_USEDEFAULT, CW_USEDEFAULT, ow, oh, NULL,
+                              NULL, inst, NULL);
+     if (!g_hwnd) {
+         rt_log("gfx: CreateWindowEx failed (%lu)", GetLastError());
+--- a/tools/ffx_sdk.py
++++ b/tools/ffx_sdk.py
+@@ -85,7 +85,7 @@
+ VARIANTS = (('', 'FFX_FSR3UPSCALER_OPTION_HDR_COLOR_INPUT=1'), ('_ldr', 'FFX_FSR3UPSCALER_OPTION_HDR_COLOR_INPUT=0'))
+ TARGET = 'vulkan1.1'
+ WIN = os.name == 'nt'
+-GLSL_BIN = Path(r'C:\msys64\ucrt64\bin')   # Windows (MSYS2 shaderc, spirv-tools); elsewhere glslc comes from PATH
++GLSL_BIN = Path(os.environ.get('NEWSNAP_SHADER_TOOLS', r'C:\msys64\ucrt64\bin'))   # Windows (MSYS2 shaderc, spirv-tools); elsewhere glslc comes from PATH
+ HEADER = 'fsr3_spv.h'
+ 
+ 
+--- a/tools/build_game.py
++++ b/tools/build_game.py
+@@ -80,7 +80,7 @@
+ # them. MAIN_ROOT is where they land, so resolved paths still print and compare relative to a root.
+ MAIN_ROOT = (ROOT / 'build').resolve().parent
+ UCRT = Path(r'C:\msys64\ucrt64\bin')
+-EXE = 'astralchain.exe' if WIN else 'astralchain'
++EXE = 'newsnap.exe' if WIN else 'newsnap'
+ 
+ 
+ def on_path(name):

@@ -1,0 +1,27 @@
+# Private game inputs, console keys, and derived output
+*.nsp
+*.nsz
+*.xci
+*.xcz
+*.nca
+*.ncz
+*.tik
+*.cert
+*.keys
+*.nso
+*.npdm
+/build/
+/generated/
+/game/
+/toolchain/
+/config.local.toml
+/.venv/
+__pycache__/
+*.pyc
+*.log
+*.exe
+*.dll
+*.obj
+*.o
+*.spv
+/.worktrees/
