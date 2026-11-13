@@ -4,6 +4,8 @@ import struct
 import json
 import os
 import re
+import tempfile
+from contextlib import contextmanager
 from collections import Counter
 from pathlib import Path
 
@@ -12,6 +14,47 @@ from .importer import write_json, source_digest
 from .upstream import ROOT
 from .nushdb import shaders, program_record
 from .paths import shader_library_dir, is_release_layout, runtime_dir
+
+
+@contextmanager
+def _preparation_outputs(folder):
+    """Restore the last successful record/receipt after a failed preparation.
+
+    Driver caches remain runtime-owned. A unique same-volume backup is retained
+    if rollback itself fails, so its previous evidence can still be recovered.
+    """
+    names = ('shader-prepared.bin', 'newsnap-shader-preparation.json')
+    backup = Path(tempfile.mkdtemp(prefix='.shader-prepare-', dir=folder))
+    moved = []
+    cleanup = False
+    try:
+        try:
+            for name in names:
+                path = folder / name
+                if path.exists():
+                    path.replace(backup / name)
+                    moved.append(name)
+        except BaseException:
+            for name in moved:
+                (backup / name).replace(folder / name)
+            cleanup = True
+            raise
+        try:
+            yield
+        except BaseException:
+            for name in names:
+                if name in moved:
+                    (backup / name).replace(folder / name)
+                else:
+                    (folder / name).unlink(missing_ok=True)
+            cleanup = True
+            raise
+        cleanup = True
+    finally:
+        if cleanup:
+            for name in names:
+                (backup / name).unlink(missing_ok=True)
+            backup.rmdir()
 
 
 def validate_recording(data, answers):
@@ -89,25 +132,23 @@ def prepare_observed(folder, all_libraries=False):
     census = seed_libraries(folder, shader_library_dir(ROOT)) if all_libraries else {}
     print(f'Shader census: {census or "observed variants only"}', flush=True)
     prepared = folder / 'shader-prepared.bin'
-    previous = folder / 'shader-prepared.previous.bin'
-    if prepared.exists():
-        prepared.replace(previous)
     env = dict(os.environ, AC_PIPELINE_CACHE=str(folder / 'pipeline-cache.bin'))
     logfile = (runtime_dir(ROOT) / 'logs' if is_release_layout(ROOT) else ROOT / 'build/logs') / 'prepare-shaders.log'
-    run_logged([exe, '--prepare-shaders'], logfile, env)
-    log = logfile.read_text(encoding='utf-8')
-    translation = re.search(r', (\d+) translations failed', log)
-    driver = re.search(r'; (\d+) failed, (\d+) not in the shader cache', log)
-    if not translation or not driver or any(int(n) for n in (translation[1], *driver.groups())):
-        raise ValueError(f'Shader preparation incomplete; inspect {logfile}')
-    data = prepared.read_bytes()
-    if len(data) < 16 or data[:8] != b'ACSPRP\0\0' or struct.unpack_from('<II', data, 8) != (1, 36) or (len(data) - 16) % 36:
-        raise ValueError('The runtime did not produce a valid preparation record')
-    count = (len(data) - 16) // 36
-    write_json(folder / 'newsnap-shader-preparation.json', {
-        'scope': 'library defaults and observed variants' if all_libraries else 'observed variants only',
-        'census': census, 'variants': count,
-        'prepared_sha256': source_digest(prepared), 'exe_sha256': source_digest(exe),
-        'translator_sha256': source_digest(folder / 'ac_xlate.exe')})
+    with _preparation_outputs(folder):
+        run_logged([exe, '--prepare-shaders'], logfile, env)
+        log = logfile.read_text(encoding='utf-8')
+        translation = re.search(r', (\d+) translations failed', log)
+        driver = re.search(r'; (\d+) failed, (\d+) not in the shader cache', log)
+        if not translation or not driver or any(int(n) for n in (translation[1], *driver.groups())):
+            raise ValueError(f'Shader preparation incomplete; inspect {logfile}')
+        data = prepared.read_bytes()
+        if len(data) < 16 or data[:8] != b'ACSPRP\0\0' or struct.unpack_from('<II', data, 8) != (1, 36) or (len(data) - 16) % 36:
+            raise ValueError('The runtime did not produce a valid preparation record')
+        count = (len(data) - 16) // 36
+        write_json(folder / 'newsnap-shader-preparation.json', {
+            'scope': 'library defaults and observed variants' if all_libraries else 'observed variants only',
+            'census': census, 'variants': count,
+            'prepared_sha256': source_digest(prepared), 'exe_sha256': source_digest(exe),
+            'translator_sha256': source_digest(folder / 'ac_xlate.exe')})
     print(f'Prepared {count} shader variants before gameplay. Unvisited scenes remain unverified.', flush=True)
     return count
