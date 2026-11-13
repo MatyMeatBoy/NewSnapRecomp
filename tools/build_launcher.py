@@ -35,8 +35,13 @@ def build():
                str(ROOT / 'tools/launcher_entry.py')]
     subprocess.run(command, cwd=ROOT, check=True)
     application = output / 'NewSnapLauncher'
-    for folder in ('assets/icons', 'profiles', 'licenses'):
+    for folder in ('assets/icons', 'licenses'):
         shutil.copytree(ROOT / folder, application / folder, dirs_exist_ok=True)
+    # Older installed updaters accept only the curated Snap specifications here.
+    # Native shader pins belong to the separate build kit, not the launcher.
+    (application / 'profiles').mkdir(exist_ok=True)
+    for spec in (ROOT / 'profiles').glob('snap-*.json'):
+        shutil.copy2(spec, application / 'profiles' / spec.name)
     for name in ('LICENSE', 'THIRD_PARTY_NOTICES.md'):
         shutil.copy2(ROOT / name, application / name)
     for name in ('nso.py',):
