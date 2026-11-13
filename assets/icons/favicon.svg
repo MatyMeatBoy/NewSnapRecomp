@@ -1,0 +1,13 @@
+<?xml version='1.0' encoding='utf-8'?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-labelledby="title description">
+  <title id="title">NewSnapRecomp</title>
+  <desc id="description">Original cream camera with an amber lens on a forest green tile.</desc>
+  <rect x="0" y="0" width="256" height="256" rx="52" fill="#173b31" />
+  <rect x="76" y="52" width="67" height="40" rx="12" fill="#fff6df" />
+  <rect x="32" y="76" width="192" height="128" rx="24" fill="#fff6df" />
+  <rect x="178" y="91" width="29" height="14" rx="4" fill="#173b31" />
+  <ellipse cx="128" cy="148" rx="54" ry="54" fill="#173b31" />
+  <ellipse cx="128" cy="148" rx="42" ry="42" fill="#efb548" />
+  <ellipse cx="128" cy="148" rx="24" ry="24" fill="#173b31" />
+  <ellipse cx="120" cy="136" rx="8" ry="8" fill="#fff6df" />
+</svg>

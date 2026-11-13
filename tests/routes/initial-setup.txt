@@ -1,0 +1,8 @@
+# 60 Hz game-time ticks. Fresh profile: autosave notice, language, avatar, name,
+# then choose Yes on confirmation. Use AC_SWKBD_ANSWER for a deterministic name.
+900 A 8
+1200 A 8
+1500 A 8
+1800 A 8
+2100 UP 8
+2160 A 8

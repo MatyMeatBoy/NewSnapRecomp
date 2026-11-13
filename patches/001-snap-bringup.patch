@@ -1,0 +1,504 @@
+--- a/recomp/layout.py
++++ b/recomp/layout.py
+@@ -24,6 +24,7 @@
+ # game boots; the modules that follow (sdk) go above the end of the image. The address moved with 1.0.1 (its data
+ # segment starts there), so it is chosen per game version, never guessed.
+ ROMFS_BASES = {
++    'snap': 0,  # No Astral Chain fixed-address RomFS mapping in Snap.
+     'v0': 0x7000d1b000,      # 1.0.0
+     'v101': 0x7000d35000,    # 1.0.1
+ }
+@@ -43,7 +44,7 @@
+ 
+     The image lives at <exefs>/../romfs/romfs.bin next to the extracted ExeFS."""
+     romfs = Path(exefs) / '..' / 'romfs' / 'romfs.bin'
+-    return romfs.stat().st_size if romfs.exists() else 0
++    return 0  # Snap uses nn::fs; a fixed image mapping has not been observed.
+ 
+ 
+ def align_up(v, a=ALIGN):
+--- a/runtime/boot.c
++++ b/runtime/boot.c
+@@ -21,7 +21,7 @@
+ #include "vk_dlaa.h"
+ #include "platform/platform.h"
+ 
+-#define SYM_INIT_START "_ZN2nn4init5StartEmmPFvvES2_"
++#define SYM_INIT_START "_ZN2nn4init5StartEmmPFvvES2_S2_"
+ #define CTOR_DONE 2                      // a module's constructor flag after its DT_INIT ran the init_array
+ 
+ static volatile int32_t inits_done;
+@@ -41,8 +41,8 @@
+     memcpy(&stack, npdm + 0x1C, 4);
+     int prio = npdm[0xE], core = npdm[0xF];
+     free(npdm);
+-    if (prio != 44 || core != 0 || stack != 0x100000)
+-        rt_fatal("boot: main.npdm asks for priority %d, core %d, stack %#x; kernel.c builds 44, 0, 0x100000", prio,
++    if (prio != 44 || core != 0 || stack != 0x4000)
++        rt_fatal("boot: main.npdm asks for priority %d, core %d, stack %#x; kernel.c builds 44, 0, 0x4000", prio,
+                  core, stack);
+ }
+ 
+@@ -86,6 +86,8 @@
+     caller(c, at, sizeof at);
+     if (!strcmp(what, "nvn")) {
+         rt_logf("boot: first NVN call nvnBootstrapLoader(\"%s\") from %s\n", detail, at);
++        extern void snap_decode_requested(Cpu *cpu);
++        snap_decode_requested(c);
+         if (rt_config()->seconds) return;   // --seconds: the run goes on into the game
+         if (rt_trace & RT_TRACE_HOSTCALL) hostfn_report();
+         stats_line();
+@@ -315,7 +317,7 @@
+ 
+ void rt_boot(void) {
+     check_npdm();
+-    if (!rt_config()->shot) vk_pipeline_async_enable();   // a --shot image must not depend on build timing
++    vk_pipeline_async_enable(); // Record/prewarm even for deterministic screenshots.   // a --shot image must not depend on build timing
+     // Shaders and pipelines recorded in earlier runs are made ready while the modules load; the guest waits for them.
+     PlatThread *warm = plat_thread_new(prewarm_main, NULL, "prewarm");
+     ldr_load(rt_config()->exefs);
+--- a/runtime/ov_fsp.c
++++ b/runtime/ov_fsp.c
+@@ -18,6 +18,12 @@
+         logs++;
+     }
+     switch (rq->cmd) {
++    case 202: // OpenDataStorageByDataId must return an IStorage object on success.
++        // No system-data mount exists yet. Success without an object made Snap
++        // dereference a null storage while opening the naming dictionary.
++        rt_log("fsp-srv: system-data storage unavailable; no object returned");
++        rs->result = 0x7d402u; // nn::fs::ResultTargetNotFound
++        return;
+     case 1004:   // SetGlobalAccessLogMode
+     case 1006:   // OutputAccessLogToSdCard
+     case 1016:   // FlushAccessLogOnSdCard
+--- a/runtime/gfx_present.c
++++ b/runtime/gfx_present.c
+@@ -82,12 +82,16 @@
+ // (plat_restart), and the new process waits until this one is gone (main.c) before it moves the log and opens the
+ // RomFS and the saves.
+ void gfx_window_closed(void) {
++    extern int snap_exit_begin_close(void);
++    if (!snap_exit_begin_close()) return;
+     int restart = plat_cas32(&g_restart, 0, 0) != 0;
+     rt_log("gfx: window closed; %s", restart ? "restarting" : "exiting");
+     fs_save_flush();
+     vk_pipeline_save();
+     prof_write();   // plat_exit runs no atexit handlers
+     if (restart) {
++        const char *launcher = getenv("NEWSNAP_LAUNCHER");
++        if (launcher && !strcmp(launcher, "1")) plat_exit(75); // Parent keeps profile lock across restart.
+         plat_setenv("AC_REEXEC", NULL);   // the new process counts its own address-space retries (memory.c)
+         if (!plat_restart()) rt_log("gfx: the restart could not start the game again");
+     }
+@@ -266,7 +270,8 @@
+ static VkPresentModeKHR pick_present_mode(VkPhysicalDevice pd) {
+     const char *e = cfg_value("AC_VK_PRESENT");
+     VkPresentModeKHR want = !strcmp(e, "mailbox") ? VK_PRESENT_MODE_MAILBOX_KHR
+-                          : !strcmp(e, "immediate") ? VK_PRESENT_MODE_IMMEDIATE_KHR : VK_PRESENT_MODE_FIFO_KHR;
++                          : !strcmp(e, "immediate") ? VK_PRESENT_MODE_IMMEDIATE_KHR
++                          : !strcmp(e, "fifo_relaxed") ? VK_PRESENT_MODE_FIFO_RELAXED_KHR : VK_PRESENT_MODE_FIFO_KHR;
+     uint32_t n = 0;
+     vkGetPhysicalDeviceSurfacePresentModesKHR(pd, g_surface, &n, NULL);
+     VkPresentModeKHR m[16];
+@@ -274,7 +279,7 @@
+     vkGetPhysicalDeviceSurfacePresentModesKHR(pd, g_surface, &n, m);
+     VkPresentModeKHR got = VK_PRESENT_MODE_FIFO_KHR;
+     for (uint32_t i = 0; i < n; i++) if (m[i] == want) got = want;
+-    const char *name = got == VK_PRESENT_MODE_MAILBOX_KHR ? "mailbox" : got == VK_PRESENT_MODE_IMMEDIATE_KHR ? "immediate" : "fifo";
++    const char *name = got == VK_PRESENT_MODE_MAILBOX_KHR ? "mailbox" : got == VK_PRESENT_MODE_IMMEDIATE_KHR ? "immediate" : got == VK_PRESENT_MODE_FIFO_RELAXED_KHR ? "fifo_relaxed" : "fifo";
+     __atomic_store_n(&g_present_got, name, __ATOMIC_RELEASE);
+     static int logged = -1;   // the mode last logged: a change from the menu shows in the log
+     if ((int)got != logged) {
+--- a/runtime/cpu.h
++++ b/runtime/cpu.h
+@@ -30,6 +30,7 @@
+ _Static_assert(offsetof(Cpu, v) == 512, "v");
+ 
+ typedef void (*GuestFn)(Cpu *);
++void snap_render_select(Cpu *c); // Verified Snap render graph selection hook.
+ 
+ // ---- runtime services (runtime/*.c)
+ void rt_dispatch(Cpu *c);                 // call function at c->pc
+--- a/runtime/ov_system.c
++++ b/runtime/ov_system.c
+@@ -681,7 +681,7 @@
+ }
+ 
+ // IANA name of the standard offset: Etc/GMT+5 is UTC-5 (POSIX sign); "UTC" for a zone off whole hours.
+-static void location_name(char out[0x24]) {
++void ov_time_location(char out[0x24]) {
+     long west = plat_tz_west();
+     memset(out, 0, 0x24);
+     if (!west || west % 3600) snprintf(out, 0x24, "UTC");
+@@ -709,7 +709,7 @@
+ static void ov_steady_now(Cpu *c) { ret_x(c, (uint64_t)steady_now().value); }
+ 
+ // Result ToCalendarTime(CalendarTime *out, CalendarAdditionalInfo *info, const PosixTime &t): local time
+-static void ov_to_calendar(Cpu *c) {
++void ov_time_calendar(Cpu *c) {
+     CalendarTime *out = arg_p(c, 0);
+     CalendarInfo *info = arg_p(c, 1);
+     const int64_t *t = arg_p(c, 2);
+@@ -763,7 +763,7 @@
+     n.network_calendar = n.user_calendar;
+     n.network_info = n.user_info;
+     n.steady = steady;
+-    location_name(n.location);
++    ov_time_location(n.location);
+     n.automatic_correction = 1;
+     *s = n;
+     ret_x(c, 0);
+@@ -981,7 +981,7 @@
+ HOST_OVERRIDE("_ZN2nn4time26StandardNetworkSystemClock14GetCurrentTimeEPNS0_9PosixTimeE", ov_current_time);
+ HOST_OVERRIDE("_ZN2nn4time19StandardSteadyClock3nowEv", ov_steady_now);
+ HOST_OVERRIDE("_ZN2nn4time14ToCalendarTimeEPNS0_12CalendarTimeEPNS0_22CalendarAdditionalInfoERKNS0_9PosixTimeE",
+-              ov_to_calendar);
++              ov_time_calendar);
+ HOST_OVERRIDE("_ZN2nn4time19ToCalendarTimeInUtcERKNS0_9PosixTimeE", ov_to_calendar_utc);
+ HOST_OVERRIDE("_ZN2nn4time18ToPosixTimeFromUtcERKNS0_12CalendarTimeE", ov_to_posix_utc);
+ HOST_OVERRIDE("_ZN2nn4time13ClockSnapshotC1Ev", ov_snapshot_init);
+--- a/runtime/cfg.c
++++ b/runtime/cfg.c
+@@ -113,10 +113,10 @@
+ static const CfgMeta metas[] = {
+     // Screen
+     {"FULLSCREEN", "1", "0|1", LIVE}, {"WINDOW_SIZE", "1920x1080", NULL, LIVE},
+-    {"VK_PRESENT", "mailbox", "mailbox|fifo|immediate", LIVE}, {"GPU_INDEX", "", NULL, RESTART},
++    {"VK_PRESENT", "mailbox", "mailbox|fifo|fifo_relaxed|immediate", LIVE}, {"GPU_INDEX", "", NULL, RESTART},
+     {"PERF_OVERLAY", "off", "off|fps|full", LIVE},
+     // the size the game renders itself (resolution.c: TotK's output set, or on 1.0.1 the res set, res_pick)
+-    {"OUTPUT_RES", "1920x1080", NULL, RESTART}, {"RENDER_SCALE", "game", "game|50|67|75|100|125|150|200", RESTART},
++    {"OUTPUT_RES", "1920x1080", NULL, RESTART}, {"RENDER_SCALE", "game", "game|50|60|70|80|90|100", RESTART},
+     {"UPSCALER", "fsr", "fsr|bilinear", LIVE}, {"SHARPNESS", "80", "0..100", LIVE},
+     // the scene's temporal upscaler and its mode (vk_dlaa.c taa_pick, resolution.c scene_init), native (DLAA, XeSS or
+     // FSR 3 Native AA) first, and the game's anti-aliasing for when none runs. The upscaler is live between what can run
+@@ -125,8 +125,8 @@
+     {"UPSCALING", "off", "off|auto|dlss|xess|fsr3", LIVE},
+     {"UPSCALING_QUALITY", "native", "native|quality|balanced|performance|ultra_performance", RESTART},
+     {"ANTI_ALIASING", "smaa", "off|smaa", LIVE},
+-    {"ASPECT", "wide", "fit|stretch|wide", LIVE}, {"FOV", "100", "70..140", LIVE},
+-    {"ANISO", "auto", "auto|game|2|4|8|16", RESTART},   // vk_texture.c sampler_features
++    {"ASPECT", "fit", "fit|stretch", LIVE}, {"FOV", "100", "70..140", LIVE},
++    {"ANISO", "game", "game|2|4|8|16", RESTART},   // vk_texture.c sampler_features
+     // colour adjustment (vk_color.c); the preset is the menu's, the four values are what the present uses
+     {"COLOR_PRESET", "default", "default|vivid|clarity|custom", LIVE}, {"COLOR_BRIGHTNESS", "0", "-30..30", LIVE},
+     {"COLOR_CONTRAST", "100", "70..150", LIVE}, {"COLOR_SATURATION", "100", "50..200", LIVE},
+--- a/runtime/vk_pipeline.c
++++ b/runtime/vk_pipeline.c
+@@ -2138,7 +2138,7 @@
+     A.on = 1;
+ }
+ 
+-int vk_pipeline_async_on(void) { return A.on; }
++int vk_pipeline_async_on(void) { return A.on && !rt_config()->shot; }
+ 
+ // A draw needs a pipeline a prebuild job owns: the job moves to the draw queue, or its worker to normal priority.
+ // Caller holds P.lock.
+@@ -2374,7 +2374,7 @@
+ }
+ 
+ VkPipeline vk_pipeline_graphics_async(const VkPipeState *s, const VkPipeInfo **info, int *pending, uint32_t wait_ms) {
+-    return graphics(s, info, A.on, pending, wait_ms);
++    return graphics(s, info, vk_pipeline_async_on(), pending, wait_ms);
+ }
+ 
+ // ---- boot prewarm from the key file (comment at "pipeline keys")
+--- a/runtime/kernel.c
++++ b/runtime/kernel.c
+@@ -32,7 +32,7 @@
+ #define TLR_SIZE 0x200
+ #define THREAD_OBJ_SIZE 0x400            // "current thread object" at TLR+0x1F8 (d2r-mobile thread.c)
+ #define TLS_SIZE 0x2000
+-#define MAIN_STACK (1ull << 20)          // main.npdm META+0x1C
++#define MAIN_STACK 0x4000ull          // main.npdm META+0x1C
+ #define MAIN_PRIO 44                     // META+0xE
+ #define MAIN_CORE 0                      // META+0xF
+ #define FIBER_MAX 1024
+--- a/runtime/frame_rate.c
++++ b/runtime/frame_rate.c
+@@ -1259,14 +1259,14 @@
+         rt_log("frame rate: test freeze of %u ms, the sound with it, in a cutscene frame every %u ms", fm, fe);
+     freeze_ms = fm, freeze_every_ms = fe;
+     int hz = cfg_int("AC_FPS");
+-    int on = hz >= 60;
+-    if (on == fps60_on && fps_hz) return;
++    int on = hz >= 60 && rt_patch_set("fps60") >= 0; // Snap has no inherited timing patch.
++    if (on == fps60_on && fps_hz == (hz >= 60 ? 60 : 30)) return;
+     fps60_on = on;
+     // the timer does not run at 30: it ends the cutscene run it was in and starts anew at its next call (rt_fps_timer)
+     atomic_fetch_add_explicit(&fps_switches, 1, memory_order_relaxed);
+-    fps_hz = on ? 60 : 30;
++    fps_hz = hz >= 60 ? 60 : 30; // Presentation cap is independent of game timing patches.
+     rt_patch_switch(rt_patch_set("fps60"), on);
+-    rt_log("frame rate: %d fps%s", fps_hz, on ? " (60 fps patch)" : " (30 fps)");
++    rt_log("frame rate: %d fps%s", fps_hz, on ? " (60 fps patch)" : " cap (native game timing)");
+ }
+ 
+ uint64_t frame_step_cap_ns(void) {
+@@ -1291,7 +1291,7 @@
+ int frame_step_cutscene(void) { return fps60_on && in_cutscene && !cut60_now; }
+ 
+ static void cutscene_rate(void) {
+-    if (!fps60_on) return;
++    if (!fps60_on || rt_patch_set("fps60") < 0) return;
+     uintptr_t base = (uintptr_t)MOD_MAIN_BASE;
+     uint32_t want = frame_step_cutscene() ? 2u : 1u;
+     void *volatile *slot = (void *volatile *)(base + 0xCCB7B08ull);
+--- a/runtime/nvn_api_core.c
++++ b/runtime/nvn_api_core.c
+@@ -654,4 +654,4 @@
+     uint64_t f = __atomic_load_n(&lod_fence[e % LOD_RING], __ATOMIC_RELAXED);
+     if (gfx_backend()->fence_done() < f) gfx_backend()->fence_wait(f, 200000000ull);
+ }
+-HOST_OBSERVER("_ZN2nn2os15ReleaseReadLockEPNS0_20ReaderWriterLockTypeE", obs_release_read);
++// Snap: Astral Chain/TotK address-specific LOD observer intentionally not registered.
+--- a/runtime/gfx_window_win.c
++++ b/runtime/gfx_window_win.c
+@@ -312,7 +312,7 @@
+     // button flashes until it is brought up, and AC_FULLSCREEN waits for that first activation.
+     // AC_BACKGROUND_WINDOW=1 (test runs): no flashing, never fullscreen at start, and F11 keeps the window's place.
+     int background = g_background = cfg_get("AC_BACKGROUND_WINDOW") && atoi(cfg_get("AC_BACKGROUND_WINDOW"));
+-    g_hwnd = CreateWindowExW(0, wc.lpszClassName, L"Astral Chain Recomp", WND_STYLE, CW_USEDEFAULT, CW_USEDEFAULT, ow, oh, NULL,
++    g_hwnd = CreateWindowExW(0, wc.lpszClassName, L"NewSnapRecomp", WND_STYLE, CW_USEDEFAULT, CW_USEDEFAULT, ow, oh, NULL,
+                              NULL, inst, NULL);
+     if (!g_hwnd) {
+         rt_log("gfx: CreateWindowEx failed (%lu)", GetLastError());
+--- a/runtime/nvn_procs.inc
++++ b/runtime/nvn_procs.inc
+@@ -229,6 +229,7 @@
+ NVN_PROC(nvnDeviceGetTextureHandle)
+ NVN_PROC(nvnDeviceGetTimestampInNanoseconds)
+ NVN_PROC(nvnDeviceGetWindowOriginMode)
++NVN_PROC(nvnSetExternalDebuggerEnabledNVX)
+ NVN_PROC(nvnDeviceInitialize)
+ NVN_PROC(nvnDeviceInstallDebugCallback)
+ NVN_PROC(nvnDeviceIsExternalDebuggerAttached)
+--- a/runtime/nvn_api_obj.c
++++ b/runtime/nvn_api_obj.c
+@@ -418,6 +418,8 @@
+ }
+ static void prog_release(prog_t *o) {
+     if (o->serial) gfx_backend()->program_release(o);
++    free(o->control_copy);
++    o->control_copy = NULL;
+     o->serial = 0;
+ }
+ // void nvnProgramFinalize(NVNprogram *p)
+@@ -431,9 +433,21 @@
+         rt_log("nvn: ProgramSetShaders with %d stages at %p", n, (const void *)sd);
+         return 0;
+     }
++    // NVN consumes control metadata at SetShaders. Snap can release its archive
++    // metadata afterwards, so the deferred renderer needs a program-owned copy.
++    uint8_t *copy = n ? malloc((size_t)n * 0x880) : NULL;
++    if (n && !copy) return 0;
++    for (int i = 0; i < n; i++) {
++        if (!sd[i].control) { free(copy); return 0; }
++        memcpy(copy + (size_t)i * 0x880, sd[i].control, 0x880);
++    }
+     prog_release(o);
++    o->control_copy = copy;
+     o->nstage = (uint32_t)n;
+-    if (n) memcpy(o->sd, sd, (size_t)n * sizeof *sd);
++    for (int i = 0; i < n; i++) {
++        o->sd[i] = sd[i];
++        o->sd[i].control = copy + (size_t)i * 0x880;
++    }
+     o->serial = nvn_new_serial();
+     NVN_LOG("ProgramSetShaders %p n=%d data0=%#llx", (void *)o, n, n ? (unsigned long long)sd[0].data : 0ull);
+     return 1;
+@@ -649,7 +663,9 @@
+     uint64_t ticks = o->interval > 0 ? (uint64_t)o->interval : 1ull;
+     // the 60 fps patch drops the game's own wait (frame_rate.c); a held cutscene far behind is let go to catch up
+     if (frame_step_cutscene() && !frame_step_rush() && ticks < 2) ticks = 2;
+-    return ticks * 1000000000ull / VSYNC_HZ;
++    uint64_t native_period = ticks * 1000000000ull / VSYNC_HZ;
++    uint64_t cap_period = frame_step_cap_ns();
++    return native_period > cap_period ? native_period : cap_period;
+ }
+ 
+ // MacNativeGames nvn_pace.h: the present slot is the previous slot plus one period. Early: wait for the slot. Late by
+--- a/runtime/nvn_obj.h
++++ b/runtime/nvn_obj.h
+@@ -67,7 +67,7 @@
+ typedef struct { uint32_t magic; samp_par p; } samp_t;                                        FITS(samp_t, NVNsampler);
+ _Static_assert(sizeof(samp_par) == 44, "TOTK sampler parameters");
+ 
+-typedef struct { uint32_t magic, nstage; NVNshaderData sd[6]; uint64_t serial; } prog_t;     FITS(prog_t, NVNprogram);   // serial: table key for the back end's resolved result
++typedef struct { uint32_t magic, nstage; NVNshaderData sd[6]; uint64_t serial; void *control_copy; } prog_t;     FITS(prog_t, NVNprogram);   // serial: table key for the back end's resolved result
+ 
+ typedef struct { uint32_t magic, fenced; uint64_t fence; } sync_t;                            FITS(sync_t, NVNsync);
+ typedef struct { const pool_t *pool; int64_t off; } ev_builder_t;                             FITS(ev_builder_t, NVNeventBuilder);
+--- a/tools/ffx_sdk.py
++++ b/tools/ffx_sdk.py
+@@ -85,7 +85,7 @@
+ VARIANTS = (('', 'FFX_FSR3UPSCALER_OPTION_HDR_COLOR_INPUT=1'), ('_ldr', 'FFX_FSR3UPSCALER_OPTION_HDR_COLOR_INPUT=0'))
+ TARGET = 'vulkan1.1'
+ WIN = os.name == 'nt'
+-GLSL_BIN = Path(r'C:\msys64\ucrt64\bin')   # Windows (MSYS2 shaderc, spirv-tools); elsewhere glslc comes from PATH
++GLSL_BIN = Path(os.environ.get('NEWSNAP_SHADER_TOOLS', r'C:\msys64\ucrt64\bin'))   # Windows (MSYS2 shaderc, spirv-tools); elsewhere glslc comes from PATH
+ HEADER = 'fsr3_spv.h'
+ 
+ 
+--- a/runtime/ipc.c
++++ b/runtime/ipc.c
+@@ -11,6 +11,7 @@
+ #include "audren.h"
+ #include "host.h"
+ #include "ipc.h"
++#include "ipc_frame.h"
+ #include "nfp.h"
+ #include "ov.h"
+ #include "platform/platform.h"
+@@ -211,6 +212,7 @@
+     switch (rq->cmd) {
+     case 0:   // ConvertToDomain: the session now takes DomainMessageHeader-prefixed requests
+         s->domain = 1;
++        { uint32_t root = 1; IPC_OUT(rs, root); }
+         return;
+     case 3: { uint16_t n = POINTER_BUFFER_SIZE; IPC_OUT(rs, n); return; }   // QueryPointerBufferSize
+     case 2: case 4: rs->move[rs->nmove++] = session_clone(s); return;          // CloneCurrentObject(Ex)
+@@ -238,22 +240,17 @@
+         rq.data_size = (uint32_t)(end - bytes);
+     } else if (rq.type == T_REQUEST || rq.type == T_REQUEST_CTX || rq.type == T_CONTROL || rq.type == T_CONTROL_CTX) {
+         const uint8_t *payload = (const uint8_t *)m + (((bytes - (const uint8_t *)m) + 15) & ~15);
+-        uint32_t h[4];
+-        memcpy(h, payload, 16);
+-        if (h[0] != CMIF_IN_MAGIC) {
++        SnapCmif frame;
++        int is_domain = s->domain && rq.type != T_CONTROL && rq.type != T_CONTROL_CTX;
++        if (payload > end || !snap_cmif_frame(payload, (size_t)(end - payload), is_domain, &frame)) {
+             ipc_backtrace();
+-            rt_fatal("ipc: %s: CMIF magic %#x (domain sessions are not served)", s->name, h[0]);
++            rt_fatal("ipc: %s: invalid CMIF/domain frame", s->name);
+         }
+-        rq.cmd = h[2];
+-        rq.data = payload + 16;
+-        rq.data_size = payload + 16 <= end ? (uint32_t)(end - payload - 16) : 0;
+-        if (s->domain && rq.type != T_CONTROL && rq.type != T_CONTROL_CTX && rq.data_size >= 16) {
+-            const uint32_t *dh = (const uint32_t *)rq.data;
+-            if ((dh[0] & 0xff) == 2) return;   // CloseVirtualHandle
+-            rq.data += 16;
+-            rq.data_size -= 16;
+-            domain = 1;
+-        }
++        if (frame.close) return;
++        rq.cmd = frame.command;
++        rq.data = frame.data;
++        rq.data_size = frame.size;
++        domain = frame.domain;
+     } else {
+         fflush(stdout);
+         rt_logf("ipc: %s message type %u:", s->name, rq.type);
+--- a/runtime/gfx_shader.c
++++ b/runtime/gfx_shader.c
+@@ -1204,7 +1204,13 @@
+     uint32_t c1_off;
+     memcpy(&c1_off, control + 0x700, 4), memcpy(&r->length, control + 0x704, 4);
+     uint64_t skip = stage == GFX_STAGE_CS ? 0 : CODE_SKIP;
+-    if (!code || r->length > code_size || c1_off > r->length || skip >= r->length) return fail("bad control section", NULL), 0;
++    if (!code || r->length > code_size || c1_off > r->length || skip >= r->length) {
++        static int snap_bad_controls;
++        if (snap_bad_controls++ < 12)
++            rt_log("Snap shader control: stage %d, code %p, available %llu, length %u, c1 %u, skip %llu",
++                   stage, code, (unsigned long long)code_size, r->length, c1_off, (unsigned long long)skip);
++        return fail("bad control section", NULL), 0;
++    }
+     r->c1_len = r->length - c1_off;
+     r->c1 = c1 ? c1 : code + c1_off;
+     if (!build_code_hash(stage, control, code, r->length, r->c1, r->c1_len, r->code_hash))
+--- a/runtime/memory.c
++++ b/runtime/memory.c
+@@ -478,12 +478,27 @@
+     if (!inside(dst, n, L.stack)) return R_INVALID_REGION;
+     int in_heap = inside(src, n, (RtRange){L.heap.base, heap_size});
+     int in_alias = inside(src, n, L.alias);
+-    if (!in_heap && !in_alias) return R_INVALID_REGION;
++    int in_module_data = 0;
++    int snap_module = module_index(src);
++    if (snap_module >= 0) {
++        const RtLoaded *m = ldr_module(snap_module);
++        in_module_data = inside(src, n, (RtRange){m->base + m->data_off, m->size - m->data_off});
++    }
++    if (!in_heap && !in_alias && !in_module_data) return R_INVALID_REGION;
+     plat_mutex_lock(&lock);
+     uint32_t r = R_OK;
+     if (in_alias && !alias_all_mapped(src, n)) {
+         r = R_INVALID_REGION;
+         goto out;
++    }
++    if (in_module_data) {
++        const RtLoaded *m = ldr_module(snap_module);
++        for (uint64_t off = src - m->base; off < src - m->base + n; off += PAGE) {
++            if (module_page_perm(snap_module, off) != PERM_RW) {
++                r = R_INVALID_STATE;
++                goto out;
++            }
++        }
+     }
+     unsigned found = nstack_maps;
+     for (unsigned i = 0; i < nstack_maps; i++)
+@@ -668,11 +683,11 @@
+             break;
+         }
+         if (a >= m->src && a < send) {
+-            r = (RtMemoryInfo){.base = m->src, .size = m->size, .state = ST_NORMAL, .perm = PERM_NONE, .attr = 4};
++            r = (RtMemoryInfo){.base = m->src, .size = m->size, .state = module_index(m->src) >= 0 ? ST_CODEDATA : ST_NORMAL, .perm = PERM_NONE, .attr = 4};
+             break;
+         }
+         uint64_t lo = r.base, hi = r.base + r.size;
+-        uint64_t b = r.state == ST_FREE ? m->dst : r.state == ST_NORMAL ? m->src : 0;
++        uint64_t b = r.state == ST_FREE ? m->dst : (r.state == ST_NORMAL || r.state == ST_CODEDATA) ? m->src : 0;
+         uint64_t e = b + m->size;
+         if (!b) continue;
+         if (e <= a && e > lo) lo = e;
+--- a/tools/build_game.py
++++ b/tools/build_game.py
+@@ -80,7 +80,7 @@
+ # them. MAIN_ROOT is where they land, so resolved paths still print and compare relative to a root.
+ MAIN_ROOT = (ROOT / 'build').resolve().parent
+ UCRT = Path(r'C:\msys64\ucrt64\bin')
+-EXE = 'astralchain.exe' if WIN else 'astralchain'
++EXE = 'newsnap.exe' if WIN else 'newsnap'
+ 
+ 
+ def on_path(name):
+--- a/runtime/input_map.c
++++ b/runtime/input_map.c
+@@ -16,7 +16,7 @@
+ #define DEFAULT_KEYS \
+     {KEY_W, B_SL_UP}, {KEY_A, B_SL_LEFT}, {KEY_S, B_SL_DOWN}, {KEY_D, B_SL_RIGHT},                  /* move */ \
+     {KEY_UP, B_SR_UP}, {KEY_LEFT, B_SR_LEFT}, {KEY_DOWN, B_SR_DOWN}, {KEY_RIGHT, B_SR_RIGHT},       /* camera, second source */ \
+-    {KEY_MOUSE_L, B_Y}, {KEY_MOUSE_R, B_ZL}, {KEY_Z, B_ZL}, {KEY_F, B_ZR}, {KEY_X, B_ZR}, \
++    {KEY_MOUSE_L, B_A}, {KEY_MOUSE_R, B_ZL}, {KEY_Z, B_ZL}, {KEY_F, B_ZR}, {KEY_X, B_ZR}, \
+     {KEY_SPACE, B_X}, {KEY_LSHIFT, B_B}, {KEY_E, B_A}, {KEY_Q, B_L}, {KEY_R, B_R}, \
+     {KEY_LCTRL, B_STICK_L}, {KEY_C, B_STICK_R}, \
+     {KEY_1, B_LEFT}, {KEY_2, B_UP}, {KEY_3, B_RIGHT}, {KEY_4, B_DOWN}, \
+--- a/runtime/input.c
++++ b/runtime/input.c
+@@ -18,6 +18,7 @@
+ #include "input.h"
+ #include "input_map.h"
+ #include "input_wsys.h"
++#include "snap_input_trace.h"
+ #include "nvn_api.h"
+ #include "ui/menu.h"
+ #include "vk.h"
+@@ -304,6 +305,7 @@
+             double dt = age < 0.004 ? 0.004 : age > 0.1 ? 0.1 : age;
+             ikb_mouse_take(&dx, &dy);
+             input_mouse_stick(dx, dy, dt, mouse_sens_get(), held);
++            snap_input_trace(0, fr, dx, dy, held[0], held[1], 0);
+             frame = fr;
+             t0 = now;
+         } else if (age > 0.1) {
+@@ -586,6 +588,8 @@
+     }
+     script_apply(&b, sl, sr);
+     rec_apply(b, sl, sr);
++    snap_input_trace(1, __atomic_load_n(&gfx_counters.frames, __ATOMIC_RELAXED),
++                     sl[0], sl[1], sr[0], sr[1], b);
+     // Minus and Plus held together (gamepad or keys) open or close the menu and never reach the game
+     static int combo_held, overlay_held;
+     int32_t st[4] = {sl[0], sl[1], sr[0], sr[1]};
