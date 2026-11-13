@@ -1,0 +1,5 @@
+{
+  "fsr3_spv_sha256": "8f0201415bd0584c705448e52df1b96074d57b784317161ef0195392de681703",
+  "fsr3_recipe_sha256": "e84a0cbf7a55e776b320f9965d8ed4a3b9c342249bfe4ac615f2c72c38f606d3",
+  "source": "AMD FidelityFX SDK v1.1.4, public MIT shader passes; no game inputs"
+}

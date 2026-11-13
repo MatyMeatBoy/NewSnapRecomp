@@ -7,12 +7,19 @@
 #include "cpu.h"
 #include "cfg.h"
 #include "host.h"
+#define NEWSNAP_TEMPORAL_CONFIG
+#include "snap_temporal.h"
 
 void snap_render_select(Cpu *c) {
     static int warned_choice, warned_memory;
     static unsigned trace_lines;
     static uint32_t last_before = UINT32_MAX, last_after = UINT32_MAX, last_mode = UINT32_MAX;
     const char *choice = cfg_value("AC_RENDER_SCALE");
+    if (strcmp(cfg_upscaling(), "off")) {
+        unsigned percent=snap_temporal_percent();
+        // Presets use the verified engine graph levels; no arbitrary image resize.
+        choice=percent==70?"70":percent==60?"60":percent==50?"50":"100";
+    }
     const char *trace = getenv("NEWSNAP_RENDER_TRACE");
     int tracing = trace && !strcmp(trace, "1");
     int selected = -1;

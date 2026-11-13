@@ -108,6 +108,31 @@ class Launcher:
                   wraplength=760, style='Muted.TLabel').pack(anchor='w')
         self.play_button = ttk.Button(frame, text='Iniciar expedición  →', style='Accent.TButton', command=self.launch)
         self.play_button.pack(anchor='w', pady=(17, 0))
+        ttk.Button(frame, text='Créditos y licencias gráficas', command=self.show_credits).pack(anchor='w', pady=(20, 4))
+        ttk.Label(frame, text='AMD FidelityFX Super Resolution · NVIDIA DLSS',
+                  style='Muted.TLabel').pack(anchor='w')
+
+    def show_credits(self):
+        window=tk.Toplevel(self.root)
+        window.title('NewSnap · Créditos y licencias')
+        window.geometry('760x560')
+        text=tk.Text(window,wrap='word',padx=16,pady=16)
+        bar=ttk.Scrollbar(window,command=text.yview)
+        text.configure(yscrollcommand=bar.set)
+        bar.pack(side='right',fill='y');text.pack(fill='both',expand=True)
+        text.insert('end','NewSnapRecomp · MatyMeatBoy y colaboradores\n\n'
+            'Infraestructura de Astral Chain Recomp y contribuciones originales bajo MIT.\n'
+            'AMD FidelityFX Super Resolution, utilizado conforme a las licencias incluidas.\n'
+            'NVIDIA DLSS, utilizado bajo la licencia NVIDIA RTX SDKs. NVIDIA y DLSS son marcas de NVIDIA Corporation.\n\n')
+        for label,path in (('Licencia NVIDIA DLSS',runtime_dir(self.project)/'licenses/NVIDIA-DLSS.txt'),
+                           ('Licencias AMD FSR',runtime_dir(self.project)/'upscalers/license.md')):
+            text.insert('end',label+'\n\n')
+            if path.is_file():
+                with path.open('r',encoding='utf-8',errors='replace') as stream:
+                    text.insert('end',stream.read(1<<20)+'\n\n')
+            else:
+                text.insert('end','Se incluye con el proveedor gráfico correspondiente.\n\n')
+        text.configure(state='disabled')
 
     def _album(self):
         bar = ttk.Frame(self.album_tab)
@@ -167,26 +192,25 @@ class Launcher:
         self._choice(basic, 'Información de rendimiento', 'perf_overlay', {'Oculta': 'off', 'Solo FPS': 'fps', 'Completa': 'full'},
                      help_text='Muestra datos del runtime. La vista completa incluye tiempos de CPU/GPU y actividad de compilación cuando están disponibles.')
         self._heading(advanced, 'Resolución y reconstrucción')
+        self._choice(advanced, 'Reconstrucción de la escena', 'upscaling', {
+            'Original': 'off', 'Automática': 'auto', 'AMD FSR 3.1': 'fsr3',
+            'AMD FSR 4 · GPU compatible': 'fsr4', 'NVIDIA DLSS · RTX': 'dlss'},
+            help_text='Reconstruye la escena antes del HUD. La disponibilidad depende del proveedor y del controlador; una opción no disponible conserva una alternativa compatible. FSR 4 selecciona automáticamente el modelo compatible, incluido INT8 en RX 6000/7000.')
+        self._choice(advanced, 'Preset de reconstrucción', 'upscaling_quality', {
+            'Nativo · antialiasing': 'native', 'Calidad · escena 70 %': 'quality',
+            'Equilibrado · escena 60 %': 'balanced', 'Rendimiento · escena 50 %': 'performance'},
+            help_text='Cada proveedor usa su propio algoritmo con el preset elegido. Las escalas corresponden a los niveles reales del motor de Snap; requieren reiniciar la expedición.')
         self._choice(advanced, 'Escala interna de la escena', 'render_scale', {'Según el juego': 'game', **{f'{n} %': str(n) for n in (50, 60, 70, 80, 90, 100)},
                      '1,25× (125 %) · experimental': '125', '1,5× (150 %) · experimental': '150', '2× (200 %) · experimental': '200'},
                      choice_width=31,
                      help_text='Hasta el 100 %, una escala menor favorece el rendimiento y pierde detalle; el HUD conserva su resolución de salida. 125 %, 150 % y 200 % son supersampling experimental exclusivo del modo TV: aumentan el detalle y el coste de GPU. Para modo portátil elige 100 % o menos; guardar una combinación incompatible muestra un error sin cambiar tu elección.')
-        self._choice(advanced, 'Ampliación final de imagen', 'upscaler', {'FSR espacial': 'fsr', 'Bilineal': 'bilinear'},
-                     help_text='Amplía la imagen completa hasta el tamaño de ventana, incluido el HUD. FSR es espacial; no equivale a DLSS ni a generación de fotogramas.')
-        self._choice(advanced, 'Nitidez FSR · 0 a 100', 'sharpness', None,
-                     help_text='Aumenta la definición del filtro FSR. Solo actúa cuando eliges FSR espacial; valores altos pueden acentuar bordes.')
         self._choice(advanced, 'Filtrado de texturas', 'aniso', {'Según el juego': 'game', **{f'{n}×': str(n) for n in (2, 4, 8, 16)}, 'Automático heredado': 'auto'},
                      help_text='Mejora las texturas vistas en ángulo. El controlador y la GPU pueden limitar el nivel efectivo. Automático heredado conserva la heurística de la base, aún sin validar para Snap; elige un nivel explícito para personalizarlo.')
         self._choice(advanced, 'Encaje en la ventana', 'aspect', {'Conservar proporciones': 'fit', 'Estirar a la ventana': 'stretch'},
                      help_text='Solo cambia la presentación: conservar proporciones puede dejar bandas; estirar llena la ventana y deforma la imagen. No amplía el campo de visión.')
-        self._heading(advanced, 'Color de la imagen')
-        self._choice(advanced, 'Perfil de color', 'color_preset', {'Original': 'default', 'Vívido': 'vivid', 'Claridad': 'clarity', 'Personalizado': 'custom'},
-                     changed=self._select_color_preset,
-                     help_text='Los perfiles aplican brillo, contraste, saturación y gamma reales. Los cambios de color también afectan al HUD del juego.')
-        for label, key in (('Brillo · −30 a 30', 'color_brightness'), ('Contraste · 70 a 150', 'color_contrast'),
-                           ('Saturación · 50 a 200', 'color_saturation'), ('Gamma · 0.8 a 1.2', 'color_gamma')):
-            self._choice(advanced, label, key, None)
-            self.variables[key].trace_add('write', self._custom_color)
+        self._heading(advanced, 'Color original del juego')
+        self._help(advanced, 'Salida neutra: conserva los colores y el posprocesado propios de Snap. '
+                   'Sin perfiles de contraste, saturación, gamma, HDR añadido ni nitidez adicional del port.')
         self._audio_options()
         self._game_options()
         self._control_options()
@@ -347,6 +371,7 @@ class Launcher:
     def _option_values(self):
         values = {key: value.get() for key, value in self.variables.items()}
         values['vk_present'] = PRESENTATION_LABELS[self.presentation.get()]
+        values.update(settings.NEUTRAL_SETTINGS)
         return values
 
     def _set_option_values(self, values):
@@ -394,13 +419,23 @@ class Launcher:
     def launch(self):
         if self.busy:
             return
+        if settings.is_release_layout(self.project):
+            from .maintenance import assess_runtime
+            if assess_runtime(self.project)['needs_rebuild']:
+                self.tabs.select(self.update_tab)
+                self.updates.maintenance.start(resume_game=True)
+                return
         if not (runtime_dir(self.project) / 'newsnap.exe').is_file():
             messagebox.showerror('Faltan tus datos del juego', 'Copia tu carpeta GameData junto a NewSnapLauncher.exe antes de iniciar.', parent=self.root)
             return
         if not self.save_options():
             return
         profile = self.profile
-        command = settings.preparation_command(self.project) if self.prepare.get() else None
+        required = settings.shader_preparation_required(self.project)
+        command = settings.preparation_command(self.project) if self.prepare.get() or required else None
+        if required and command is None:
+            self.status.set('Faltan las bibliotecas o los registros de shaders para preparar este runtime.')
+            return
         self._set_busy(True)
         self.status.set('Preparando gráficos…' if command else 'Iniciando expedición…')
         threading.Thread(target=self._run_game, args=(profile, command), daemon=True).start()
@@ -429,6 +464,7 @@ class Launcher:
                 code = self.process.wait()
             if code:
                 raise RuntimeError(f'La preparación no terminó correctamente. Revisa {logfile}.')
+            settings.clear_shader_preparation_required(self.project)
         logfile = None
         def run_attempt(attempt):
             nonlocal logfile

@@ -50,12 +50,14 @@ class UpdatePanel:
         ttk.Label(parent, text='Conserva tus datos del juego, perfiles y ajustes. También permite reinstalar '
                   'la misma versión estable para reparar los archivos del launcher.',
                   wraplength=760, style='Muted.TLabel').pack(anchor='w', pady=8)
-        ttk.Label(parent, text='El launcher público y el runtime privado del juego son componentes distintos. '
-                  'Una versión que cambie el runtime puede requerir recompilarlo con tus datos. '
-                  'Las cachés de shaders se preparan para la GPU y el controlador de cada equipo.',
+        ttk.Label(parent, text='Tras actualizar, el launcher reconstruye el juego localmente si hace falta, '
+                  'usando tus datos y las herramientas verificadas de esa versión. '
+                  'Después prepara los shaders para tu GPU y controlador.',
                   wraplength=760, style='Muted.TLabel').pack(anchor='w', pady=8)
         self.runtime_status = ttk.Label(parent, text='Comprobando el runtime privado…', wraplength=760)
         self.runtime_status.pack(anchor='w', pady=8)
+        from .maintenance_ui import RuntimeMaintenance
+        self.maintenance = RuntimeMaintenance(launcher, parent, self.runtime_status)
         def inspect_runtime():
             self.events.put(('runtime', runtime_update_status(launcher.project)[1]))
         threading.Thread(target=inspect_runtime, daemon=True).start()

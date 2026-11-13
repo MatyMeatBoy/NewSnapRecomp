@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 import shutil
 import tempfile
+import threading
 import unittest
 from unittest.mock import patch
 from urllib.error import HTTPError
@@ -47,6 +48,9 @@ class UpdaterTests(unittest.TestCase):
                    'assets': [{'name': 'NewSnapRecomp-0.3-windows.zip', 'browser_download_url': self.release().archive_url},
                               {'name': 'NewSnapRecomp-0.3-windows.zip.sha256', 'browser_download_url': self.release().checksum_url}]}
         with patch.object(updater, '_read_json', return_value=release):
+            self.assertEqual(updater.check_stable().version, '0.3')
+            release['assets'].append({'name': 'NewSnapBuildKit-0.3-windows.zip',
+                                      'browser_download_url': self.release().archive_url})
             self.assertEqual(updater.check_stable().version, '0.3')
             release['prerelease'] = True
             self.assertIsNone(updater.check_stable())
@@ -149,6 +153,38 @@ class UpdaterTests(unittest.TestCase):
                 path.unlink(missing_ok=True)
         with self.assertRaises(updater.UpdateError):
             updater._SafeRedirect().redirect_request(None, None, 302, '', {}, 'http://github.com/unsafe')
+
+    def test_streaming_cancel_stops_reads_and_discards_newly_cancelled_chunk(self):
+        event = threading.Event()
+        class Response(io.BytesIO):
+            headers = {}
+            reads = 0
+            def geturl(self):
+                return 'https://release-assets.githubusercontent.com/test'
+            def read(self, size=-1):
+                self.assert_bounded = size == 1024 * 1024
+                self.reads += 1
+                block = super().read(size)
+                if self.reads == 2:
+                    event.set()
+                return block
+        response = Response(b'x' * (4 << 20))
+        opener = unittest.mock.Mock()
+        opener.open.return_value = response
+        with tempfile.TemporaryDirectory() as temporary, patch.object(updater, 'build_opener', return_value=opener):
+            target = Path(temporary) / 'partial'
+            with self.assertRaises(updater.DownloadCancelled):
+                updater._download(self.release().archive_url, target, 8 << 20, cancel_event=event)
+            self.assertEqual(response.reads, 2)
+            self.assertTrue(response.assert_bounded)
+            self.assertEqual(target.stat().st_size, 1 << 20)
+            self.assertTrue(response.closed)
+            # Already-cancelled work does not open a connection or create output.
+            opener.reset_mock()
+            with self.assertRaises(updater.DownloadCancelled):
+                updater._download(self.release().archive_url, Path(temporary) / 'new', 8 << 20, cancel_event=event)
+            opener.open.assert_not_called()
+            self.assertFalse((Path(temporary) / 'new').exists())
 
     def test_repair_preserves_owner_data_and_ini(self):
         with tempfile.TemporaryDirectory() as temp:

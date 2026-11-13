@@ -10,6 +10,10 @@ from .upstream import ROOT, UPSTREAM
 from .input_adapt import edits as input_edits
 from .output_adapt import edits as output_edits
 from .jump_adapt import edits as jump_edits
+from .temporal_adapt import edits as temporal_edits
+from .upscaler_adapt import edits as upscaler_edits
+from .texture_adapt import adapt_texture_source
+from .neutral_adapt import edits as neutral_edits
 from .version import VERSION
 
 
@@ -205,6 +209,9 @@ def adapt_sources(destination, *, patch_output=None):
         edits.setdefault(name, []).extend(changes)
     for name, changes in output_edits().items():
         edits.setdefault(name, []).extend(changes)
+    for adapter in (temporal_edits, upscaler_edits, neutral_edits):
+        for name, changes in adapter().items():
+            edits.setdefault(name, []).extend(changes)
     for folder in ('runtime', 'recomp', 'tools'):
         for src in (UPSTREAM / folder).rglob('*'):
             relative = src.relative_to(UPSTREAM)
@@ -220,6 +227,8 @@ def adapt_sources(destination, *, patch_output=None):
         text = original
         for before, after in changes:
             text = replace_once(text, before, after)
+        if name == 'runtime/vk_texture.c':
+            text = adapt_texture_source(text)
         write_changed(destination / name, text)
         diff.extend(difflib.unified_diff(original.splitlines(keepends=True), text.splitlines(keepends=True),
                                          fromfile='a/' + name, tofile='b/' + name))

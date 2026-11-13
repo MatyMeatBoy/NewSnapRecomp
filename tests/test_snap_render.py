@@ -21,7 +21,7 @@ class SnapRenderTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             folder = Path(temporary)
             (folder / 'cpu.h').write_text('#include <stdint.h>\ntypedef struct { uint64_t x[31], sp, nzcv; } Cpu;\n')
-            (folder / 'cfg.h').write_text('const char *cfg_value(const char *name);\n')
+            (folder / 'cfg.h').write_text('const char *cfg_value(const char *name);\nconst char *cfg_upscaling(void);\nconst char *cfg_upscaling_quality(void);\n')
             (folder / 'host.h').write_text('#include <stdint.h>\ntypedef struct { uint64_t base,size; uint32_t state,attr,perm,ipc,device,pad; } RtMemoryInfo;\nuint32_t mem_query(uint64_t a,RtMemoryInfo *m);\nvoid rt_log(const char *format, ...);\n')
             (folder / 'test.c').write_text(r'''
 #include <stdint.h>
@@ -30,6 +30,9 @@ class SnapRenderTests(unittest.TestCase):
 #include "cpu.h"
 #include "host.h"
 static const char *setting="game";
+static const char *backend="off", *quality="native";
+const char *cfg_upscaling(void) { return backend; }
+const char *cfg_upscaling_quality(void) { return quality; }
 static int logs;
 static uint64_t base, size;
 static unsigned permissions=3;
@@ -81,6 +84,20 @@ int main(int argc,char **argv) {
   if(result!=0||memcmp(&c,&saved,sizeof c)) return 8;
  }
  const char *invalid[]={"75","25","250","garbage"};
+ const char *presets[]={"native","quality","balanced","performance"};
+ const uint32_t levels[]={0,3,4,5};
+ const char *backends[]={"dlss","fsr3","fsr4","auto"};
+ for(int b=0;b<4;b++) {
+  backend=backends[b]; quality="native"; setting="50";
+  snap_render_select(&c); uint32_t result; memcpy(&result,renderer+0xce8,4);
+  if(result!=0||memcmp(&c,&saved,sizeof c))return 10;
+ }
+ backend="dlss"; setting="game";
+ for(int i=0;i<4;i++) {
+  quality=presets[i]; snap_render_select(&c); uint32_t result;
+  memcpy(&result,renderer+0xce8,4); if(result!=levels[i]||memcmp(&c,&saved,sizeof c))return 9;
+ }
+ backend="off";
  memcpy(before,renderer,sizeof renderer);
  for(int i=0;i<1000;i++) {setting=invalid[i%4]; snap_render_select(&c);}
  if(memcmp(before,renderer,sizeof renderer)||logs!=1) return 4;

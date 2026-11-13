@@ -15,7 +15,8 @@ from newsnap.version import VERSION
 
 def source_fingerprints(root=ROOT):
     files = []
-    for pattern in ('newsnap/**/*.py', 'assets/icons/*', 'profiles/*.json'):
+    for pattern in ('newsnap/**/*.py', 'newsnap/overlays/*', 'assets/icons/*', 'profiles/*.json',
+                    'tools/fetch_*.py', 'tools/package_build_kit.py'):
         files.extend(p for p in root.glob(pattern) if p.is_file())
     files.extend(root / name for name in ('tools/launcher_entry.py', 'tools/build_launcher.py',
                  'requirements-release.txt', 'requirements.txt', 'LICENSE', 'THIRD_PARTY_NOTICES.md',

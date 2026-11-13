@@ -4,11 +4,13 @@ Work in progress: a native Windows x64 recompilation of **New Pokémon Snap** us
 
 **Status:** the owner's base and update **2.0.1** import with verified integrity. A private Windows x64 executable builds, passes its memory/dispatch and loader checks, accepts a local character/name and commits the initial save. A nine-minute 1× replay captures/evaluates Pikachu (2,600 points), saves two real photographs and enters the first route. The SDK nonlocal-jump crash found after evaluation is corrected. A complete course and its photo save/reload remain unverified. No sustained gameplay FPS or stutter-free result is claimed.
 
-The **0.3 alpha** adds broader controller mappings, saved-photo reading and
-verified stable-channel updates/repair; see the
-[work board](docs/V03.md), [controllers](docs/CONTROLLERS.md) and
-[updating guide](docs/UPDATING.md). Remaining work is tracked separately from
-the features verified in this alpha.
+The **0.4 alpha candidate** adds official Vulkan FSR 3.1/FSR 4 provider integration,
+DLSS Super Resolution and Native AA/DLAA presets, plus automatic owner-local
+runtime rebuilding after updates. See the [0.4 work board](docs/V04.md) and
+[updating guide](docs/UPDATING.md). FSR 3.1 and DLSS have executed in Snap on the
+local RTX 4060; physical RX 6900 XT/FSR 4 verification remains pending.
+The [0.3 work board](docs/V03.md) and [controller coverage](docs/CONTROLLERS.md)
+retain earlier acceptance evidence. No gameplay FPS improvement is claimed.
 
 The upstream is pinned as a submodule. Snap-specific offsets, SDK bindings, shader formats and timing must be verified against Snap; Astral Chain patches are not interchangeable.
 
