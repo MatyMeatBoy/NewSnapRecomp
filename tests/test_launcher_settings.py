@@ -12,6 +12,7 @@ from unittest.mock import patch
 from pathlib import Path
 from newsnap import launcher_settings as settings
 from newsnap.upstream import ROOT, UPSTREAM
+from newsnap.version import VERSION, RUNTIME_CAPABILITIES
 
 
 class LauncherSettingsTests(unittest.TestCase):
@@ -27,17 +28,18 @@ class LauncherSettingsTests(unittest.TestCase):
             valid = {'format': 1, 'runtime_api': 2, 'game_version': '2.0.1',
                      'native_executable_sha256': hashlib.sha256(native).hexdigest(),
                      'runtime_source_revision': 'compatible-different-source-revision',
-                     'capabilities': ['launcher-restart75', 'native-render-levels', 'docked-supersampling']}
+                     'capabilities': list(RUNTIME_CAPABILITIES)}
             for invalid in ({'format': 1, 'game_version': '2.0.1'}, dict(valid, runtime_api=1),
                             dict(valid, native_executable_sha256='0' * 64), dict(valid, capabilities=['launcher-restart75']),
-                            dict(valid, game_version='1.0.0'), [], dict(valid, format=True)):
+                            dict(valid, game_version='1.0.0'), [], dict(valid, format=True),
+                            dict(valid, capabilities=['launcher-restart75', 'native-render-levels', 'docked-supersampling'])):
                 marker.write_text(json.dumps(invalid))
-                with self.subTest(invalid=invalid), self.assertRaisesRegex(ValueError, '0.2'):
+                with self.subTest(invalid=invalid), self.assertRaisesRegex(ValueError, re.escape(VERSION)):
                     settings.validate_runtime_data(root)
             marker.write_text(json.dumps(valid))
             self.assertEqual(settings.validate_runtime_data(root)['runtime_api'], 2)
             (data / 'newsnap.exe').write_bytes(native + b'tampered')
-            with self.assertRaisesRegex(ValueError, '0.2'):
+            with self.assertRaisesRegex(ValueError, re.escape(VERSION)):
                 settings.validate_runtime_data(root)
 
     def test_game_failure_message_reads_only_bounded_log_tail(self):
@@ -84,7 +86,10 @@ class LauncherSettingsTests(unittest.TestCase):
                 settings.save_edited_settings(path, baseline, dict(baseline, operation_mode='handheld'))
 
     def test_control_catalog_matches_pinned_configuration_metadata(self):
-        text = (UPSTREAM / 'runtime/cfg.c').read_text(encoding='utf-8')
+        from newsnap.adapt import adapt_sources
+        with tempfile.TemporaryDirectory() as temporary:
+            staged = adapt_sources(Path(temporary) / 'source')
+            text = (staged / 'runtime/cfg.c').read_text(encoding='utf-8')
         metadata = {name.lower(): (default, choices) for name, default, choices in
                     re.findall(r'\{"([A-Z_]+)", "([^"]*)", "([^"]*)", (?:LIVE|RESTART)\}', text)}
         for key in ('lang', 'pad_layout', 'rumble_strength', 'rumble_curve', 'rumble_triggers',

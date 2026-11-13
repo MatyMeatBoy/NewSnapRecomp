@@ -46,7 +46,7 @@ def package():
         'Windows x64, CPU x86-64-v3 (AVX2/FMA/BMI) y GPU/controlador Vulkan 1.3 compatible.\n'
         'Probado fisicamente en RTX 4060; AMD sigue pendiente de hardware real.\n'
         'Modo TV por defecto; modo portatil disponible. Escalas 125/150/200% experimentales solo TV.\n'
-        'Mas de 60 FPS, evaluacion/persistencia de fotos y recorrido completo siguen sin verificar.\n'
+        'Mas de 60 FPS, recorridos completos y fotografia en todas las escalas siguen sin verificar.\n'
         'Preparar shaders antes de jugar reconstruye la cache para tu GPU; puede tardar.\n', encoding='utf-8')
     files = {p.relative_to(destination).as_posix(): {'size': p.stat().st_size, 'sha256': digest(p)}
              for p in sorted(destination.rglob('*')) if p.is_file()}

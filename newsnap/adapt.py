@@ -9,6 +9,8 @@ from pathlib import Path
 from .upstream import ROOT, UPSTREAM
 from .input_adapt import edits as input_edits
 from .output_adapt import edits as output_edits
+from .jump_adapt import edits as jump_edits
+from .version import VERSION
 
 
 def replace_once(text, before, after):
@@ -70,6 +72,8 @@ def adapt_sources(destination, *, patch_output=None):
             ('              ov_to_calendar);', '              ov_time_calendar);'),
         ],
         'runtime/cfg.c': [
+            ('{"LANG", "", "ja|en-US|fr|de|it|es|zh-CN|ko|nl|pt|ru|zh-TW|en-GB|fr-CA|es-419|zh-Hans|zh-Hant|pt-BR", RESTART}',
+             '{"LANG", "", "en-US|ja|fr|de|es-419|es|it|fr-CA|ko|zh-Hant|zh-Hans", RESTART}'),
             ('{"ANISO", "auto", "auto|game|2|4|8|16", RESTART}', '{"ANISO", "game", "game|2|4|8|16", RESTART}'),
             ('{"ASPECT", "wide", "fit|stretch|wide", LIVE}', '{"ASPECT", "fit", "fit|stretch", LIVE}'),
             ('"game|50|67|75|100|125|150|200"', '"game|50|60|70|80|90|100|125|150|200"'),
@@ -195,6 +199,8 @@ def adapt_sources(destination, *, patch_output=None):
             ("EXE = 'astralchain.exe' if WIN else 'astralchain'", "EXE = 'newsnap.exe' if WIN else 'newsnap'"),
         ],
     }
+    for name, changes in jump_edits().items():
+        edits.setdefault(name, []).extend(changes)
     for name, changes in input_edits().items():
         edits.setdefault(name, []).extend(changes)
     for name, changes in output_edits().items():
@@ -217,7 +223,8 @@ def adapt_sources(destination, *, patch_output=None):
         write_changed(destination / name, text)
         diff.extend(difflib.unified_diff(original.splitlines(keepends=True), text.splitlines(keepends=True),
                                          fromfile='a/' + name, tofile='b/' + name))
-    write_changed(destination / 'VERSION', '0.1.0-dev\n')
+    write_changed(destination / 'VERSION', VERSION + '\n')
+    write_changed(destination / 'recomp/snap_jumps.py', (ROOT / 'newsnap/jump_adapt.py').read_text(encoding='utf-8'))
     for overlay in (ROOT / 'newsnap/overlays').glob('*'):
         if overlay.is_file():
             write_changed(destination / 'runtime' / overlay.name, overlay.read_text(encoding='utf-8'))

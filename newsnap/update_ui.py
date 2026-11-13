@@ -126,12 +126,20 @@ class UpdatePanel:
         if self.launcher.busy:
             self.status.configure(text='Cierra la expedición o espera a que termine la preparación antes de actualizar.')
             return
-        if not self.launcher.save_options():
-            return
+        try:
+            settings.validate_runtime_data(self.launcher.project)
+        except ValueError:
+            # Public repair also works with absent/old private data. Preserve its
+            # INI instead of making a native rebuild a prerequisite for updating.
+            pass
+        else:
+            if not self.launcher.save_options():
+                return
         if not messagebox.askyesno('Instalar versión estable',
                 f'Se descargará {self.release.tag_name} y se reiniciará el launcher para instalarla. '
                 'Puedes usar esta opción aunque ya tengas esa versión. Tus datos y partidas se conservarán. '
                 'El runtime privado del juego se conserva y puede necesitar una recompilación por separado. '
+                'Si es incompatible, no se escribirán ajustes nuevos sobre él. '
                 '¿Continuar?', parent=self.root):
             return
         self.working = True

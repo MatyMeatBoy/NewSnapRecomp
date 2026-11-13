@@ -13,13 +13,13 @@ from newsnap.saves import decode_moves, iv_mask, saved_jpegs
 from newsnap.photos import scan_photos
 
 
-def jpeg():
+def jpeg(size=(64, 32)):
     out = io.BytesIO()
-    Image.new('RGB', (64, 32), '#eab54a').save(out, 'JPEG')
+    Image.new('RGB', size, '#eab54a').save(out, 'JPEG')
     return out.getvalue()
 
 
-def save_bank(image, key=bytes(range(16))):
+def save_bank(image, key=bytes(range(16)), index=3):
     body = bytes(16) + image
     body += bytes((-len(body)) % 16)
     header = struct.pack('<8I', 0xc63e569c, len(body) + 48, len(body), 1, 48, 0, 0, 0)
@@ -27,11 +27,32 @@ def save_bank(image, key=bytes(range(16))):
                         len(body), len(body), 0, 0, 0) + body
     iv = bytes(range(16, 32))
     enc = lambda raw: Cipher(algorithms.AES(key), modes.CBC(iv)).encryptor().update(raw)
-    masked = iv_mask(iv, 0xb519fc38)
+    masked = iv_mask(iv, 0xb519fc35 + index)
     return enc(header) + masked + masked + enc(entry)
 
 
 class PhotoTests(unittest.TestCase):
+    def test_saved_thumbnail_is_not_a_second_photo_and_is_kept_if_original_missing(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            user = root / 'profile/save/user'
+            user.mkdir(parents=True)
+            original = user / '00c31e53dde3ac51'
+            original.write_bytes(save_bank(jpeg()))
+            (user / '4f342de95be7450e').write_bytes(save_bank(jpeg((16, 8)), index=4))
+            with patch('newsnap.photos.local_save_key', return_value=bytes(range(16))):
+                photos = scan_photos(root / 'profile', root / 'cache')
+                self.assertEqual([(p.width, p.height) for p in photos], [(64, 32)])
+                # Matching slots belong to each user independently.
+                other = user.parent / 'another-user'
+                other.mkdir()
+                (other / '4f342de95be7450e').write_bytes(save_bank(jpeg((24, 12)), index=4))
+                photos = scan_photos(root / 'profile', root / 'cache')
+                self.assertEqual(sorted((p.width, p.height) for p in photos), [(24, 12), (64, 32)])
+                original.unlink()
+                photos = scan_photos(root / 'profile', root / 'cache')
+                self.assertEqual(sorted((p.width, p.height) for p in photos), [(16, 8), (24, 12)])
+
     def test_gallery_refuses_to_write_cache_into_save(self):
         with tempfile.TemporaryDirectory() as temporary:
             profile = Path(temporary)

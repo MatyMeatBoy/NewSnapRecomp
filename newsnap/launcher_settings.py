@@ -8,6 +8,7 @@ import re
 import sys
 import tempfile
 from .paths import runtime_dir, default_profile, shader_library_dir, is_release_layout
+from .version import VERSION, RUNTIME_API, RUNTIME_CAPABILITIES
 
 DEFAULTS = {'fullscreen': '1', 'window_size': '1920x1080', 'vk_present': 'mailbox',
             'fps': '60', 'volume': '100', 'mouse_sens': '1', 'motion': '1',
@@ -31,8 +32,9 @@ RANGES = {'volume': (0, 100, True), 'mouse_sens': (0, 10, False), 'sharpness': (
           'color_brightness': (-30, 30, True), 'color_contrast': (70, 150, True),
           'color_saturation': (50, 200, True), 'color_gamma': (0.8, 1.2, False)}
 ENV_UI_OVERRIDES = frozenset(DEFAULTS)
-LANGUAGES = ('', 'ja', 'en-US', 'fr', 'de', 'it', 'es', 'zh-CN', 'ko', 'nl', 'pt', 'ru', 'zh-TW',
-             'en-GB', 'fr-CA', 'es-419', 'zh-Hans', 'zh-Hant', 'pt-BR')
+# Snap 2.0.1 control NACP: support mask 0x72fd, restricted to nonempty title slots.
+# The runtime accepts more codes for other games; the launcher offers this game's set.
+LANGUAGES = ('', 'en-US', 'ja', 'fr', 'de', 'es-419', 'es', 'it', 'fr-CA', 'ko', 'zh-Hant', 'zh-Hans')
 BINDING_DEFAULTS = {
     'bind_a': 'key:mouse_l,key:e,pad:default', 'bind_b': 'key:lshift,pad:default',
     'bind_x': 'key:space,pad:default', 'bind_y': 'pad:default',
@@ -265,7 +267,7 @@ def validate_runtime_data(root):
     if not is_release_layout(root):
         return None
     directory = runtime_dir(root)
-    message = (f'Actualiza tu carpeta {directory.name} para NewSnap 0.2 antes de guardar ajustes o iniciar. '
+    message = (f'Actualiza tu carpeta {directory.name} para NewSnap {VERSION} antes de guardar ajustes o iniciar. '
                'Los datos actuales no incluyen un ejecutable compatible y verificado con esta versión del launcher.')
     try:
         with (directory / 'newsnap-game.json').open('rb') as stream:
@@ -274,11 +276,11 @@ def validate_runtime_data(root):
             raise ValueError(message)
         metadata = json.loads(raw.decode('utf-8-sig'))
         if (not isinstance(metadata, dict) or type(metadata.get('format')) is not int or metadata['format'] != 1
-                or type(metadata.get('runtime_api')) is not int or metadata['runtime_api'] != 2
+                or type(metadata.get('runtime_api')) is not int or metadata['runtime_api'] != RUNTIME_API
                 or metadata.get('game_version') != '2.0.1'):
             raise ValueError(message)
         capabilities = metadata.get('capabilities')
-        required = {'launcher-restart75', 'native-render-levels', 'docked-supersampling'}
+        required = set(RUNTIME_CAPABILITIES)
         if not isinstance(capabilities, list) or not all(isinstance(value, str) for value in capabilities) or not required.issubset(capabilities):
             raise ValueError(message)
         expected = metadata.get('native_executable_sha256')

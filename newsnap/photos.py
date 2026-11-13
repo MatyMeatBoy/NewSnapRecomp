@@ -89,7 +89,17 @@ def scan_photos(profile: Path, cache_dir: Path) -> list[Photo]:
                         raise ValueError('Demasiados perfiles de guardado en una sola exploración')
     if banks:
         key = local_save_key()
+        originals = set()
         for path, index in banks:
             for slot, data in saved_jpegs(path, index, key):
-                add(data, f'Guardado del juego · {slot + 1}')
+                # Snap 2.0.1 bank 3 stores full photographs; bank 4 stores their
+                # slot-matched thumbnails. Keep a thumbnail when no original is
+                # present, but never present both as separate photographs.
+                identity = (path.parent, slot)
+                if index == 4 and identity in originals:
+                    continue
+                source = 'Miniatura guardada' if index == 4 else 'Guardado del juego'
+                add(data, f'{source} · {slot + 1}')
+                if index == 3:
+                    originals.add(identity)
     return list(photos.values())

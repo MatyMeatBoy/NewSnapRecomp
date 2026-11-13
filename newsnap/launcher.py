@@ -221,8 +221,9 @@ class Launcher:
                      'Deutsch': 'de', 'Italiano': 'it', 'Português': 'pt', 'Português · Brasil': 'pt-BR',
                      '日本語': 'ja', '한국어': 'ko', 'Nederlands': 'nl', 'Русский': 'ru',
                      '中文 · 简体': 'zh-Hans', '中文 · 繁體': 'zh-Hant', '中文 · China': 'zh-CN', '中文 · Taiwan': 'zh-TW'}
+        languages = {label: code for label, code in languages.items() if code in settings.LANGUAGES}
         self._choice(content, 'Idioma solicitado al juego', 'lang', languages,
-                     help_text='El juego utiliza las traducciones incluidas en sus datos. Si una variante no está disponible, su elección final depende del propio juego.')
+                     help_text='Ofrece los idiomas declarados por Snap. El juego conserva su propia elección de texto y voces; si un perfil sigue en otro idioma, cámbialo también en sus ajustes de idioma.')
 
     def _control_options(self):
         ttk.Label(self.controls_tab, text='Encuentra tu encuadre', style='Title.TLabel').pack(anchor='w', pady=(0, 8))
