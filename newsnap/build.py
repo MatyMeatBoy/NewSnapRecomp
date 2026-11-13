@@ -41,7 +41,9 @@ def build(sdk_root, shader_tools=None, jobs=0, generate=True, cpu='v3'):
     write_json(expected, {'exefs_sha256': {f['name']: f['sha256'] for f in manifest['files']}})
     profile = json.loads((ROOT / 'profiles/snap-2.0.1.json').read_text(encoding='utf-8'))
     main_hash = next(f['sha256'] for f in manifest['files'] if f['name'] == 'main')
-    patches = ROOT / 'patches/snap-2.0.1-render.txt'
+    patches = ROOT / 'build/snap-runtime-patches.txt'
+    write_changed(patches, '\n'.join((ROOT / 'patches' / name).read_text(encoding='utf-8')
+                                    for name in ('snap-2.0.1-render.txt', 'snap-2.0.1-supersample.txt')))
     if main_hash != profile['main_sha256']:
         raise ValueError('This runtime adaptation requires the verified Snap 2.0.1 code module')
     gen = ROOT / 'generated/updated'

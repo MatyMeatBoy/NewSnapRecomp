@@ -13,7 +13,7 @@ import sys
 import zipfile
 
 ROOT = Path(__file__).resolve().parent.parent
-VERSION = '0.1.1-alpha'
+VERSION = '0.2-alpha'
 sys.path.insert(0, str(ROOT))
 
 
@@ -100,6 +100,8 @@ def private_files(target, profile, version):
 
 
 def package(private=False, profile=None):
+    if private:
+        raise ValueError('Private portable archives are discontinued; copy only your GameData folder')
     if subprocess.run(['git', 'diff', '--quiet', 'HEAD', '--ignore-submodules=none'], cwd=ROOT).returncode:
         raise ValueError('Commit or preserve tracked source changes before identifying a release revision')
     revision = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip()

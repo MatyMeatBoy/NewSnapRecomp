@@ -1,9 +1,10 @@
 """Load the pinned infrastructure without modifying its working tree."""
 import functools
 import importlib.util
+import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(sys.executable).resolve().parent if getattr(sys, 'frozen', False) else Path(__file__).resolve().parent.parent
 UPSTREAM = ROOT / 'third_party' / 'astral'
 COMMIT = '248e0b29f308ca84a2d2092019cc60e7fc50ae85'
 TITLE_ID = '0100F4300BF2C000'

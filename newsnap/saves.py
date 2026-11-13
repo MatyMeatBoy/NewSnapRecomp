@@ -14,6 +14,7 @@ from cryptography.hazmat.primitives.ciphers import Cipher as AesCipher, algorith
 from .drp import Cipher
 from .importer import source_digest
 from .upstream import ROOT, UPSTREAM
+from .paths import module_path
 
 SAVE_NAMES = ('5652712535912f19', '398ecf2b56c614e3', '6706e7d0f3dab2ab',
               '00c31e53dde3ac51', '4f342de95be7450e', '0e7280b1c3ce5a0c',
@@ -42,7 +43,7 @@ def decode_moves(image, offset):
 
 def local_save_key():
     profile = json.loads((ROOT / 'profiles/snap-2.0.1.json').read_text(encoding='utf-8'))
-    path = ROOT / 'build/extracted/updated/exefs/main'
+    path = module_path(ROOT)
     if not path.is_file():
         path = ROOT / 'build/updated/exefs/main'  # Owner's portable data package.
     if not path.is_file() or source_digest(path) != profile['main_sha256']:

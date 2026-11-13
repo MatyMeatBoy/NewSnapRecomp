@@ -11,6 +11,7 @@ from .build import run_logged
 from .importer import write_json, source_digest
 from .upstream import ROOT
 from .nushdb import shaders, program_record
+from .paths import shader_library_dir, is_release_layout, runtime_dir
 
 
 def validate_recording(data, answers):
@@ -85,14 +86,14 @@ def prepare_observed(folder, all_libraries=False):
         else:
             temporary.write_bytes(data)
         temporary.replace(folder / target)
-    census = seed_libraries(folder, ROOT / 'build/shader-unpack/programs') if all_libraries else {}
+    census = seed_libraries(folder, shader_library_dir(ROOT)) if all_libraries else {}
     print(f'Shader census: {census or "observed variants only"}', flush=True)
     prepared = folder / 'shader-prepared.bin'
     previous = folder / 'shader-prepared.previous.bin'
     if prepared.exists():
         prepared.replace(previous)
     env = dict(os.environ, AC_PIPELINE_CACHE=str(folder / 'pipeline-cache.bin'))
-    logfile = ROOT / 'build/logs/prepare-shaders.log'
+    logfile = (runtime_dir(ROOT) / 'logs' if is_release_layout(ROOT) else ROOT / 'build/logs') / 'prepare-shaders.log'
     run_logged([exe, '--prepare-shaders'], logfile, env)
     log = logfile.read_text(encoding='utf-8')
     translation = re.search(r', (\d+) translations failed', log)

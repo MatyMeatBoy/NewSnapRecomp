@@ -10,8 +10,9 @@ import uuid
 from tkinter import filedialog, messagebox, ttk
 
 from . import launcher_settings as settings
+from .paths import runtime_dir
+from .upstream import ROOT
 
-ROOT = Path(__file__).resolve().parent.parent
 GREEN, CREAM, AMBER, INK = '#163d32', '#f5f1e5', '#dfa648', '#203c34'
 PAGE_SIZE = 12
 PRESENTATION_LABELS = {'Sincronizado': 'fifo', 'Fluido': 'mailbox', 'Sin sincronizar': 'immediate',
@@ -23,7 +24,7 @@ class Launcher:
         from PIL import Image, ImageTk
         self.Image, self.ImageTk = Image, ImageTk
         self.root, self.project = root, Path(project)
-        self.ini = self.project / 'build/updated/astralchain.ini'
+        self.ini = runtime_dir(self.project) / 'astralchain.ini'
         self.profile = settings.load_profile(self.project)
         self.events = queue.Queue()
         self.busy = False
@@ -31,7 +32,7 @@ class Launcher:
         self.photos, self.thumbnails = [], []
         self.page, self.album_generation, self.preview_generation = 0, 0, 0
         self.preview = None
-        self.root.title('NewSnap · Cámara y álbum')
+        self.root.title('NewSnap · 0.2 alpha · Cámara y álbum')
         self.root.geometry('1020x790')
         self.root.minsize(860, 730)
         self.root.configure(bg=CREAM)
@@ -51,8 +52,8 @@ class Launcher:
         ttk.Label(root, textvariable=self.status, style='Status.TLabel', padding=(25, 9)).pack(side='bottom', fill='x')
         self.tabs = ttk.Notebook(root)
         self.tabs.pack(fill='both', expand=True, padx=22, pady=(12, 8))
-        self.play_tab, self.album_tab, self.video_tab, self.controls_tab = [ttk.Frame(self.tabs, padding=16) for _ in range(4)]
-        for frame, title in zip((self.play_tab, self.album_tab, self.video_tab, self.controls_tab), ('Jugar', 'Álbum', 'Vídeo', 'Controles')):
+        self.play_tab, self.album_tab, self.video_tab, self.audio_tab, self.game_tab, self.controls_tab = [ttk.Frame(self.tabs, padding=16) for _ in range(6)]
+        for frame, title in zip((self.play_tab, self.album_tab, self.video_tab, self.audio_tab, self.game_tab, self.controls_tab), ('Jugar', 'Álbum', 'Vídeo', 'Audio', 'Juego', 'Controles')):
             self.tabs.add(frame, text=title)
         self._play()
         self._album()
@@ -158,10 +159,13 @@ class Launcher:
         ttk.Combobox(row, textvariable=self.presentation, values=tuple(PRESENTATION_LABELS), state='readonly', width=25).pack(side='left')
         self._help(basic, 'Sincronizado evita cortes; Fluido prioriza respuesta. Sin sincronizar puede mostrar cortes. Adaptable permite cortes al caer por debajo del refresco; si no está disponible, el juego usa sincronización normal.')
         self._help(basic, 'La frecuencia variable (VRR, FreeSync o G-SYNC) depende del monitor, Windows y el controlador. Este launcher no ofrece un interruptor VRR comprobado.')
-        self._choice(basic, 'Volumen · 0 a 100', 'volume', None)
+        self._choice(basic, 'Información de rendimiento', 'perf_overlay', {'Oculta': 'off', 'Solo FPS': 'fps', 'Completa': 'full'},
+                     help_text='Muestra datos del runtime. La vista completa incluye tiempos de CPU/GPU y actividad de compilación cuando están disponibles.')
         self._heading(advanced, 'Resolución y reconstrucción')
-        self._choice(advanced, 'Escala interna de la escena', 'render_scale', {'Según el juego': 'game', **{f'{n} %': str(n) for n in (50, 60, 70, 80, 90, 100)}},
-                     help_text='Reduce la resolución de las escenas 3D respecto de la salida nativa. Un porcentaje menor favorece el rendimiento y pierde detalle; el HUD conserva su resolución de salida.')
+        self._choice(advanced, 'Escala interna de la escena', 'render_scale', {'Según el juego': 'game', **{f'{n} %': str(n) for n in (50, 60, 70, 80, 90, 100)},
+                     '1,25× (125 %) · experimental': '125', '1,5× (150 %) · experimental': '150', '2× (200 %) · experimental': '200'},
+                     choice_width=31,
+                     help_text='Hasta el 100 %, una escala menor favorece el rendimiento y pierde detalle; el HUD conserva su resolución de salida. 125 %, 150 % y 200 % son supersampling experimental exclusivo del modo TV: aumentan el detalle y el coste de GPU. Para modo portátil elige 100 % o menos; guardar una combinación incompatible muestra un error sin cambiar tu elección.')
         self._choice(advanced, 'Ampliación final de imagen', 'upscaler', {'FSR espacial': 'fsr', 'Bilineal': 'bilinear'},
                      help_text='Amplía la imagen completa hasta el tamaño de ventana, incluido el HUD. FSR es espacial; no equivale a DLSS ni a generación de fotogramas.')
         self._choice(advanced, 'Nitidez FSR · 0 a 100', 'sharpness', None,
@@ -178,15 +182,87 @@ class Launcher:
                            ('Saturación · 50 a 200', 'color_saturation'), ('Gamma · 0.8 a 1.2', 'color_gamma')):
             self._choice(advanced, label, key, None)
             self.variables[key].trace_add('write', self._custom_color)
-        ttk.Label(self.controls_tab, text='Encuentra tu encuadre', style='Title.TLabel').pack(anchor='w', pady=(0, 18))
-        self._choice(self.controls_tab, 'Sensibilidad del ratón · 0 a 10', 'mouse_sens', None)
-        ttk.Checkbutton(self.controls_tab, text='Activar controles de movimiento', variable=self.variables['motion'], onvalue='1', offvalue='0').pack(anchor='w', pady=18)
-        ttk.Label(self.controls_tab, text='El ratón conserva la puntería libre de la cámara.\nLa sensibilidad ajusta cuánto se mueve al desplazar el ratón.', style='Muted.TLabel', wraplength=750).pack(anchor='w', pady=12)
-        for frame in (self.controls_tab,):
-            ttk.Label(frame, text='Los cambios se aplicarán al próximo inicio.', style='Muted.TLabel').pack(anchor='w', pady=(22, 10))
-            button = ttk.Button(frame, text='Guardar ajustes', style='Accent.TButton', command=self.save_options)
-            button.pack(anchor='w')
-            self.save_buttons.append(button)
+        self._audio_options()
+        self._game_options()
+        self._control_options()
+
+    def _settings_footer(self, frame, *, controls=False):
+        footer = ttk.Frame(frame, padding=(0, 10, 0, 0))
+        footer.pack(side='bottom', fill='x')
+        button = ttk.Button(footer, text='Guardar ajustes', style='Accent.TButton', command=self.save_options)
+        button.pack(side='left')
+        self.save_buttons.append(button)
+        if controls:
+            ttk.Button(footer, text='Restaurar controles', command=self.reset_controls).pack(side='right')
+
+    def _audio_options(self):
+        ttk.Label(self.audio_tab, text='Escucha la expedición', style='Title.TLabel').pack(anchor='w')
+        self._settings_footer(self.audio_tab)
+        content = self._scrolling_options(self.audio_tab)
+        self._help(content, 'Los cambios se aplican al próximo inicio. El runtime dispone de un volumen general para toda la mezcla del juego.')
+        self._choice(content, 'Volumen general · 0 a 100', 'volume', None,
+                     help_text='0 silencia la salida. No se ofrecen controles separados de música y efectos porque el runtime no los separa.')
+        self._heading(content, 'Avanzado · Estabilidad del audio')
+        self._choice(content, 'Cola inicial de audio · ms', 'audio_prefill_ms', None,
+                     help_text='De 0 a 500 ms; valor inicial 20. El audio espera esta cantidad al iniciar o recuperarse de un corte, redondeada a bloques de 5 ms. Un valor mayor puede ayudar con cortes y también añade latencia.')
+
+    def _game_options(self):
+        ttk.Label(self.game_tab, text='Tu expedición', style='Title.TLabel').pack(anchor='w')
+        self._settings_footer(self.game_tab)
+        content = self._scrolling_options(self.game_tab)
+        self._help(content, 'Los cambios se aplican al próximo inicio. Estos ajustes conservan tu perfil y sus guardados.')
+        languages = {'Según el sistema': '', 'Español · España': 'es', 'Español · Latinoamérica': 'es-419',
+                     'English · US': 'en-US', 'English · UK': 'en-GB', 'Français': 'fr', 'Français · Canada': 'fr-CA',
+                     'Deutsch': 'de', 'Italiano': 'it', 'Português': 'pt', 'Português · Brasil': 'pt-BR',
+                     '日本語': 'ja', '한국어': 'ko', 'Nederlands': 'nl', 'Русский': 'ru',
+                     '中文 · 简体': 'zh-Hans', '中文 · 繁體': 'zh-Hant', '中文 · China': 'zh-CN', '中文 · Taiwan': 'zh-TW'}
+        self._choice(content, 'Idioma solicitado al juego', 'lang', languages,
+                     help_text='El juego utiliza las traducciones incluidas en sus datos. Si una variante no está disponible, su elección final depende del propio juego.')
+
+    def _control_options(self):
+        ttk.Label(self.controls_tab, text='Encuentra tu encuadre', style='Title.TLabel').pack(anchor='w', pady=(0, 8))
+        self._settings_footer(self.controls_tab, controls=True)
+        sections = ttk.Notebook(self.controls_tab)
+        sections.pack(fill='both', expand=True)
+        general_tab, bindings_tab = ttk.Frame(sections), ttk.Frame(sections)
+        sections.add(general_tab, text='Ratón y mando')
+        sections.add(bindings_tab, text='Asignaciones')
+        general, bindings = self._scrolling_options(general_tab), self._scrolling_options(bindings_tab)
+        self._help(general, 'Los cambios se aplican al próximo inicio. El ratón conserva la puntería libre de la cámara.')
+        self._choice(general, 'Sensibilidad del ratón · 0 a 10', 'mouse_sens', None)
+        self._choice(general, 'Distribución del mando', 'pad_layout', {'Automática': 'auto', 'Nintendo': 'nintendo', 'Xbox': 'xbox', 'PlayStation': 'playstation'},
+                     help_text='Cambia cómo se interpretan los botones físicos. Los dibujos de botones del juego conservan su aspecto original.')
+        ttk.Checkbutton(general, text='Activar controles de movimiento', variable=self.variables['motion'], onvalue='1', offvalue='0').pack(anchor='w', pady=10)
+        self._help(general, 'Utiliza los sensores de movimiento si el mando, su conexión y el controlador los proporcionan.')
+        self._heading(general, 'Zona muerta de los sticks')
+        self._choice(general, 'Zona muerta común · 0 a 50 %', 'stick_deadzone', None)
+        self._choice(general, 'Stick izquierdo · 0 a 50 %', 'lstick_deadzone', None)
+        self._choice(general, 'Stick derecho · 0 a 50 %', 'rstick_deadzone', None,
+                     help_text='Un campo de stick vacío hereda la zona muerta común. Aumenta el valor si el stick se mueve solo en reposo.')
+        self._heading(general, 'Vibración')
+        self._choice(general, 'Intensidad · 0 a 300 %', 'rumble_strength', None,
+                     help_text='0 desactiva la vibración. La respuesta depende del mando y de los efectos enviados por el juego.')
+        self._choice(general, 'Curva de vibración · 0.2 a 1.5', 'rumble_curve', None,
+                     help_text='Ajusta cómo se amplifican los efectos débiles respecto de los fuertes. El valor inicial de la base es 0.6.')
+        ttk.Checkbutton(general, text='Vibración en los gatillos compatibles', variable=self.variables['rumble_triggers'], onvalue='1', offvalue='0').pack(anchor='w', pady=10)
+        self._help(bindings, 'Edita listas separadas por comas: key:mouse_l, key:e, pad:south. Las teclas y los nombres físicos del mando se distinguen con key: y pad:. La edición se valida al guardar; el texto previo se conserva hasta que lo cambies.')
+        self._help(bindings, 'key:default y pad:default conservan las asignaciones originales de esa acción. Vacío restaura ambos; none por sí solo deja la acción sin entradas. Las direcciones de los sticks aceptan únicamente teclas.')
+        ttk.Button(bindings, text='Ver teclas y botones admitidos', command=self.show_binding_names).pack(anchor='w', pady=(0, 12))
+        for key in settings.BINDING_DEFAULTS:
+            name = key.removeprefix('bind_').upper().replace('LSTICK_', 'Stick izq. · ').replace('RSTICK_', 'Stick der. · ')
+            self._choice(bindings, 'A · Foto / confirmar' if key == 'bind_a' else name, key, None)
+
+    def reset_controls(self):
+        values = self._option_values()
+        values.update(settings.CONTROL_DEFAULTS)
+        self._set_option_values(values)
+        self.status.set('Controles originales preparados · guarda los ajustes para aplicarlos al próximo inicio')
+
+    def show_binding_names(self):
+        messagebox.showinfo('Nombres para las asignaciones',
+            'TECLADO Y RATÓN · key:<nombre>\n' + ', '.join(sorted(settings.BINDING_KEYS)) +
+            '\n\nMANDO · pad:<nombre>\n' + ', '.join(sorted(settings.BINDING_PADS)) +
+            '\n\nF1, F8, F10, F11 y Escape están reservadas por el runtime.', parent=self.root)
 
     def _scrolling_options(self, parent):
         canvas = tk.Canvas(parent, bg=CREAM, highlightthickness=0, borderwidth=0)
@@ -199,7 +275,7 @@ class Launcher:
         content.bind('<Configure>', lambda event: canvas.configure(scrollregion=canvas.bbox('all')))
         canvas.bind('<Configure>', lambda event: canvas.itemconfigure(window, width=event.width))
         def wheel(event):
-            if self.tabs.select() == str(self.video_tab) and str(event.widget).startswith(str(canvas)):
+            if canvas.winfo_ismapped() and str(event.widget).startswith(str(canvas)):
                 canvas.yview_scroll(-1 if event.delta > 0 else 1, 'units')
                 return 'break'
         self.root.bind_all('<MouseWheel>', wheel, add='+')
@@ -213,7 +289,7 @@ class Launcher:
     def _heading(self, frame, title):
         ttk.Label(frame, text=title, font=('Segoe UI', 13, 'bold')).pack(anchor='w', pady=(8, 12))
 
-    def _choice(self, frame, label, key, choices, *, editable=False, help_text=None, changed=None):
+    def _choice(self, frame, label, key, choices, *, editable=False, help_text=None, changed=None, choice_width=25):
         row = ttk.Frame(frame)
         row.pack(fill='x', pady=(7, 9))
         ttk.Label(row, text=label, width=29).pack(side='left')
@@ -221,7 +297,7 @@ class Launcher:
         if isinstance(choices, dict):
             variable = tk.StringVar(value=next(label for label, value in choices.items() if value == variable.get()))
             self.labeled_choices[key] = variable, choices
-        widget = (ttk.Combobox(row, textvariable=variable, values=tuple(choices), state='normal' if editable else 'readonly', width=25)
+        widget = (ttk.Combobox(row, textvariable=variable, values=tuple(choices), state='normal' if editable else 'readonly', width=choice_width)
                   if choices else ttk.Entry(row, textvariable=variable, width=28))
         widget.pack(side='left')
         if isinstance(choices, dict):
@@ -252,6 +328,7 @@ class Launcher:
         if self.busy:
             return False
         try:
+            settings.validate_runtime_data(self.project)
             current = settings.save_edited_settings(self.ini, self.baseline, self._option_values())
             self.baseline = dict(current)
             self._set_option_values(current)
@@ -311,8 +388,8 @@ class Launcher:
     def launch(self):
         if self.busy:
             return
-        if not (self.project / 'build/updated/newsnap.exe').is_file():
-            messagebox.showerror('Falta el ejecutable', 'Compila el proyecto para crear build/updated/newsnap.exe.', parent=self.root)
+        if not (runtime_dir(self.project) / 'newsnap.exe').is_file():
+            messagebox.showerror('Faltan tus datos del juego', 'Copia tu carpeta GameData junto a NewSnapLauncher.exe antes de iniciar.', parent=self.root)
             return
         if not self.save_options():
             return
@@ -334,10 +411,10 @@ class Launcher:
         self.events.put(('finished', error))
 
     def _execute_game(self, profile, preparation):
-        logdir = self.project / 'build/logs'
+        logdir = runtime_dir(self.project) / 'logs'
         logdir.mkdir(parents=True, exist_ok=True)
         session = datetime.now().strftime('%Y%m%d-%H%M%S') + '-' + uuid.uuid4().hex[:8]
-        env = settings.game_environment()
+        env = settings.game_environment(root=self.project)
         hidden = subprocess.CREATE_NO_WINDOW if hasattr(subprocess, 'CREATE_NO_WINDOW') else 0
         if preparation:
             logfile = logdir / f'launcher-prepare-{session}.log'
@@ -356,7 +433,7 @@ class Launcher:
                 return self.process.wait()
         code = settings.supervise_game(run_attempt)
         if code:
-            raise RuntimeError(f'El juego terminó con código {code}. Revisa {logfile}.')
+            raise RuntimeError(settings.game_failure_message(code, logfile))
 
     def refresh_album(self):
         self.album_generation += 1
@@ -367,7 +444,7 @@ class Launcher:
             try:
                 from .photos import scan_photos
                 with settings.ProfileLock(profile):
-                    photos = scan_photos(profile, self.project / 'build/launcher-cache/photos')
+                    photos = scan_photos(profile, runtime_dir(self.project) / 'launcher-cache/photos')
                 self.events.put(('photos', generation, photos, None))
             except settings.ProfileInUseError:
                 self.events.put(('album_locked', generation))

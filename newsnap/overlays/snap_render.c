@@ -21,6 +21,7 @@ void snap_render_select(Cpu *c) {
     } else {
         static const char *options[] = {"100", "90", "80", "70", "60", "50"};
         for (int i = 0; i < 6; i++) if (!strcmp(choice, options[i])) selected = i;
+        if (!strcmp(choice, "125") || !strcmp(choice, "150") || !strcmp(choice, "200")) selected = 0;
         if (selected < 0) {
             if (!warned_choice) {
                 warned_choice = 1;

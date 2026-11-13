@@ -1,11 +1,222 @@
 """Launcher configuration contracts: preserve native settings and isolate test input."""
 import tempfile
+import os
+import hashlib
+import json
+import re
+import shutil
+import subprocess
+import sys
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 from newsnap import launcher_settings as settings
+from newsnap.upstream import ROOT, UPSTREAM
 
 
 class LauncherSettingsTests(unittest.TestCase):
+    def test_runtime_data_requires_current_abi_capabilities_and_native_digest(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            self.assertIsNone(settings.validate_runtime_data(root))
+            data = root / 'newsnapGameData'
+            data.mkdir()
+            native = b'private native fixture, not game content'
+            (data / 'newsnap.exe').write_bytes(native)
+            marker = data / 'newsnap-game.json'
+            valid = {'format': 1, 'runtime_api': 2, 'game_version': '2.0.1',
+                     'native_executable_sha256': hashlib.sha256(native).hexdigest(),
+                     'runtime_source_revision': 'compatible-different-source-revision',
+                     'capabilities': ['launcher-restart75', 'native-render-levels', 'docked-supersampling']}
+            for invalid in ({'format': 1, 'game_version': '2.0.1'}, dict(valid, runtime_api=1),
+                            dict(valid, native_executable_sha256='0' * 64), dict(valid, capabilities=['launcher-restart75']),
+                            dict(valid, game_version='1.0.0'), [], dict(valid, format=True)):
+                marker.write_text(json.dumps(invalid))
+                with self.subTest(invalid=invalid), self.assertRaisesRegex(ValueError, '0.2'):
+                    settings.validate_runtime_data(root)
+            marker.write_text(json.dumps(valid))
+            self.assertEqual(settings.validate_runtime_data(root)['runtime_api'], 2)
+            (data / 'newsnap.exe').write_bytes(native + b'tampered')
+            with self.assertRaisesRegex(ValueError, '0.2'):
+                settings.validate_runtime_data(root)
+
+    def test_game_failure_message_reads_only_bounded_log_tail(self):
+        with tempfile.TemporaryDirectory() as folder:
+            logfile = Path(folder) / 'game.log'
+            marker = b'snap supersampling allocation failed'
+            logfile.write_bytes(b'x' * (80 * 1024) + marker + b'\n')
+            message = settings.game_failure_message(70, logfile)
+            self.assertIn('100 %', message)
+            self.assertIn('reinicia', message.lower())
+            logfile.write_bytes(marker + b'x' * (80 * 1024))
+            message = settings.game_failure_message(9, logfile)
+            self.assertIn('9', message)
+            self.assertNotIn('100 %', message)
+            self.assertLess(len(message), 1000)
+            self.assertIn('9', settings.game_failure_message(9, Path(folder) / 'missing.log'))
+
+    def test_docked_is_default_and_handheld_persists_at_native_scale(self):
+        self.assertEqual(settings.DEFAULTS['operation_mode'], 'docked')
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / 'settings.ini'
+            settings.save_settings(path, {'operation_mode': 'handheld', 'render_scale': '90'})
+            self.assertEqual(settings.load_settings(path)['operation_mode'], 'handheld')
+            self.assertEqual(settings.load_settings(path)['render_scale'], '90')
+
+    def test_experimental_supersampling_requires_tv_in_full_and_partial_edits(self):
+        for scale in ('125', '150', '200'):
+            with self.subTest(scale=scale):
+                self.assertEqual(settings.validate_settings({'operation_mode': 'docked', 'render_scale': scale})['render_scale'], scale)
+                with self.assertRaisesRegex(ValueError, 'TV'):
+                    settings.validate_settings({'operation_mode': 'handheld', 'render_scale': scale})
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / 'settings.ini'
+            settings.save_settings(path, {'operation_mode': 'docked', 'render_scale': '100'})
+            baseline = settings.load_settings(path)
+            settings.save_settings(path, {'operation_mode': 'handheld'})
+            original = path.read_bytes()
+            with self.assertRaisesRegex(ValueError, 'TV'):
+                settings.save_edited_settings(path, baseline, dict(baseline, render_scale='200'))
+            self.assertEqual(path.read_bytes(), original)
+            settings.save_settings(path, {'operation_mode': 'docked', 'render_scale': '150'})
+            baseline = settings.load_settings(path)
+            with self.assertRaisesRegex(ValueError, 'TV'):
+                settings.save_edited_settings(path, baseline, dict(baseline, operation_mode='handheld'))
+
+    def test_control_catalog_matches_pinned_configuration_metadata(self):
+        text = (UPSTREAM / 'runtime/cfg.c').read_text(encoding='utf-8')
+        metadata = {name.lower(): (default, choices) for name, default, choices in
+                    re.findall(r'\{"([A-Z_]+)", "([^"]*)", "([^"]*)", (?:LIVE|RESTART)\}', text)}
+        for key in ('lang', 'pad_layout', 'rumble_strength', 'rumble_curve', 'rumble_triggers',
+                    'motion', 'stick_deadzone', 'lstick_deadzone', 'rstick_deadzone', 'mouse_sens', 'perf_overlay'):
+            with self.subTest(key=key):
+                default, domain = metadata[key]
+                self.assertEqual(settings.DEFAULTS[key], default)
+                if key in settings.CHOICES:
+                    self.assertEqual(set(settings.CHOICES[key]) - {''}, set(domain.split('|')))
+                elif key in settings.RANGES:
+                    low, high = map(float, domain.split('..'))
+                    self.assertEqual(settings.RANGES[key][:2], (low, high))
+
+    def test_explicit_snap_bindings_preserve_native_default_mapping(self):
+        compiler = os.environ.get('NEWSNAP_CC') or shutil.which('clang')
+        if not compiler:
+            candidate = ROOT / 'toolchain/astral-release/Astral Chain-Setup/llvm/bin/clang.exe'
+            compiler = str(candidate) if candidate.is_file() else None
+        if not compiler:
+            self.skipTest('clang is needed for the real input mapper fixture')
+        from newsnap.input_adapt import edits
+        source = (UPSTREAM / 'runtime/input_map.c').read_text(encoding='utf-8')
+        for before, after in edits()['runtime/input_map.c']:
+            self.assertEqual(source.count(before), 1)
+            source = source.replace(before, after, 1)
+        with tempfile.TemporaryDirectory() as folder:
+            folder = Path(folder)
+            (folder / 'input_map.c').write_text(source, encoding='utf-8')
+            shutil.copyfile(UPSTREAM / 'runtime/input_map.h', folder / 'input_map.h')
+            (folder / 'host.h').write_text('void rt_log(const char *, ...);\n')
+            (folder / 'cfg.h').write_text('const char *cfg_get(const char *);\ndouble cfg_double(const char *);\n')
+            calls = '\n'.join(f'if (!input_map_bind("{key[5:].upper()}", "{value}")) return 2;'
+                              for key, value in settings.BINDING_DEFAULTS.items())
+            (folder / 'test.c').write_text('''
+#include <string.h>
+const char *cfg_get(const char *s) { (void)s; return 0; }
+double cfg_double(const char *s) { (void)s; return 8; }
+void rt_log(const char *s, ...) { (void)s; }
+#include "input_map.c"
+int main(void) {
+ unsigned char keys[ACTION_COUNT][KEY_COUNT]={0}, pads[PAD_LAYOUT_COUNT][ACTION_COUNT][PAD_COUNT]={0};
+ for(int i=0;i<input_map.nkeys;i++) keys[input_map.keys[i].action][input_map.keys[i].key]=1;
+ for(int l=0;l<PAD_LAYOUT_COUNT;l++) for(int i=0;i<input_map.npads[l];i++)
+  pads[l][input_map.pads[l][i].action][input_map.pads[l][i].pad]=1;
+''' + calls + '''
+ for(int a=0;a<ACTION_COUNT;a++) {
+  uint8_t actual_keys[INPUT_BINDING_MAX], actual_pads[INPUT_PAD_BINDING_MAX];
+  unsigned char got_keys[KEY_COUNT]={0};
+  int n=input_map_keys_of(&input_map,a,actual_keys,INPUT_BINDING_MAX);
+  for(int i=0;i<n;i++) got_keys[actual_keys[i]]=1;
+  if(memcmp(got_keys,keys[a],KEY_COUNT)) return 3;
+  for(int l=0;l<PAD_LAYOUT_COUNT;l++) {
+   unsigned char got_pads[PAD_COUNT]={0};
+   n=input_map_pads_of(&input_map,a,l,actual_pads,INPUT_PAD_BINDING_MAX);
+   for(int i=0;i<n;i++) got_pads[actual_pads[i]]=1;
+   if(memcmp(got_pads,pads[l][a],PAD_COUNT)) return 4;
+  }
+ }
+ return 0;
+}
+''', encoding='utf-8')
+            exe = folder / ('bindings.exe' if os.name == 'nt' else 'bindings')
+            subprocess.run([compiler, str(folder / 'test.c'), '-o', str(exe)], check=True, capture_output=True)
+            result = subprocess.run([str(exe)], capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_gamedata_commands_profile_and_public_runtime_dependencies(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            data = root / 'GameData'
+            data.mkdir()
+            (data / 'newsnap-game.json').write_text('{}')
+            libraries = data / 'shader-libraries'
+            libraries.mkdir()
+            (libraries / 'manifest.json').write_text('{}')
+            self.assertEqual(settings.game_command(root, data / 'profile'),
+                             [str(data / 'newsnap.exe'), '--profile', str(data / 'profile'), '--boot'])
+            self.assertEqual(settings.load_profile(root), data / 'profile')
+            self.assertEqual(settings.preparation_command(root),
+                             [sys.executable, '-m', 'newsnap', 'prepare', '--build-dir', str(data), '--all'])
+            with patch.object(sys, 'frozen', True, create=True):
+                self.assertEqual(settings.preparation_command(root), [sys.executable, '--prepare', '--all'])
+            (data / 'ac_xlate.exe').touch()
+            env = settings.game_environment({'PATH': 'system'}, root=root)
+            self.assertEqual(env['AC_XLATE'], str(data / 'ac_xlate.exe'))
+            (root / 'ac_xlate.exe').touch()
+            env = settings.game_environment({'PATH': 'system'}, root=root)
+            self.assertEqual(env['AC_XLATE'], str(root / 'ac_xlate.exe'))
+            self.assertEqual(env['PATH'].split(os.pathsep)[0], str(root))
+            self.assertIn('system', env['PATH'].split(os.pathsep))
+            settings.save_profile(root, data / 'profile')
+            self.assertTrue((data / 'launcher.json').is_file())
+            self.assertFalse((root / 'build').exists())
+            self.assertEqual(settings.load_profile(root), data / 'profile')
+
+    def test_control_audio_language_settings_and_bindings_roundtrip(self):
+        chosen = {'lang': 'es-419', 'pad_layout': 'playstation', 'rumble_strength': '210',
+                  'rumble_curve': '0.8', 'rumble_triggers': '1', 'stick_deadzone': '12',
+                  'lstick_deadzone': '', 'rstick_deadzone': '15', 'audio_prefill_ms': '35.5',
+                  'perf_overlay': 'full', 'bind_a': 'KEY:mouse_l, key:E, pad:south',
+                  'bind_rstick_left': 'key:left, key:j', 'bind_y': 'none'}
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / 'settings.ini'
+            path.write_text('[mods]\npersonal = yes\n')
+            settings.save_settings(path, chosen)
+            loaded = settings.load_settings(path)
+            for key, value in chosen.items():
+                self.assertEqual(loaded[key], value)
+            self.assertIn('personal = yes', path.read_text())
+
+    def test_binding_validation_matches_physical_key_and_pad_grammar(self):
+        for key, value in [('bind_a', 'key:f1'), ('bind_a', 'mouse_l'), ('bind_a', 'key:unknown'),
+                           ('bind_a', 'pad:a'), ('bind_rstick_up', 'pad:north'),
+                           ('bind_a', 'key:e\nvolume=0'), ('bind_a', 'key:e,' * 50),
+                           ('bind_notreal', 'key:e'), ('lang', 'xx'), ('pad_layout', 'steam'),
+                           ('rumble_strength', '301'), ('rumble_curve', '0.19'), ('rumble_triggers', '2'),
+                           ('lstick_deadzone', '51'), ('rstick_deadzone', '-1'), ('audio_prefill_ms', '501')]:
+            with self.subTest(key=key, value=value), self.assertRaises(ValueError):
+                settings.validate_settings({key: value})
+        for value in ('', 'none', 'key:default,pad:default', 'KEY:mouse_l, pad:rpaddle2', 'key:comma,key:num_add'):
+            self.assertEqual(settings.validate_settings({'bind_a': value}), {'bind_a': value})
+
+    def test_existing_binding_text_is_preserved_even_if_legacy_token_is_unknown(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / 'settings.ini'
+            path.write_text('[input]\nbind_a = key:e, legacy:custom\n')
+            baseline = settings.load_settings(path)
+            self.assertEqual(baseline['bind_a'], 'key:e, legacy:custom')
+            settings.save_edited_settings(path, baseline, dict(baseline, volume='40'))
+            self.assertIn('bind_a = key:e, legacy:custom', path.read_text())
+            self.assertEqual(settings.load_settings(path)['volume'], '40')
+
     def test_internal_profile_follows_moved_application_folder(self):
         with tempfile.TemporaryDirectory() as folder:
             first, moved = Path(folder) / 'original', Path(folder) / 'moved'
@@ -89,13 +300,13 @@ class LauncherSettingsTests(unittest.TestCase):
                              ['2', '110', '115', '1'])
 
     def test_video_rejects_donor_scales_and_out_of_range_color(self):
-        for key, value in [('render_scale', '75'), ('render_scale', '125'), ('render_scale', '200'),
+        for key, value in [('render_scale', '75'), ('render_scale', '250'), ('render_scale', '300'),
                            ('aspect', 'wide'), ('aniso', '3'), ('operation_mode', '4k'),
                            ('sharpness', '101'), ('color_brightness', '-31'), ('color_contrast', '69'),
                            ('color_saturation', '201'), ('color_gamma', 'nan'), ('color_gamma', '1.21')]:
             with self.subTest(key=key, value=value), self.assertRaises(ValueError):
                 settings.validate_settings({key: value})
-        for scale in ('game', '50', '60', '70', '80', '90', '100'):
+        for scale in ('game', '50', '60', '70', '80', '90', '100', '125', '150', '200'):
             self.assertEqual(settings.validate_settings({'render_scale': scale}), {'render_scale': scale})
 
     def test_external_game_settings_survive_launcher_edit(self):
@@ -211,11 +422,12 @@ class LauncherSettingsTests(unittest.TestCase):
             (target / 'shader-programs.bin').touch()
             self.assertIsNone(settings.preparation_command(root))
             (target / 'shader-answers.bin').touch()
-            self.assertEqual(settings.preparation_command(root)[-1], 'prepare')
+            self.assertEqual(settings.preparation_command(root),
+                             [sys.executable, '-m', 'newsnap', 'prepare', '--build-dir', str(target)])
             manifest = root / 'build/shader-unpack/programs/manifest.json'
             manifest.parent.mkdir(parents=True)
             manifest.touch()
-            self.assertEqual(settings.preparation_command(root)[-2:], ['prepare', '--all'])
+            self.assertEqual(settings.preparation_command(root)[-1], '--all')
 
     def test_profile_preference_does_not_touch_save_directory(self):
         with tempfile.TemporaryDirectory() as folder:

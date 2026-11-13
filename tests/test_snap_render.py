@@ -74,7 +74,13 @@ int main(int argc,char **argv) {
    }
   }
  }
- const char *invalid[]={"75","25","150","garbage"};
+ const char *supersample[]={"125","150","200"};
+ for(int i=0;i<3;i++) {
+  uint32_t old=5, result; memcpy(renderer+0xce8,&old,4);
+  setting=supersample[i]; snap_render_select(&c); memcpy(&result,renderer+0xce8,4);
+  if(result!=0||memcmp(&c,&saved,sizeof c)) return 8;
+ }
+ const char *invalid[]={"75","25","250","garbage"};
  memcpy(before,renderer,sizeof renderer);
  for(int i=0;i<1000;i++) {setting=invalid[i%4]; snap_render_select(&c);}
  if(memcmp(before,renderer,sizeof renderer)||logs!=1) return 4;

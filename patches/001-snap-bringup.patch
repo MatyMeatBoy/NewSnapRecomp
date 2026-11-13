@@ -112,11 +112,12 @@
      if ((int)got != logged) {
 --- a/runtime/cpu.h
 +++ b/runtime/cpu.h
-@@ -30,6 +30,7 @@
+@@ -30,6 +30,8 @@
  _Static_assert(offsetof(Cpu, v) == 512, "v");
  
  typedef void (*GuestFn)(Cpu *);
 +void snap_render_select(Cpu *c); // Verified Snap render graph selection hook.
++void snap_supersample_resize(Cpu *c); // Opt-in engine resize prototype.
  
  // ---- runtime services (runtime/*.c)
  void rt_dispatch(Cpu *c);                 // call function at c->pc
@@ -169,7 +170,7 @@
      {"PERF_OVERLAY", "off", "off|fps|full", LIVE},
      // the size the game renders itself (resolution.c: TotK's output set, or on 1.0.1 the res set, res_pick)
 -    {"OUTPUT_RES", "1920x1080", NULL, RESTART}, {"RENDER_SCALE", "game", "game|50|67|75|100|125|150|200", RESTART},
-+    {"OUTPUT_RES", "1920x1080", NULL, RESTART}, {"RENDER_SCALE", "game", "game|50|60|70|80|90|100", RESTART},
++    {"OUTPUT_RES", "1920x1080", NULL, RESTART}, {"RENDER_SCALE", "game", "game|50|60|70|80|90|100|125|150|200", RESTART},
      {"UPSCALER", "fsr", "fsr|bilinear", LIVE}, {"SHARPNESS", "80", "0..100", LIVE},
      // the scene's temporal upscaler and its mode (vk_dlaa.c taa_pick, resolution.c scene_init), native (DLAA, XeSS or
      // FSR 3 Native AA) first, and the game's anti-aliasing for when none runs. The upscaler is live between what can run
@@ -502,3 +503,60 @@
      // Minus and Plus held together (gamepad or keys) open or close the menu and never reach the game
      static int combo_held, overlay_held;
      int32_t st[4] = {sl[0], sl[1], sr[0], sr[1]};
+--- a/runtime/vk_texture.c
++++ b/runtime/vk_texture.c
+@@ -27,6 +27,7 @@
+ #include "tex.h"
+ #include "vk.h"
+ #include "vk_exec.h"
++#include "snap_output_scale.h"
+ #include "platform/platform.h"
+ 
+ typedef struct {
+@@ -686,6 +687,10 @@
+     }
+     int shadow = shadow_scale_of(d, &f, samples, tex_mirrored(t));
+     float scale = (float)shadow;
++    float output_scale = snap_output_image_scale(d, samples,
++        f.vk == f.ideal && !f.depth && !f.stencil && !f.expand_rgb && !f.astc_bw,
++        c->props.limits.maxImageDimension2D);
++    if (output_scale > 1.0f) scale = output_scale; // DISPLAY only; engine scene targets are untouched
+     w =(uint32_t)lroundf((float)w * scale), h = (uint32_t)lroundf((float)h * scale);
+     uint32_t levels = umax(d->levels, 1), most = 1;
+     for (uint32_t s = umax(umax(w, h), depth); s > 1; s >>= 1) most++;
+@@ -775,6 +780,7 @@
+         VmaAllocationCreateInfo ai = {.usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE};
+         VkResult r = vmaCreateImage(c->vma, &ci, &ai, &img, &e->alloc, NULL);
+         if (r != VK_SUCCESS) {
++            if (output_scale > 1.0f) rt_fatal("snap supersampling allocation failed: %ux%u (Vulkan %d); select render scale 100 or lower and restart", w, h, (int)r);
+             log_limited(&n_failed, "image creation failed (%d): nvn fmt %#x %ux%ux%u target %d levels %u layers %u", (int)r,
+                         d->format, w, h, depth, d->target, levels, layers);
+             free(e);
+@@ -788,7 +794,7 @@
+         own_bytes += e->bytes;
+         static int scaled_logs;
+         if (scale > 1.0f && scaled_logs < 8)   // what an enlarged shadow map costs, beside the pool storage it leaves
+-            scaled_logs++, rt_log("vk: shadow map %ux%u fmt %#x made %ux%u (AC_SHADOW_SCALE): %.1f MiB of its own",
++            scaled_logs++, rt_log("vk: enlarged render image %ux%u fmt %#x made %ux%u: %.1f MiB of its own",
+                                   d->width, d->height, d->format, w, h, (double)mi.size / 1048576.0);
+     }
+     // The recompression accounting of the perf line (vk_texture_new_submit): the scan's cost, the format
+--- a/runtime/vk_exec.c
++++ b/runtime/vk_exec.c
+@@ -27,6 +27,7 @@
+ #include "tex.h"
+ #include "vk.h"
+ #include "vk_exec.h"
++#include "snap_output_scale.h"
+ #include "vk_dlaa.h"
+ 
+ #define WEAK __attribute__((weak))
+@@ -350,7 +351,7 @@
+     }
+     o->image = img->image;
+     o->img = img;
+-    o->scale = img->scale > 0 ? img->scale : 1.0f;
++    o->scale = snap_output_target_scale(&t->d, img->samples, img->scale);
+     o->format = fmt;
+     o->view_type = layers > 1 ? VK_IMAGE_VIEW_TYPE_2D_ARRAY : VK_IMAGE_VIEW_TYPE_2D;
+     o->aspect = depth_slot ? img->aspect & (VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT)
