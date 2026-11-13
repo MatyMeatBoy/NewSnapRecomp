@@ -30,6 +30,22 @@ The intended deliverable remains a playable native New Pokémon Snap recompilati
 
 ## Remaining work
 
+### v0.3 alpha evidence
+
+The fixed native-size replay completed nine minutes and 32,263 presents, captured
+Pikachu and displayed a 2,600 point evaluation, then passed the formerly failing
+font SDK setjmp/longjmp continuation and entered the first route. Seven save files
+changed; the album decoded two real 1080×720 originals and their thumbnails.
+Originals were opened/exported with identical bytes and thumbnail duplicates are
+grouped. A complete course and its in-game photo reload remain unverified.
+
+Controller mapping changes pass real SDL virtual-device/native mapper tests and
+the rebuilt private executable's selftest/loader checks. Physical controller
+models remain unverified. Stable-channel updater code passes private API download
+and exact frozen-package upgrade/repair with preserved owner-data sentinels.
+These updater checks establish the launcher scope independently of the runtime.
+The detailed queue and evidence are in [V03.md](V03.md).
+
 Latest adaptation block (2026-11-13): device timezone conversion now passes the
 240-second tutorial probe (14,177 presents, no unsupported NVN calls, validation
 errors, shader failures or skipped draws). This reaches Pikachu camera training;

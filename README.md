@@ -2,7 +2,13 @@
 
 Work in progress: a native Windows x64 recompilation of **New Pokémon Snap** using the infrastructure of [Astral Chain Recomp](https://github.com/captainj-sparrow/astral-chain-pc-recomp), which builds on [TotK Recomp](https://github.com/valentderah/totk-pc-recomp).
 
-**Status:** the owner's base and update **2.0.1** import with verified integrity. A private Windows x64 executable builds, passes its memory/dispatch and loader checks, accepts a local character/name, commits the initial save and reaches the 3D camera tutorial. A complete course, photo evaluation and photo save/reload remain unverified. Runtime adaptation is in progress; no sustained gameplay FPS or stutter-free result is claimed.
+**Status:** the owner's base and update **2.0.1** import with verified integrity. A private Windows x64 executable builds, passes its memory/dispatch and loader checks, accepts a local character/name and commits the initial save. A nine-minute 1× replay captures/evaluates Pikachu (2,600 points), saves two real photographs and enters the first route. The SDK nonlocal-jump crash found after evaluation is corrected. A complete course and its photo save/reload remain unverified. No sustained gameplay FPS or stutter-free result is claimed.
+
+The **0.3 alpha** adds broader controller mappings, saved-photo reading and
+verified stable-channel updates/repair; see the
+[work board](docs/V03.md), [controllers](docs/CONTROLLERS.md) and
+[updating guide](docs/UPDATING.md). Remaining work is tracked separately from
+the features verified in this alpha.
 
 The upstream is pinned as a submodule. Snap-specific offsets, SDK bindings, shader formats and timing must be verified against Snap; Astral Chain patches are not interchangeable.
 
@@ -40,13 +46,13 @@ The current bring-up exposes an offline network interface; online socket/TLS ser
 
 ## Local launcher
 
-Windows 0.2 alpha includes `NewSnapLauncher.exe`, its dependencies and the
+Windows 0.3 alpha includes `NewSnapLauncher.exe`, its dependencies and the
 original camera icon. Extract the whole Windows release and place your own
 `GameData` (or `newsnapGameData`) folder beside that executable. Python installation
 is not required. The owner-data folder contains the imported assets, locally
 generated native executable, shader inputs and profile; it is never a GitHub
 asset. Keep its runtime compatible with the selected release. See
-[0.2 alpha notes](docs/releases/0.2-alpha.md) for controls and tested limits.
+[0.3 alpha notes](docs/releases/0.3-alpha.md) for controls and tested limits.
 
 From a development checkout:
 
@@ -65,8 +71,8 @@ The album reads explicit exports from the profile's `photos` directory and
 committed photo containers in that profile's save. Refresh is deferred while an
 expedition holds the launcher profile lock. It excludes transaction
 folders and diagnostic screenshots. Parsing was tested with synthetic photos
-and real empty photo-bank headers; extraction of a photograph actually saved
-in-game still needs acceptance testing.
+and real saved tutorial photographs. Two original 1080×720 images were decoded
+and exported byte-identically; slot-matched thumbnails are grouped with originals.
 
 Mouse left-click maps to Snap's A/photo button by default; existing custom
 bindings take precedence. See [input findings](docs/input-findings.md) for the
@@ -88,7 +94,7 @@ The tools can decode the 3,138 shader libraries locally, using the original deco
 .venv\Scripts\python -m newsnap prepare --all
 ```
 
-The local test prepared 3,493 variants in the RTX 4060 driver cache, with zero translation or driver-preparation failures. Two geometry-stage entries are explicitly unsupported by the current backend. Default answers cannot establish coverage for every unseen texture type or pipeline combination. `prepare` without `--all` uses only recorded variants; startup also rebuilds recorded pipelines before guest execution (38 in the tested setup sequence).
+The latest local test prepared 3,520 variants in the RTX 4060 driver cache, with zero translation or driver-preparation failures. Two geometry-stage entries are explicitly unsupported by the current backend. Default answers cannot establish coverage for every unseen texture type or pipeline combination. `prepare` without `--all` uses only recorded variants; startup also rebuilds recorded pipelines before guest execution.
 
 The current local-name mode uses the PC keyboard's length and character validation without Nintendo's profanity dictionary, as requested by the owner. It reaches character/name confirmation without firmware. This intentionally does not provide Nintendo's word filtering. No complete playable route or first-use coverage across the game is verified.
 

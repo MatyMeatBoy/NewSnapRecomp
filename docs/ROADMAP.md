@@ -1,10 +1,28 @@
-# Work after the 0.2 alpha
+# Work after the 0.3 alpha
+
+## Owner targets for v0.4
+
+- FSR 4 with its supported quality presets and automatic compatible model selection,
+  including the official INT8 path for RX 6000/7000. No forced model ID guesses.
+- FSR 3.1 with its own supported presets and a native/spatial fallback.
+- The DLSS Super Resolution integration appropriate to Snap and the detected GPU;
+  availability must follow real provider/driver support and the validated inputs.
+- Update maintenance from the launcher: detect incompatible private runtime or
+  shader/pipeline state, obtain the original build tools when needed, rebuild
+  locally from the owner's existing imports, verify and switch outputs only on
+  success. Keep saves/configuration and the previous usable runtime recoverable.
+  Current 0.3 updates the public launcher and reports private-runtime requirements;
+  automated full private recompilation is not implemented yet.
+
+These are implementation targets, not features included in 0.3. Establish the
+common Snap temporal-input contract before advertising any of the temporal
+backends. SDK/provider detection alone is not a working upscaler.
 
 ## Temporal upscaling with broad GPU coverage
 
 The owner requested integration when feasible, after the standalone-launcher
 release. Investigate the official AMD FSR SDK 2.4 Vulkan path, with capability-
-based selection and a spatial/native alternative. This is not implemented in 0.2.
+based selection and a spatial/native alternative. This is not implemented in 0.3.
 
 AMD's October 28, 2026 announcement documents Vulkan support and INT8 models
 for RX 6000/7000 and selected integrated GPUs:

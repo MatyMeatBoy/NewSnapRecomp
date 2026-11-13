@@ -185,6 +185,15 @@
      // colour adjustment (vk_color.c); the preset is the menu's, the four values are what the present uses
      {"COLOR_PRESET", "default", "default|vivid|clarity|custom", LIVE}, {"COLOR_BRIGHTNESS", "0", "-30..30", LIVE},
      {"COLOR_CONTRAST", "100", "70..150", LIVE}, {"COLOR_SATURATION", "100", "50..200", LIVE},
+@@ -146,7 +146,7 @@
+     {"REALTIME", "1", "0|1", RESTART}, {"CLOTH_REALTIME", "1", "0|1", RESTART},
+     {"MODS_REBUILD", "auto", "auto|off", RESTART},
+     {"HIGHFPS_FIX", "1", "0|1", RESTART},
+-    {"LANG", "", "ja|en-US|fr|de|it|es|zh-CN|ko|nl|pt|ru|zh-TW|en-GB|fr-CA|es-419|zh-Hans|zh-Hant|pt-BR", RESTART},
++    {"LANG", "", "en-US|ja|fr|de|es-419|es|it|fr-CA|ko|zh-Hant|zh-Hans", RESTART},
+     {"OPERATION_MODE", "docked", "docked|handheld", RESTART},
+     {"ASSUME_FOCUS", "1", "0|1", LIVE},   // read on every focus change (ov_system.c)
+     {"HUD", "1", "0|1", LIVE},            // the gameplay HUD is drawn (resolution.c res_hud_tick); F12 switches it
 --- a/runtime/vk_pipeline.c
 +++ b/runtime/vk_pipeline.c
 @@ -2138,7 +2138,7 @@
@@ -207,7 +216,15 @@
  // ---- boot prewarm from the key file (comment at "pipeline keys")
 --- a/runtime/kernel.c
 +++ b/runtime/kernel.c
-@@ -32,7 +32,7 @@
+@@ -14,6 +14,7 @@
+ 
+ #include "cfg.h"
+ #include "host.h"
++#include "snap_jump.h"
+ #include "kernel.h"
+ #include "platform/platform.h"
+ 
+@@ -32,7 +33,7 @@
  #define TLR_SIZE 0x200
  #define THREAD_OBJ_SIZE 0x400            // "current thread object" at TLR+0x1F8 (d2r-mobile thread.c)
  #define TLS_SIZE 0x2000
@@ -216,6 +233,56 @@
  #define MAIN_PRIO 44                     // META+0xE
  #define MAIN_CORE 0                      // META+0xF
  #define FIBER_MAX 1024
+@@ -654,7 +655,7 @@
+ #define DG_LONG_LINES 400
+ #define DG_SAMPLES 600
+ #define DG_OWN 32
+-int kern_host_track;
++int kern_host_track = 1; // Nonlocal guest returns require host-service depth tracking.
+ static int g_diag = -1;
+ typedef struct {
+     uint64_t ns[DG_N], n[DG_N], hist[DG_N][DG_NB];                    // this window
+@@ -1423,6 +1424,7 @@
+         }
+     mem_kernel_free(t->tlr, TLR_SIZE + THREAD_OBJ_SIZE);
+     mem_kernel_free(t->tls, TLS_SIZE);
++    snap_jump_clear(t->cpu);
+     plat_aligned_free(t->cpu);
+     free(t);
+ }
+@@ -1430,6 +1432,8 @@
+ // The end of every guest thread, on its own host context after the unwind: give the core up, signal the thread
+ // object, free it if its handle is already closed. t is not touched after the unlock.
+ static void thread_finish(RtThread *t) {
++    snap_jump_clear(t->cur);
++    if (t->cur != t->cpu) snap_jump_clear(t->cpu);
+     if (t->base_fiber) plat_fiber_unself();
+     t->base_fiber = NULL;
+     tcur = NULL;
+@@ -1668,6 +1672,7 @@
+     case 0x0A: {   // ExitThread
+         RtThread *t = cur(imm);
+         if (t->fiber) {   // on a guest fiber: unwind from the thread's own context (kern_fiber_switch resumes it)
++            snap_jump_clear(t->cur);
+             t->exit_pending = 1;
+             t->leaving = t->fiber;
+             t->fiber = NULL;
+@@ -2203,6 +2208,7 @@
+         g_fibers[i] = f;
+         plat_mutex_unlock(&g_fiber_lock);
+     } else if (f->host) {
++        snap_jump_clear(f->cpu);
+         plat_fiber_free(f->host);
+     }
+     memset(f->cpu, 0, sizeof *f->cpu);
+@@ -2232,6 +2238,7 @@
+     if (!f) rt_fatal("FinalizeFiber(%#llx): not an initialized fiber", (unsigned long long)addr);
+     if (f->running) rt_fatal("FinalizeFiber(%#llx): the fiber is running", (unsigned long long)addr);
+     plat_fiber_free(f->host);
++    snap_jump_clear(f->cpu);
+     plat_aligned_free(f->cpu);
+     free(f);
+ }
 --- a/runtime/frame_rate.c
 +++ b/runtime/frame_rate.c
 @@ -1259,14 +1259,14 @@
@@ -465,6 +532,86 @@
  
  
  def on_path(name):
+--- a/recomp/gen.py
++++ b/recomp/gen.py
+@@ -43,6 +43,7 @@
+ import jumptables  # noqa: E402
+ import patches  # noqa: E402
+ import regs  # noqa: E402
++from snap_jumps import JumpAnalysis  # noqa: E402
+ from check_content import GENERATED_MARKER  # noqa: E402
+ from layout import base_of, layout, romfs_size, write as write_layout  # noqa: E402
+ from lifter import Insn, hx  # noqa: E402
+@@ -219,6 +220,7 @@
+         self.uses_patches = False
+         self.stats = Counter()
+         self.unsupported = Counter()
++        self.snap_jumps = JumpAnalysis(mod, starts)
+ 
+     def scan(self, insns, entry, end):
+         """Labels and jump tables of one function: {pc: sorted targets} for resolved tables, 'all' for an
+@@ -376,6 +378,7 @@
+         mod, starts = self.mod, self.starts
+         insns = [mod.lift(a) for a in range(entry, end, 4)]
+         labels, tables = self.scan(insns, entry, end)
++        jumpinfo = self.snap_jumps.function(insns, entry, end)
+         refs = set()
+         all_labels = 'all' in tables.values()
+         if all_labels:
+@@ -383,7 +386,9 @@
+         # An unresolved computed br re-enters the function through fb_<entry>, a C function of its own, which local
+         # flags would not survive; such functions keep NZCV in c->nzcv.
+         # The same holds for registers in locals (recomp/regs.py): fb_<entry> keeps them in the Cpu too.
+-        local = not all_labels
++        if jumpinfo.saves and all_labels:
++            raise ValueError(f'{entry:#x}: setjmp owner with unresolved redispatch is unsupported')
++        local = not all_labels and not jumpinfo.saves
+         spill, reload, reload_call = (regs.SPILL, regs.RELOAD, regs.RELOAD_CALL) if local else ('', '', '')
+         succ = self.flow(insns, entry, end, tables) if local else None
+         fp = self.flag_plan(insns, entry, end, tables, succ) if local else None
+@@ -426,13 +431,13 @@
+         else:
+             redispatch = f'{MUSTTAIL} rt_dispatch(c);'
+             out = [f'void {fname(entry)}(Cpu *c) {{', f'    FN_ENTER({hx(entry)});']
+-            if fp.used:
++            if fp and fp.used:
+                 out.append('    ' + fp.decl())
+ 
+         def call(t, a):
+             if t in starts:
+                 refs.add(t)
+-                return f'c->x[30] = {hx(a + 4)}; {spill}{fname(t)}(c);{reload_call}'
++                return jumpinfo.call(t, a, spill, reload_call, fname(t))
+             self.stats['external_calls'] += 1
+             return f'c->x[30] = {hx(a + 4)}; {spill}c->pc = {hx(t)}; rt_dispatch(c);{reload_call}'
+ 
+@@ -497,6 +502,8 @@
+                 emit(i, '    ' + call(ins.target, a))
+             elif k == 'blr':
+                 emit(i, f'    c->pc = {ins.target}; c->x[30] = {hx(a + 4)}; {spill}rt_dispatch(c);{reload_call}')
++            elif k == 'br' and jumpinfo.resume_at == a:
++                emit(i, f'    {spill}c->pc = c->x[30]; snap_jump_resume(c);')
+             elif k == 'br':
+                 jt = tables.get(a)
+                 if jt == 'all':
+@@ -535,7 +542,7 @@
+         out.append('}')
+         self.stats['functions'] += 1
+         self.stats['instructions'] += len(insns)
+-        return out, refs
++        return jumpinfo.rewrite(out), refs
+ 
+ 
+ def chunk_text(name, number, emitter, fns):
+@@ -550,7 +557,7 @@
+     protos = ''.join(f'void {fname(r)}(Cpu *c);\n' for r in sorted(refs))
+     if emitter.uses_patches:
+         protos += 'extern uint8_t rt_patch_on[];\n'
+-    return (header(f'{name} chunk {number:04d}') + '#include "cpu.h"\n#include "simd.h"\n\n' + protos + '\n'
++    return (header(f'{name} chunk {number:04d}') + '#include "cpu.h"\n#include "simd.h"\n#include "snap_jump.h"\n\n' + protos + '\n'
+             + '\n\n'.join(body) + '\n')
+ 
+ 
 --- a/runtime/input_map.c
 +++ b/runtime/input_map.c
 @@ -16,7 +16,7 @@

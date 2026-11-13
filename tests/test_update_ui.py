@@ -1,6 +1,7 @@
 import unittest
 import queue
 from types import SimpleNamespace
+import sys
 from pathlib import Path
 from unittest.mock import patch, Mock
 
@@ -9,6 +10,23 @@ from newsnap.version import RUNTIME_API, RUNTIME_CAPABILITIES
 
 
 class RuntimeUpdateStatusTests(unittest.TestCase):
+    def test_private_runtime_mismatch_cannot_block_public_launcher_repair(self):
+        panel = update_ui.UpdatePanel.__new__(update_ui.UpdatePanel)
+        panel.root = None
+        panel.working = False
+        panel.installing = False
+        panel.release = SimpleNamespace(tag_name='v0.3.0-alpha')
+        panel.launcher = SimpleNamespace(busy=False, project=Path('fixture'),
+                                         save_options=Mock(return_value=False), _set_busy=Mock())
+        panel.check, panel.install, panel.status = Mock(), Mock(), Mock()
+        with patch.object(sys, 'frozen', True, create=True), \
+             patch.object(update_ui.settings, 'validate_runtime_data', side_effect=ValueError('old runtime')), \
+             patch.object(update_ui.messagebox, 'askyesno', return_value=True), \
+             patch.object(update_ui.threading, 'Thread'):
+            panel.download()
+        panel.launcher.save_options.assert_not_called()
+        panel.launcher._set_busy.assert_called_once_with(True)
+
     def test_background_check_failure_cannot_release_an_active_game(self):
         panel = update_ui.UpdatePanel.__new__(update_ui.UpdatePanel)
         panel.events = queue.Queue()
