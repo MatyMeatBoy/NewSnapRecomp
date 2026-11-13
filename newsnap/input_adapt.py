@@ -10,7 +10,11 @@ def edits():
         ],
         'runtime/input.c': [
             ('#include "input_wsys.h"',
-             '#include "input_wsys.h"\n#include "snap_input_trace.h"'),
+             '#include "input_wsys.h"\n#include "snap_input_trace.h"\n#include "snap_controller_db.h"'),
+            ('    if (state == 1) test_pad_attach();',
+             '    if (state == 1) snap_controller_db_load();\n    if (state == 1) test_pad_attach();'),
+            ('    SDL_UpdateGamepads();\n    int n = 0, kind = PAD_KIND_NONE;',
+             '    snap_controller_db_load();\n    SDL_UpdateGamepads();\n    int n = 0, kind = PAD_KIND_NONE;'),
             ('            input_mouse_stick(dx, dy, dt, mouse_sens_get(), held);',
              '''            input_mouse_stick(dx, dy, dt, mouse_sens_get(), held);
             snap_input_trace(0, fr, dx, dy, held[0], held[1], 0);'''),
