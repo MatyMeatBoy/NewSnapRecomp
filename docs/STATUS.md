@@ -30,6 +30,17 @@ The intended deliverable remains a playable native New Pokémon Snap recompilati
 
 ## Remaining work
 
+Latest adaptation block (2026-11-13): device timezone conversion now passes the
+240-second tutorial probe (14,177 presents, no unsupported NVN calls, validation
+errors, shader failures or skipped draws). This reaches Pikachu camera training;
+it does not establish a complete route or photographic evaluation. The launcher
+adds detailed video settings, original icons and a bounded read-only album.
+Photo extraction has synthetic-image and real empty-bank coverage only. Album
+refresh and expeditions share a profile lock; menu restarts preserve that lock
+through an explicit parent-supervised protocol. Snap-native render levels have
+initial 3D GPU evidence in [VIDEO_COMPATIBILITY.md](VIDEO_COMPATIBILITY.md).
+Higher frame rates remain an investigation in [HIGH_FPS.md](HIGH_FPS.md).
+
 - Verify title, initial setup and a complete playable route, including identifying/evaluating photographed Pokémon.
 - Validate close/restart during actual protected work. OE enter/leave now maintain nested host exit sections; window closure defers until holders leave, then blocks new sections through the final save flush. Native fixtures cover nesting, deferred closure and underflow; real concurrent closure remains untested. Independent review found no confirmed defects in these additions.
 - Check remaining SDK/NVN paths and save/reload behavior; online network services currently report unavailable.

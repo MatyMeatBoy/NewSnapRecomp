@@ -1,15 +1,37 @@
 """Check exactly the Git index that would be committed; never print file contents."""
 import re
 import subprocess
+import hashlib
 from pathlib import PurePosixPath
 
 PRIVATE = {'.nsp', '.nsz', '.xci', '.xcz', '.nca', '.ncz', '.tik', '.cert', '.keys', '.nso', '.npdm',
            '.exe', '.dll', '.o', '.obj', '.spv', '.drp', '.wem', '.bin', '.pkz', '.bnsh', '.bntx'}
 SECRET = re.compile(rb'^\s*(?:header_key|master_key_[0-9a-f]+|titlekek_[0-9a-f]+|key_area_key_\w+)\s*=\s*[0-9a-f]{32,}', re.I | re.M)
 
+# Exact, visually reviewed original camera artwork from tools/generate_icons.py.
+# This exception cannot admit arbitrary renamed game images or binary payloads.
+ORIGINAL_ICONS = {
+    'apple-touch-icon.png': 'fbde1c7d137599a574e9de8d8d9be0b27ecca0450a6dbaba26387195dde4876d',
+    'favicon.ico': '00da948498500aa7a365313513804c6d8d3dc02d13d9267ab3ffa3a3c6dd5abf',
+    'icon-128.png': '3344c750cf94b663aba56c8878c472f04a9650fd4a69ee42334f0e4d6ac5a413',
+    'icon-16.png': 'b5e62f52a95e369b2d4e960f5586ce9e72c1b212bc6b13a93d89d88f9d39629f',
+    'icon-192.png': '119953d0559399b9b89d31638a215084d47e3be3d4d72e04efbe85c3c1b20218',
+    'icon-24.png': '270fde986834ce6472506d639f4cd8ee8f2616b57a6ffc034a160e5c864c119a',
+    'icon-256.png': 'be827510590560b75c05ba0d9a64db24b4fbd73603eaa6bd7a1345787b8f4052',
+    'icon-32.png': 'a91a7051e0bac2707f5b1e9b8db7c96b79527402b90dbc0afa0d5b383abead64',
+    'icon-48.png': '2372efb5efd360ade5935fa6dd7a4fa2c49dac6af0f69804a0aa2a1ef0e66101',
+    'icon-512.png': 'a61975dc6599006c987dc3eafba37a19999ebf608fbc27c329bbb2893413d37d',
+    'icon-64.png': '109ac80809066b3f90f9cc43b0e30ca302ad4398709acbc4d99ed7e900ba3590',
+    'newsnap.ico': '3227fe55b20943bf7023b9e16ccb235ac6c5f5aaf20030f56e62b5e871053b70',
+}
+
 
 def violations(path, content, mode='100644'):
     p = PurePosixPath(path)
+    if p.parent == PurePosixPath('assets/icons') and p.name in ORIGINAL_ICONS:
+        if hashlib.sha256(content).hexdigest() == ORIGINAL_ICONS[p.name]:
+            return []
+        return ['original icon changed; review and regenerate its approved hash']
     errors = []
     if mode == '160000':
         return [] if path == 'third_party/astral' else ['unapproved submodule']

@@ -28,6 +28,14 @@ Witch Time was consulted as a research reference; no Witch Time source is copied
 The complete notice is in `licenses/NewSnap-ISC.txt`. The reader indexes metadata
 without distributing or invoking the proprietary Oodle DLL.
 
+`newsnap/saves.py` also follows that project's photo-container format. Save
+decryption material is reconstructed locally from the owner's verified code;
+no game keys or images are included in this repository.
+
+The launcher and original icon generator use [Pillow](https://python-pillow.github.io/),
+distributed under the HPND license. Pillow's package retains its license and
+dependency notices. Icon artwork in `assets/icons` is original to this project.
+
 The NACP field layout was checked against switchbrew/libnx `nx/include/switch/nacp.h`.
 
 `newsnap/nushdb.py` follows the SSBH shader-library layout documented in

@@ -7,6 +7,7 @@ import shutil
 from pathlib import Path
 
 from .upstream import ROOT, UPSTREAM
+from .input_adapt import edits as input_edits
 
 
 def replace_once(text, before, after):
@@ -48,9 +49,30 @@ def adapt_sources(destination, *, patch_output=None):
         return;'''),
         ],
         'runtime/gfx_present.c': [
+            ('if (restart) {\n        plat_setenv("AC_REEXEC", NULL);',
+             'if (restart) {\n        const char *launcher = getenv("NEWSNAP_LAUNCHER");\n        if (launcher && !strcmp(launcher, "1")) plat_exit(75); // Parent keeps profile lock across restart.\n        plat_setenv("AC_REEXEC", NULL);'),
+            (': !strcmp(e, "immediate") ? VK_PRESENT_MODE_IMMEDIATE_KHR : VK_PRESENT_MODE_FIFO_KHR;',
+             ': !strcmp(e, "immediate") ? VK_PRESENT_MODE_IMMEDIATE_KHR\n                          : !strcmp(e, "fifo_relaxed") ? VK_PRESENT_MODE_FIFO_RELAXED_KHR : VK_PRESENT_MODE_FIFO_KHR;'),
+            ('got == VK_PRESENT_MODE_IMMEDIATE_KHR ? "immediate" : "fifo";',
+             'got == VK_PRESENT_MODE_IMMEDIATE_KHR ? "immediate" : got == VK_PRESENT_MODE_FIFO_RELAXED_KHR ? "fifo_relaxed" : "fifo";'),
             ('void gfx_window_closed(void) {', '''void gfx_window_closed(void) {
     extern int snap_exit_begin_close(void);
     if (!snap_exit_begin_close()) return;'''),
+        ],
+        'runtime/cpu.h': [
+            ('typedef void (*GuestFn)(Cpu *);', 'typedef void (*GuestFn)(Cpu *);\nvoid snap_render_select(Cpu *c); // Verified Snap render graph selection hook.'),
+        ],
+        'runtime/ov_system.c': [
+            ('static void location_name(char out[0x24])', 'void ov_time_location(char out[0x24])'),
+            ('location_name(n.location);', 'ov_time_location(n.location);'),
+            ('static void ov_to_calendar(Cpu *c)', 'void ov_time_calendar(Cpu *c)'),
+            ('              ov_to_calendar);', '              ov_time_calendar);'),
+        ],
+        'runtime/cfg.c': [
+            ('{"ANISO", "auto", "auto|game|2|4|8|16", RESTART}', '{"ANISO", "game", "game|2|4|8|16", RESTART}'),
+            ('{"ASPECT", "wide", "fit|stretch|wide", LIVE}', '{"ASPECT", "fit", "fit|stretch", LIVE}'),
+            ('"game|50|67|75|100|125|150|200"', '"game|50|60|70|80|90|100"'),
+            ('"mailbox|fifo|immediate"', '"mailbox|fifo|fifo_relaxed|immediate"'),
         ],
         'runtime/vk_pipeline.c': [
             ('int vk_pipeline_async_on(void) { return A.on; }', 'int vk_pipeline_async_on(void) { return A.on && !rt_config()->shot; }'),
@@ -61,6 +83,9 @@ def adapt_sources(destination, *, patch_output=None):
         ],
         'runtime/frame_rate.c': [
             ('int on = hz >= 60;', 'int on = hz >= 60 && rt_patch_set("fps60") >= 0; // Snap has no inherited timing patch.'),
+            ('if (on == fps60_on && fps_hz) return;', 'if (on == fps60_on && fps_hz == (hz >= 60 ? 60 : 30)) return;'),
+            ('fps_hz = on ? 60 : 30;', 'fps_hz = hz >= 60 ? 60 : 30; // Presentation cap is independent of game timing patches.'),
+            ('on ? " (60 fps patch)" : " (30 fps)"', 'on ? " (60 fps patch)" : " cap (native game timing)"'),
             ('if (!fps60_on) return;\n    uintptr_t base', 'if (!fps60_on || rt_patch_set("fps60") < 0) return;\n    uintptr_t base'),
         ],
         'runtime/nvn_api_core.c': [
@@ -74,6 +99,9 @@ def adapt_sources(destination, *, patch_output=None):
             ('NVN_PROC(nvnDeviceInitialize)', 'NVN_PROC(nvnSetExternalDebuggerEnabledNVX)\nNVN_PROC(nvnDeviceInitialize)'),
         ],
         'runtime/nvn_api_obj.c': [
+            ('return ticks * 1000000000ull / VSYNC_HZ;', '''uint64_t native_period = ticks * 1000000000ull / VSYNC_HZ;
+    uint64_t cap_period = frame_step_cap_ns();
+    return native_period > cap_period ? native_period : cap_period;'''),
             ('if (o->serial) gfx_backend()->program_release(o);', '''if (o->serial) gfx_backend()->program_release(o);
     free(o->control_copy);
     o->control_copy = NULL;'''),
@@ -166,6 +194,8 @@ def adapt_sources(destination, *, patch_output=None):
             ("EXE = 'astralchain.exe' if WIN else 'astralchain'", "EXE = 'newsnap.exe' if WIN else 'newsnap'"),
         ],
     }
+    for name, changes in input_edits().items():
+        edits.setdefault(name, []).extend(changes)
     for folder in ('runtime', 'recomp', 'tools'):
         for src in (UPSTREAM / folder).rglob('*'):
             relative = src.relative_to(UPSTREAM)

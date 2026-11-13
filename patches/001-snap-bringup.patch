@@ -74,7 +74,7 @@
      case 1016:   // FlushAccessLogOnSdCard
 --- a/runtime/gfx_present.c
 +++ b/runtime/gfx_present.c
-@@ -82,6 +82,8 @@
+@@ -82,12 +82,16 @@
  // (plat_restart), and the new process waits until this one is gone (main.c) before it moves the log and opens the
  // RomFS and the saves.
  void gfx_window_closed(void) {
@@ -83,6 +83,107 @@
      int restart = plat_cas32(&g_restart, 0, 0) != 0;
      rt_log("gfx: window closed; %s", restart ? "restarting" : "exiting");
      fs_save_flush();
+     vk_pipeline_save();
+     prof_write();   // plat_exit runs no atexit handlers
+     if (restart) {
++        const char *launcher = getenv("NEWSNAP_LAUNCHER");
++        if (launcher && !strcmp(launcher, "1")) plat_exit(75); // Parent keeps profile lock across restart.
+         plat_setenv("AC_REEXEC", NULL);   // the new process counts its own address-space retries (memory.c)
+         if (!plat_restart()) rt_log("gfx: the restart could not start the game again");
+     }
+@@ -266,7 +270,8 @@
+ static VkPresentModeKHR pick_present_mode(VkPhysicalDevice pd) {
+     const char *e = cfg_value("AC_VK_PRESENT");
+     VkPresentModeKHR want = !strcmp(e, "mailbox") ? VK_PRESENT_MODE_MAILBOX_KHR
+-                          : !strcmp(e, "immediate") ? VK_PRESENT_MODE_IMMEDIATE_KHR : VK_PRESENT_MODE_FIFO_KHR;
++                          : !strcmp(e, "immediate") ? VK_PRESENT_MODE_IMMEDIATE_KHR
++                          : !strcmp(e, "fifo_relaxed") ? VK_PRESENT_MODE_FIFO_RELAXED_KHR : VK_PRESENT_MODE_FIFO_KHR;
+     uint32_t n = 0;
+     vkGetPhysicalDeviceSurfacePresentModesKHR(pd, g_surface, &n, NULL);
+     VkPresentModeKHR m[16];
+@@ -274,7 +279,7 @@
+     vkGetPhysicalDeviceSurfacePresentModesKHR(pd, g_surface, &n, m);
+     VkPresentModeKHR got = VK_PRESENT_MODE_FIFO_KHR;
+     for (uint32_t i = 0; i < n; i++) if (m[i] == want) got = want;
+-    const char *name = got == VK_PRESENT_MODE_MAILBOX_KHR ? "mailbox" : got == VK_PRESENT_MODE_IMMEDIATE_KHR ? "immediate" : "fifo";
++    const char *name = got == VK_PRESENT_MODE_MAILBOX_KHR ? "mailbox" : got == VK_PRESENT_MODE_IMMEDIATE_KHR ? "immediate" : got == VK_PRESENT_MODE_FIFO_RELAXED_KHR ? "fifo_relaxed" : "fifo";
+     __atomic_store_n(&g_present_got, name, __ATOMIC_RELEASE);
+     static int logged = -1;   // the mode last logged: a change from the menu shows in the log
+     if ((int)got != logged) {
+--- a/runtime/cpu.h
++++ b/runtime/cpu.h
+@@ -30,6 +30,7 @@
+ _Static_assert(offsetof(Cpu, v) == 512, "v");
+ 
+ typedef void (*GuestFn)(Cpu *);
++void snap_render_select(Cpu *c); // Verified Snap render graph selection hook.
+ 
+ // ---- runtime services (runtime/*.c)
+ void rt_dispatch(Cpu *c);                 // call function at c->pc
+--- a/runtime/ov_system.c
++++ b/runtime/ov_system.c
+@@ -681,7 +681,7 @@
+ }
+ 
+ // IANA name of the standard offset: Etc/GMT+5 is UTC-5 (POSIX sign); "UTC" for a zone off whole hours.
+-static void location_name(char out[0x24]) {
++void ov_time_location(char out[0x24]) {
+     long west = plat_tz_west();
+     memset(out, 0, 0x24);
+     if (!west || west % 3600) snprintf(out, 0x24, "UTC");
+@@ -709,7 +709,7 @@
+ static void ov_steady_now(Cpu *c) { ret_x(c, (uint64_t)steady_now().value); }
+ 
+ // Result ToCalendarTime(CalendarTime *out, CalendarAdditionalInfo *info, const PosixTime &t): local time
+-static void ov_to_calendar(Cpu *c) {
++void ov_time_calendar(Cpu *c) {
+     CalendarTime *out = arg_p(c, 0);
+     CalendarInfo *info = arg_p(c, 1);
+     const int64_t *t = arg_p(c, 2);
+@@ -763,7 +763,7 @@
+     n.network_calendar = n.user_calendar;
+     n.network_info = n.user_info;
+     n.steady = steady;
+-    location_name(n.location);
++    ov_time_location(n.location);
+     n.automatic_correction = 1;
+     *s = n;
+     ret_x(c, 0);
+@@ -981,7 +981,7 @@
+ HOST_OVERRIDE("_ZN2nn4time26StandardNetworkSystemClock14GetCurrentTimeEPNS0_9PosixTimeE", ov_current_time);
+ HOST_OVERRIDE("_ZN2nn4time19StandardSteadyClock3nowEv", ov_steady_now);
+ HOST_OVERRIDE("_ZN2nn4time14ToCalendarTimeEPNS0_12CalendarTimeEPNS0_22CalendarAdditionalInfoERKNS0_9PosixTimeE",
+-              ov_to_calendar);
++              ov_time_calendar);
+ HOST_OVERRIDE("_ZN2nn4time19ToCalendarTimeInUtcERKNS0_9PosixTimeE", ov_to_calendar_utc);
+ HOST_OVERRIDE("_ZN2nn4time18ToPosixTimeFromUtcERKNS0_12CalendarTimeE", ov_to_posix_utc);
+ HOST_OVERRIDE("_ZN2nn4time13ClockSnapshotC1Ev", ov_snapshot_init);
+--- a/runtime/cfg.c
++++ b/runtime/cfg.c
+@@ -113,10 +113,10 @@
+ static const CfgMeta metas[] = {
+     // Screen
+     {"FULLSCREEN", "1", "0|1", LIVE}, {"WINDOW_SIZE", "1920x1080", NULL, LIVE},
+-    {"VK_PRESENT", "mailbox", "mailbox|fifo|immediate", LIVE}, {"GPU_INDEX", "", NULL, RESTART},
++    {"VK_PRESENT", "mailbox", "mailbox|fifo|fifo_relaxed|immediate", LIVE}, {"GPU_INDEX", "", NULL, RESTART},
+     {"PERF_OVERLAY", "off", "off|fps|full", LIVE},
+     // the size the game renders itself (resolution.c: TotK's output set, or on 1.0.1 the res set, res_pick)
+-    {"OUTPUT_RES", "1920x1080", NULL, RESTART}, {"RENDER_SCALE", "game", "game|50|67|75|100|125|150|200", RESTART},
++    {"OUTPUT_RES", "1920x1080", NULL, RESTART}, {"RENDER_SCALE", "game", "game|50|60|70|80|90|100", RESTART},
+     {"UPSCALER", "fsr", "fsr|bilinear", LIVE}, {"SHARPNESS", "80", "0..100", LIVE},
+     // the scene's temporal upscaler and its mode (vk_dlaa.c taa_pick, resolution.c scene_init), native (DLAA, XeSS or
+     // FSR 3 Native AA) first, and the game's anti-aliasing for when none runs. The upscaler is live between what can run
+@@ -125,8 +125,8 @@
+     {"UPSCALING", "off", "off|auto|dlss|xess|fsr3", LIVE},
+     {"UPSCALING_QUALITY", "native", "native|quality|balanced|performance|ultra_performance", RESTART},
+     {"ANTI_ALIASING", "smaa", "off|smaa", LIVE},
+-    {"ASPECT", "wide", "fit|stretch|wide", LIVE}, {"FOV", "100", "70..140", LIVE},
+-    {"ANISO", "auto", "auto|game|2|4|8|16", RESTART},   // vk_texture.c sampler_features
++    {"ASPECT", "fit", "fit|stretch", LIVE}, {"FOV", "100", "70..140", LIVE},
++    {"ANISO", "game", "game|2|4|8|16", RESTART},   // vk_texture.c sampler_features
+     // colour adjustment (vk_color.c); the preset is the menu's, the four values are what the present uses
+     {"COLOR_PRESET", "default", "default|vivid|clarity|custom", LIVE}, {"COLOR_BRIGHTNESS", "0", "-30..30", LIVE},
+     {"COLOR_CONTRAST", "100", "70..150", LIVE}, {"COLOR_SATURATION", "100", "50..200", LIVE},
 --- a/runtime/vk_pipeline.c
 +++ b/runtime/vk_pipeline.c
 @@ -2138,7 +2138,7 @@
@@ -116,15 +217,25 @@
  #define FIBER_MAX 1024
 --- a/runtime/frame_rate.c
 +++ b/runtime/frame_rate.c
-@@ -1259,7 +1259,7 @@
+@@ -1259,14 +1259,14 @@
          rt_log("frame rate: test freeze of %u ms, the sound with it, in a cutscene frame every %u ms", fm, fe);
      freeze_ms = fm, freeze_every_ms = fe;
      int hz = cfg_int("AC_FPS");
 -    int on = hz >= 60;
+-    if (on == fps60_on && fps_hz) return;
 +    int on = hz >= 60 && rt_patch_set("fps60") >= 0; // Snap has no inherited timing patch.
-     if (on == fps60_on && fps_hz) return;
++    if (on == fps60_on && fps_hz == (hz >= 60 ? 60 : 30)) return;
      fps60_on = on;
      // the timer does not run at 30: it ends the cutscene run it was in and starts anew at its next call (rt_fps_timer)
+     atomic_fetch_add_explicit(&fps_switches, 1, memory_order_relaxed);
+-    fps_hz = on ? 60 : 30;
++    fps_hz = hz >= 60 ? 60 : 30; // Presentation cap is independent of game timing patches.
+     rt_patch_switch(rt_patch_set("fps60"), on);
+-    rt_log("frame rate: %d fps%s", fps_hz, on ? " (60 fps patch)" : " (30 fps)");
++    rt_log("frame rate: %d fps%s", fps_hz, on ? " (60 fps patch)" : " cap (native game timing)");
+ }
+ 
+ uint64_t frame_step_cap_ns(void) {
 @@ -1291,7 +1291,7 @@
  int frame_step_cutscene(void) { return fps60_on && in_cutscene && !cut60_now; }
  
@@ -197,6 +308,17 @@
      o->serial = nvn_new_serial();
      NVN_LOG("ProgramSetShaders %p n=%d data0=%#llx", (void *)o, n, n ? (unsigned long long)sd[0].data : 0ull);
      return 1;
+@@ -649,7 +663,9 @@
+     uint64_t ticks = o->interval > 0 ? (uint64_t)o->interval : 1ull;
+     // the 60 fps patch drops the game's own wait (frame_rate.c); a held cutscene far behind is let go to catch up
+     if (frame_step_cutscene() && !frame_step_rush() && ticks < 2) ticks = 2;
+-    return ticks * 1000000000ull / VSYNC_HZ;
++    uint64_t native_period = ticks * 1000000000ull / VSYNC_HZ;
++    uint64_t cap_period = frame_step_cap_ns();
++    return native_period > cap_period ? native_period : cap_period;
+ }
+ 
+ // MacNativeGames nvn_pace.h: the present slot is the previous slot plus one period. Early: wait for the slot. Late by
 --- a/runtime/nvn_obj.h
 +++ b/runtime/nvn_obj.h
 @@ -67,7 +67,7 @@
@@ -342,3 +464,41 @@
  
  
  def on_path(name):
+--- a/runtime/input_map.c
++++ b/runtime/input_map.c
+@@ -16,7 +16,7 @@
+ #define DEFAULT_KEYS \
+     {KEY_W, B_SL_UP}, {KEY_A, B_SL_LEFT}, {KEY_S, B_SL_DOWN}, {KEY_D, B_SL_RIGHT},                  /* move */ \
+     {KEY_UP, B_SR_UP}, {KEY_LEFT, B_SR_LEFT}, {KEY_DOWN, B_SR_DOWN}, {KEY_RIGHT, B_SR_RIGHT},       /* camera, second source */ \
+-    {KEY_MOUSE_L, B_Y}, {KEY_MOUSE_R, B_ZL}, {KEY_Z, B_ZL}, {KEY_F, B_ZR}, {KEY_X, B_ZR}, \
++    {KEY_MOUSE_L, B_A}, {KEY_MOUSE_R, B_ZL}, {KEY_Z, B_ZL}, {KEY_F, B_ZR}, {KEY_X, B_ZR}, \
+     {KEY_SPACE, B_X}, {KEY_LSHIFT, B_B}, {KEY_E, B_A}, {KEY_Q, B_L}, {KEY_R, B_R}, \
+     {KEY_LCTRL, B_STICK_L}, {KEY_C, B_STICK_R}, \
+     {KEY_1, B_LEFT}, {KEY_2, B_UP}, {KEY_3, B_RIGHT}, {KEY_4, B_DOWN}, \
+--- a/runtime/input.c
++++ b/runtime/input.c
+@@ -18,6 +18,7 @@
+ #include "input.h"
+ #include "input_map.h"
+ #include "input_wsys.h"
++#include "snap_input_trace.h"
+ #include "nvn_api.h"
+ #include "ui/menu.h"
+ #include "vk.h"
+@@ -304,6 +305,7 @@
+             double dt = age < 0.004 ? 0.004 : age > 0.1 ? 0.1 : age;
+             ikb_mouse_take(&dx, &dy);
+             input_mouse_stick(dx, dy, dt, mouse_sens_get(), held);
++            snap_input_trace(0, fr, dx, dy, held[0], held[1], 0);
+             frame = fr;
+             t0 = now;
+         } else if (age > 0.1) {
+@@ -586,6 +588,8 @@
+     }
+     script_apply(&b, sl, sr);
+     rec_apply(b, sl, sr);
++    snap_input_trace(1, __atomic_load_n(&gfx_counters.frames, __ATOMIC_RELAXED),
++                     sl[0], sl[1], sr[0], sr[1], b);
+     // Minus and Plus held together (gamepad or keys) open or close the menu and never reach the game
+     static int combo_held, overlay_held;
+     int32_t st[4] = {sl[0], sl[1], sr[0], sr[1]};

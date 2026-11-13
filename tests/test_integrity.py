@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from newsnap.provenance import record_generation, verify_generation, verify_import
+from newsnap.provenance import generation_recipe, record_generation, verify_generation, verify_import
 from newsnap.importer import write_json, source_digest, read_control_metadata
 
 
@@ -22,6 +22,24 @@ def control_fixture(folder):
 
 
 class ProvenanceTests(unittest.TestCase):
+    def test_changed_instruction_patch_invalidates_generation(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / 'recomp').mkdir()
+            (root / 'tools').mkdir()
+            (root / 'recomp/gen.py').write_text('# synthetic generator')
+            patch = root / 'snap.txt'
+            patch.write_text('original verified patch')
+            generated = root / 'generated'
+            generated.mkdir()
+            (generated / 'layout.json').write_text('[]')
+            recipe = generation_recipe(root, {'files': []}, patch)
+            record_generation(generated, recipe)
+            verify_generation(generated, recipe)
+            patch.write_text('different patch at the same path')
+            with self.assertRaises(ValueError):
+                verify_generation(generated, generation_recipe(root, {'files': []}, patch))
+
     def test_modified_metadata_is_rederived_from_verified_control(self):
         with tempfile.TemporaryDirectory() as temporary:
             folder = Path(temporary)

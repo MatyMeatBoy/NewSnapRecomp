@@ -31,6 +31,7 @@ def main():
     prep.add_argument('--all', action='store_true', help='include decoded library defaults; unseen variants remain unverified')
     unpack = commands.add_parser('unpack-shaders', help='decode shader archives with your own game executable')
     unpack.add_argument('--limit', type=int, default=0, help='limit to a diagnostic sample; 0 indexes all shaders')
+    commands.add_parser('launcher', help='open the desktop launcher and local photo album')
     args = parser.parse_args()
     try:
         if args.command == 'import':
@@ -44,6 +45,9 @@ def main():
             prepare_observed(args.build_dir, args.all)
         elif args.command == 'unpack-shaders':
             unpack_shaders(args.limit)
+        elif args.command == 'launcher':
+            from .launcher import main as launcher_main
+            launcher_main()
     except (OSError, ValueError) as error:
         parser.exit(1, f'NewSnapRecomp: {error}\n')
 

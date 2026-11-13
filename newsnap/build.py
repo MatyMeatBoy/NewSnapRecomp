@@ -39,11 +39,16 @@ def build(sdk_root, shader_tools=None, jobs=0, generate=True, cpu='v3'):
     manifest, control = verify_import(extracted)
     expected = ROOT / 'build/expected-snap.json'
     write_json(expected, {'exefs_sha256': {f['name']: f['sha256'] for f in manifest['files']}})
+    profile = json.loads((ROOT / 'profiles/snap-2.0.1.json').read_text(encoding='utf-8'))
+    main_hash = next(f['sha256'] for f in manifest['files'] if f['name'] == 'main')
+    patches = ROOT / 'patches/snap-2.0.1-render.txt'
+    if main_hash != profile['main_sha256']:
+        raise ValueError('This runtime adaptation requires the verified Snap 2.0.1 code module')
     gen = ROOT / 'generated/updated'
-    recipe = generation_recipe(source, manifest)
+    recipe = generation_recipe(source, manifest, patches)
     if generate:
         command = [sys.executable, source / 'recomp/gen.py', '--exefs', extracted / 'exefs',
-                   '--out', gen, '--version', 'snap']
+                   '--out', gen, '--version', 'snap', '--patches', patches]
         if jobs:
             command += ['--jobs', str(jobs)]
         run_logged(command, ROOT / 'build/logs/generate.log')
@@ -51,8 +56,6 @@ def build(sdk_root, shader_tools=None, jobs=0, generate=True, cpu='v3'):
     else:
         verify_generation(gen, recipe)
     out = ROOT / 'build/updated'
-    profile = json.loads((ROOT / 'profiles/snap-2.0.1.json').read_text(encoding='utf-8'))
-    main_hash = next(f['sha256'] for f in manifest['files'] if f['name'] == 'main')
     decoder = profile['oodle_decompress_offset'] if main_hash == profile['main_sha256'] else 0
     write_changed(out / 'snap_metadata.h', '#pragma once\n'
                   f'#define SNAP_SAVE_SIZE {control["save_size"]}ull\n'

@@ -1,0 +1,8 @@
+# Exact Snap 2.0.1 main build ddb900ff04a912ed42430508389853cfaf1accce.
+# Nso SHA256 ef20d6317d909bde106fec0958b58ccfdf4c46f36d9fa5ef8785ce54fff75443.
+# Native renderer level 0..5 selects existing resource and graph families.
+# Entry x0 is renderer; +ce8 = level; +cec = mode (0 docked, 1 handheld).
+# Helper preserves all Cpu state. Replay original ldr w8,[x0,#0xce8].
+# Enabled by default; AC_RENDER_SCALE=game is a strict no-op.
+set snap_render AC_SNAP_RENDER_PATCH 1
+site snap_render main 5cc0b0 b94ce808 @fn:snap_render_select b94ce808

@@ -2,7 +2,7 @@
 
 Work in progress: a native Windows x64 recompilation of **New Pokémon Snap** using the infrastructure of [Astral Chain Recomp](https://github.com/captainj-sparrow/astral-chain-pc-recomp), which builds on [TotK Recomp](https://github.com/valentderah/totk-pc-recomp).
 
-**Status:** the owner's base and update **2.0.1** import with verified integrity. A private Windows x64 executable builds, passes its memory/dispatch and loader checks, accepts a local character/name, commits the initial save and reaches the rendered title scene. Runtime adaptation is in progress. This is **not yet a verified playable port**; no gameplay FPS or stutter-free result is claimed.
+**Status:** the owner's base and update **2.0.1** import with verified integrity. A private Windows x64 executable builds, passes its memory/dispatch and loader checks, accepts a local character/name, commits the initial save and reaches the 3D camera tutorial. A complete course, photo evaluation and photo save/reload remain unverified. Runtime adaptation is in progress; no sustained gameplay FPS or stutter-free result is claimed.
 
 The upstream is pinned as a submodule. Snap-specific offsets, SDK bindings, shader formats and timing must be verified against Snap; Astral Chain patches are not interchangeable.
 
@@ -38,6 +38,37 @@ The executable and all game-derived C stay local. The build verifies the importe
 
 The current bring-up exposes an offline network interface; online socket/TLS services report unavailable. Native game timing is retained: none of Astral Chain's instruction or FPS patches are applied.
 
+## Local launcher
+
+```powershell
+.venv\Scripts\python -m newsnap launcher
+```
+
+The Spanish launcher provides profile selection, shader preparation, video and
+input settings, and a read-only photo album with export. Settings apply on the
+next game launch. Unrelated INI settings and changes made through the runtime
+menu are preserved. Window size, native docked/handheld output, internal render
+scale and final presentation scaling are separate controls; see
+[video compatibility](docs/VIDEO_COMPATIBILITY.md) for their limits.
+
+The album reads explicit exports from the profile's `photos` directory and
+committed photo containers in that profile's save. Refresh is deferred while an
+expedition holds the launcher profile lock. It excludes transaction
+folders and diagnostic screenshots. Parsing was tested with synthetic photos
+and real empty photo-bank headers; extraction of a photograph actually saved
+in-game still needs acceptance testing.
+
+Mouse left-click maps to Snap's A/photo button by default; existing custom
+bindings take precedence. See [input findings](docs/input-findings.md) for the
+distinction between the game's free aim and an input drift defect.
+
+The 30/60 presentation cap is independent of donor timing patches. Rates above
+60 remain under [investigation](docs/HIGH_FPS.md): a timer candidate has fixed
+1/60 modes whose active consumers have not yet been identified.
+
+Snap's own render-level patch is bound to the verified 2.0.1 module and original
+instruction. The patch table is part of generation provenance.
+
 ## Shader preparation and performance
 
 The tools can decode the 3,138 shader libraries locally, using the original decoder in your verified executable. No proprietary decoder is included. To prepare their supported stages with default texture answers plus recorded variants:
@@ -49,7 +80,7 @@ The tools can decode the 3,138 shader libraries locally, using the original deco
 
 The local test prepared 3,493 variants in the RTX 4060 driver cache, with zero translation or driver-preparation failures. Two geometry-stage entries are explicitly unsupported by the current backend. Default answers cannot establish coverage for every unseen texture type or pipeline combination. `prepare` without `--all` uses only recorded variants; startup also rebuilds recorded pipelines before guest execution (38 in the tested setup sequence).
 
-The current local-name mode uses the PC keyboard's length and character validation without Nintendo's profanity dictionary, as requested by the owner. It reaches character/name confirmation without firmware. This intentionally does not provide Nintendo's word filtering. No playable route or first-use coverage across the game is verified.
+The current local-name mode uses the PC keyboard's length and character validation without Nintendo's profanity dictionary, as requested by the owner. It reaches character/name confirmation without firmware. This intentionally does not provide Nintendo's word filtering. No complete playable route or first-use coverage across the game is verified.
 
 The selected base already includes release 1.14.0 and matches upstream `main` at the latest check. See [feature compatibility](docs/UPSTREAM.md) for what is inherited, what has been exercised and what needs Snap-specific adaptation.
 

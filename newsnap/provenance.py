@@ -32,11 +32,12 @@ def verify_import(extracted):
     return manifests['updated'], read_control_metadata(control)
 
 
-def generation_recipe(source, manifest):
+def generation_recipe(source, manifest, patches=None):
     files = sorted((source / 'recomp').rglob('*.py')) + sorted((source / 'tools').glob('*.py'))
     return {'exefs': {f['name']: f['sha256'] for f in manifest['files']},
             'generator': {p.relative_to(source).as_posix(): source_digest(p) for p in files},
-            'version': 'snap', 'modules': 'main,sdk', 'patches': None}
+            'version': 'snap', 'modules': 'main,sdk',
+            'patches': {'name': Path(patches).name, 'sha256': source_digest(patches)} if patches else None}
 
 
 def output_hashes(generated):

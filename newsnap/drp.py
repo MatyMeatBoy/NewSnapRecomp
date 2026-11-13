@@ -14,8 +14,9 @@ def signed(value):
 
 
 class Cipher:
-    def __init__(self, seed, table):
-        seed = sum(table[(seed >> (8 * i)) & 127] << (8 * i) for i in range(4))
+    def __init__(self, seed, table=None):
+        if table is not None:
+            seed = sum(table[(seed >> (8 * i)) & 127] << (8 * i) for i in range(4))
         self.state = []
         for _ in range(4):
             seed = (seed * 0x41C64E6D + 12345) & MASK

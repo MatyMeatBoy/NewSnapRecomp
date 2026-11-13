@@ -3,5 +3,6 @@
   "main_build_id": "ddb900ff04a912ed42430508389853cfaf1accce",
   "main_sha256": "ef20d6317d909bde106fec0958b58ccfdf4c46f36d9fa5ef8785ce54fff75443",
   "oodle_decompress_offset": 29248,
+  "save_material_movwide": ["0x603520", "0x60353c"],
   "evidence": "main+0x7240 identifies itself as OodleLZ_Decompress; AAPCS64 argument and stack use inspected against this exact module. Decoder output must pass the DRPF member CRC before use."
 }
