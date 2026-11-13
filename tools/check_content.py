@@ -25,9 +25,22 @@ ORIGINAL_ICONS = {
     'newsnap.ico': '3227fe55b20943bf7023b9e16ccb235ac6c5f5aaf20030f56e62b5e871053b70',
 }
 
+# Owner-approved original controller artwork; provenance is recorded beside it.
+# Pin its exact indexed path, regular-file mode, size, PNG/IHDR and full digest.
+CONTROLLER_SPRITE = 'assets/controllers/ultimate2c-sprite.png'
+CONTROLLER_SPRITE_SHA256 = 'a8daabc38680527ad0bb4cc3115b9b07e157b0ea4f00aac27d1d042536b103c4'
+CONTROLLER_SPRITE_HEADER = bytes.fromhex(
+    '89504e470d0a1a0a0000000d49484452000000680000004808060000001ab0b097')
+
 
 def violations(path, content, mode='100644'):
     p = PurePosixPath(path)
+    if path == CONTROLLER_SPRITE:
+        if (mode == '100644' and len(content) == 8510 and
+                content.startswith(CONTROLLER_SPRITE_HEADER) and
+                hashlib.sha256(content).hexdigest() == CONTROLLER_SPRITE_SHA256):
+            return []
+        return ['original controller sprite changed; review its approved bytes and mode']
     if p.parent == PurePosixPath('assets/icons') and p.name in ORIGINAL_ICONS:
         if hashlib.sha256(content).hexdigest() == ORIGINAL_ICONS[p.name]:
             return []
