@@ -5,6 +5,7 @@ import queue
 import shutil
 import subprocess
 import threading
+import time
 import tkinter as tk
 import uuid
 from tkinter import filedialog, messagebox, ttk
@@ -29,11 +30,13 @@ class Launcher:
         self.profile = settings.load_profile(self.project)
         self.events = queue.Queue()
         self.busy = False
+        self._album_loaded = False
+        self.controller_test = None
         self.process = None
         self.photos, self.thumbnails = [], []
         self.page, self.album_generation, self.preview_generation = 0, 0, 0
         self.preview = None
-        self.root.title(f'NewSnap · {VERSION} · Cámara y álbum')
+        self.root.title(f'NewSnap · {VERSION}')
         self.root.geometry('1020x790')
         self.root.minsize(860, 730)
         self.root.configure(bg=CREAM)
@@ -45,26 +48,31 @@ class Launcher:
                 self.root.iconbitmap(str(icon))
             except tk.TclError:
                 pass
-        header = tk.Frame(root, bg=GREEN, padx=28, pady=15)
+        header = tk.Frame(root, bg=GREEN, padx=24, pady=10)
         header.pack(fill='x')
-        tk.Label(header, text='NewSnap', font=('Segoe UI', 27, 'bold'), fg=CREAM, bg=GREEN).pack(anchor='w')
-        tk.Label(header, text='TU PRÓXIMA EXPEDICIÓN EMPIEZA AQUÍ', font=('Segoe UI', 10), fg=AMBER, bg=GREEN).pack(anchor='w')
-        self.status = tk.StringVar(value='Listo para explorar')
+        tk.Label(header, text='NewSnap', font=('Segoe UI', 24, 'bold'), fg=CREAM, bg=GREEN).pack(anchor='w')
+        tk.Label(header, text='NEW POKÉMON SNAP · PORT NATIVO', font=('Segoe UI', 10), fg=AMBER, bg=GREEN).pack(anchor='w')
+        self.status = tk.StringVar(value='Carga o verifica los datos del juego para comenzar.')
         ttk.Label(root, textvariable=self.status, style='Status.TLabel', padding=(25, 9)).pack(side='bottom', fill='x')
         self.tabs = ttk.Notebook(root)
         self.tabs.pack(fill='both', expand=True, padx=22, pady=(12, 8))
-        self.play_tab, self.album_tab, self.video_tab, self.audio_tab, self.game_tab, self.controls_tab = [ttk.Frame(self.tabs, padding=16) for _ in range(6)]
-        for frame, title in zip((self.play_tab, self.album_tab, self.video_tab, self.audio_tab, self.game_tab, self.controls_tab), ('Jugar', 'Álbum', 'Vídeo', 'Audio', 'Juego', 'Controles')):
+        self.play_tab, self.album_tab, self.options_tab, self.controls_tab = [ttk.Frame(self.tabs, padding=16) for _ in range(4)]
+        for frame, title in zip((self.play_tab, self.album_tab, self.options_tab, self.controls_tab), ('Inicio', 'Álbum', 'Opciones', 'Controles')):
             self.tabs.add(frame, text=title)
+        option_pages=ttk.Notebook(self.options_tab);option_pages.pack(fill='both',expand=True)
+        self.video_tab,self.audio_tab,self.game_tab=[ttk.Frame(option_pages,padding=8) for _ in range(3)]
+        for frame,title in ((self.video_tab,'Vídeo'),(self.audio_tab,'Audio'),(self.game_tab,'Juego')):option_pages.add(frame,text=title)
         self.update_tab = ttk.Frame(self.tabs, padding=16)
-        self.tabs.add(self.update_tab, text='Actualizar')
-        self._play()
+        self.tabs.add(self.update_tab, text='Actualizaciones')
+        from .home_ui import HomePanel
+        self.home=HomePanel(self,self.play_tab)
         self._album()
         self._options()
         from .update_ui import UpdatePanel
-        self.updates = UpdatePanel(self, self.update_tab, automatic=check_updates)
+        self.updates = UpdatePanel(self, self._scrolling_options(self.update_tab), automatic=check_updates)
+        self.tabs.bind('<<NotebookTabChanged>>',self._tab_changed)
         self.root.after(100, self._poll)
-        self.refresh_album()
+        self.album_status.set('Abre el álbum para cargar las fotografías del perfil.')
 
     def _style(self):
         style = ttk.Style(self.root)
@@ -188,7 +196,9 @@ class Launcher:
         ttk.Label(row, text='Sincronización de imagen', width=29).pack(side='left')
         ttk.Combobox(row, textvariable=self.presentation, values=tuple(PRESENTATION_LABELS), state='readonly', width=25).pack(side='left')
         self._help(basic, 'Sincronizado evita cortes; Fluido prioriza respuesta. Sin sincronizar puede mostrar cortes. Adaptable permite cortes al caer por debajo del refresco; si no está disponible, el juego usa sincronización normal.')
-        self._help(basic, 'La frecuencia variable (VRR, FreeSync o G-SYNC) depende del monitor, Windows y el controlador. Este launcher no ofrece un interruptor VRR comprobado.')
+        self._help(basic, 'La frecuencia variable depende de la pantalla y el controlador. Su presentación se comprueba durante la expedición.')
+        from .display_ui import DisplayPanel
+        self.display=DisplayPanel(self,basic)
         self._choice(basic, 'Información de rendimiento', 'perf_overlay', {'Oculta': 'off', 'Solo FPS': 'fps', 'Completa': 'full'},
                      help_text='Muestra datos del runtime. La vista completa incluye tiempos de CPU/GPU y actividad de compilación cuando están disponibles.')
         self._heading(advanced, 'Resolución y reconstrucción')
@@ -250,6 +260,8 @@ class Launcher:
                      help_text='Ofrece los idiomas declarados por Snap. El juego conserva su propia elección de texto y voces; si un perfil sigue en otro idioma, cámbialo también en sus ajustes de idioma.')
 
     def _control_options(self):
+        self.controller_test_button=ttk.Button(self.controls_tab,text='Probar mando conectado…',command=self.show_controller_test)
+        self.controller_test_button.pack(anchor='w',pady=(0,10))
         ttk.Label(self.controls_tab, text='Encuentra tu encuadre', style='Title.TLabel').pack(anchor='w', pady=(0, 8))
         self._settings_footer(self.controls_tab, controls=True)
         sections = ttk.Notebook(self.controls_tab)
@@ -396,6 +408,7 @@ class Launcher:
             messagebox.showerror('No se pudieron actualizar los ajustes', str(error), parent=self.root)
 
     def choose_profile(self):
+        if self.busy:return
         folder = filedialog.askdirectory(parent=self.root, title='Elegir perfil local', initialdir=str(self.profile.parent))
         if folder:
             try:
@@ -409,47 +422,69 @@ class Launcher:
             if self.preview and self.preview.winfo_exists():
                 self.preview.destroy()
             self.draw_page()
-            self.refresh_album()
+            self._album_loaded=False
+
+    def _tab_changed(self,event=None):
+        if self.tabs.select()==str(self.album_tab) and not self.busy and not self._album_loaded:self.refresh_album()
+
+    def notify_update(self,release):
+        self.home.notify_update(release)
+
+    def show_controller_test(self):
+        if self.busy:return
+        from .controller_ui import ControllerTest
+        try:settings.validate_runtime_data(self.project)
+        except (OSError,ValueError) as error:
+            self.status.set(str(error));return
+        self.controller_test=ControllerTest(self)
 
     def _set_busy(self, busy):
         self.busy = busy
         for widget in [self.play_button, self.profile_button, *self.save_buttons]:
             widget.configure(state='disabled' if busy else 'normal')
+        if hasattr(self,'home'):self.home.set_busy(busy)
+        if hasattr(self,'controller_test_button'):self.controller_test_button.configure(state='disabled' if busy else 'normal')
 
     def launch(self):
         if self.busy:
             return
-        if settings.is_release_layout(self.project):
-            from .maintenance import assess_runtime
-            if assess_runtime(self.project)['needs_rebuild']:
-                self.tabs.select(self.update_tab)
-                self.updates.maintenance.start(resume_game=True)
-                return
-        if not (runtime_dir(self.project) / 'newsnap.exe').is_file():
-            messagebox.showerror('Faltan tus datos del juego', 'Copia tu carpeta GameData junto a NewSnapLauncher.exe antes de iniciar.', parent=self.root)
-            return
-        if not self.save_options():
-            return
+        data=self.home.refresh()
+        if not data['loaded']:
+            self.home.choose_data();return
+        if not data['verified']:
+            self.home.verify(resume_game=True);return
+        try:
+            options=self._option_values()
+            settings.validate_settings(options);settings.validate_video_combination(options)
+        except ValueError as error:
+            self.status.set(str(error));return
         profile = self.profile
         required = settings.shader_preparation_required(self.project)
         command = settings.preparation_command(self.project) if self.prepare.get() or required else None
-        if required and command is None:
-            self.status.set('Faltan las bibliotecas o los registros de shaders para preparar este runtime.')
-            return
         self._set_busy(True)
-        self.status.set('Preparando gráficos…' if command else 'Iniciando expedición…')
-        threading.Thread(target=self._run_game, args=(profile, command), daemon=True).start()
+        self.status.set('Comprobando el runtime antes de la expedición…')
+        threading.Thread(target=self._run_game, args=(profile, command, options), daemon=True).start()
 
-    def _run_game(self, profile, preparation):
+    def _run_game(self, profile, preparation, options=None):
+        deferred=False
         try:
             with settings.ProfileLock(profile):
+                from .maintenance import assess_runtime
+                if settings.is_release_layout(self.project) and assess_runtime(self.project)['needs_rebuild']:
+                    deferred=True
+                    self.events.put(('maintenance_needed',None));return
+                if settings.shader_preparation_required(self.project) and preparation is None:
+                    raise RuntimeError('Faltan las bibliotecas o los registros de shaders para preparar este runtime.')
+                if options is not None:
+                    saved=settings.save_edited_settings(self.ini,self.baseline,options)
+                    self.events.put(('settings_saved',saved))
                 self._execute_game(profile, preparation)
             error = None
-        except (OSError, RuntimeError) as failure:
+        except (OSError, RuntimeError,ValueError) as failure:
             error = str(failure)
         finally:
             self.process = None
-        self.events.put(('finished', error))
+        if not deferred:self.events.put(('finished', error))
 
     def _execute_game(self, profile, preparation):
         logdir = runtime_dir(self.project) / 'logs'
@@ -470,14 +505,19 @@ class Launcher:
             nonlocal logfile
             self.events.put(('status', 'Reiniciando expedición…' if attempt > 1 else 'Expedición en curso · cierra el juego para volver'))
             logfile = logdir / f'launcher-game-{session}-{attempt:03d}.log'
+            display_file=logdir/f'launcher-display-{session}-{attempt:03d}.json'
+            env['NEWSNAP_DISPLAY_STATUS']=str(display_file.resolve())
             with logfile.open('x', encoding='utf-8') as log:
+                started_at=time.time()
                 self.process = subprocess.Popen(settings.game_command(self.project, profile), cwd=self.project, env=env, stdout=log, stderr=subprocess.STDOUT, creationflags=hidden)
+                self.events.put(('display_file',display_file,self.process.pid,started_at))
                 return self.process.wait()
         code = settings.supervise_game(run_attempt)
         if code:
             raise RuntimeError(settings.game_failure_message(code, logfile))
 
     def refresh_album(self):
+        self._album_loaded=True
         self.album_generation += 1
         generation, profile = self.album_generation, self.profile
         self.album_status.set('Buscando fotografías reales en el perfil…')
@@ -589,13 +629,21 @@ class Launcher:
                 kind = event[0]
                 if kind == 'status':
                     self.status.set(event[1])
+                elif kind == 'settings_saved':
+                    self.baseline=dict(event[1]);self._set_option_values(event[1])
+                elif kind == 'maintenance_needed':
+                    self._set_busy(False)
+                    self.updates.maintenance.start(resume_game=True)
+                elif kind == 'display_file':
+                    self.display.observe(*event[1:])
                 elif kind == 'finished':
                     self._set_busy(False)
                     self.reload_options()
                     self.status.set('Listo para explorar' if event[1] is None else 'La expedición se detuvo')
                     if event[1]:
                         messagebox.showerror('No se pudo completar el inicio', event[1], parent=self.root)
-                    self.refresh_album()
+                    self._album_loaded=False
+                    self.display.stop();self.home.refresh();self._tab_changed()
                 elif kind == 'album_locked' and event[1] == self.album_generation:
                     self.refresh_button.configure(state='normal')
                     self.album_status.set('Cierra la expedición para actualizar el álbum. Puedes seguir viendo las fotografías ya cargadas.')

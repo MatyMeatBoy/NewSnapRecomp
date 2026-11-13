@@ -35,11 +35,11 @@ resuelta solo por cambiar un ajuste o por compilar.
 
 | ID | Prioridad | Estado | Responsable | Trabajo y archivos reservados |
 |---|---|---|---|---|
-| FOTO-01 | P0 | EN CURSO | Codex / agente de captura | Bandas negras en fotos y miniaturas; aislar captura GPU → readback → JPEG → textura de preview. Reservados `newsnap/color_transfer_adapt.py`, `tests/test_color_transfer.py`; coordinar nuevo adaptador de readback antes de tocar renderer. |
-| FOTO-02 | P0 | LIBRE · CLAUDE | Sin asignar | Auditoría CPU independiente de fotos guardadas: comprobar JPEG/bancos/CRC/dimensiones, determinar si las bandas están en bytes guardados o solo en preview. Archivos nuevos `tools/audit_saved_photos.py`, `tests/test_photo_audit.py`, informe `docs/bugs/photo-bands-cpu.md`. No modificar `saves.py`/`photos.py` sin coordinar. |
+| FOTO-01 | P0 | EN CURSO | Codex / agente de captura | Bandas negras en fotos y miniaturas; aislar captura GPU → readback → JPEG → textura de preview. Reservados `newsnap/color_transfer_adapt.py`, `tests/test_color_transfer.py`, `newsnap/photo_readback_adapt.py`, `tests/test_photo_readback.py`; coordinar seams del renderer. |
+| FOTO-02 | P0 | REVISIÓN | Claude · 2026-11-13 | **REVISIÓN: cambios requeridos en `docs/bugs/photo-audit-review.md` (sobrescritura de entrada, JPEG malformado y falso veredicto limpio).** Resultado local: dos fotos NVIDIA únicas en bancos duplicados; sin bytes AMD que auditar aún. Auditoría CPU independiente de fotos guardadas: comprobar JPEG/bancos/CRC/dimensiones, determinar si las bandas están en bytes guardados o solo en preview. Archivos nuevos `tools/audit_saved_photos.py`, `tests/test_photo_audit.py`, informe `docs/bugs/photo-bands-cpu.md`. No modificar `saves.py`/`photos.py` sin coordinar. |
 | FOCO-01 | P0 | LIBRE · CLAUDE | Sin asignar | Indicador de enfoque corrupto que sigue a Pikachu en Original: identificar draw/shader/textura del HUD y proponer fix verificable. Reservar nuevo `newsnap/focus_adapt.py`, `tests/test_focus.py`; no tocar adaptadores de color/readback ajenos. |
 | TUTO-01 | P0 | LIBRE · CLAUDE | Sin asignar | Reproducir softlock con dos fotos sin sujeto claro y documentar recuperación por flujo/guardado original. Crear ruta reproducible y pruebas/evidencia en `build/`; informe `docs/bugs/tutorial-photo-softlock.md`. No cambiar lógica ni partidas originales. Depende de FOTO-01/02 para cierre. |
-| INPUT-01 | P0 | LIBRE · CLAUDE | Sin asignar | Cámara apunta sola: auditar mouse relativo, foco inicial, sticks y gyro; comprobar reposo, reconexión y cambio mando/ratón. Crear `newsnap/camera_input_adapt.py` + `tests/test_camera_input.py`; coordinar seams de `input*.c`. Sin activar sensores/vibración físicos por sorpresa. |
+| INPUT-01 | P0 | EN CURSO | Codex · 2026-11-13 | Cámara apunta sola: auditar mouse relativo, foco inicial, sticks y gyro; comprobar reposo, reconexión y cambio mando/ratón. Crear `newsnap/camera_input_adapt.py` + `tests/test_camera_input.py`; coordinar seams de `input*.c`. Sin activar sensores/vibración físicos por sorpresa. |
 | COLOR-01 | P0 | EN CURSO | Codex / agente de captura | Transferencia sRGB→UNORM causa oscurecimiento/contraste. Ya hay comparación cuantitativa local y fixture nativo; falta integrar y probar salida corregida. Mismos archivos de color de FOTO-01. Validación AMD pendiente del propietario. |
 | PACE-01 | P1 | EN CURSO | Codex / agente de render | Atribuir picos y regularidad en Original con cachés calientes. Medir p50/p95/p99 y tiempos xlate/pipeline/texture/fence/pacing. No cambiar simulación 30/60 ni desactivar async como parche final sin prueba causal. Posibles archivos nuevos `newsnap/pacing_adapt.py`, `tests/test_pacing.py`. |
 | UI-01 | P0 | EN CURSO | Codex | Home: cargar/importar GameData, verificar datos, versión y lanzar. Iniciar expedición no navega a Actualizar. Aviso automático solo ante estable más nueva; manual admite latest/prereleases y reparación. Reservados `launcher.py`, `update_ui.py`, `maintenance_ui.py`, `launcher_settings.py`, módulos nuevos Home/updates y sus tests. |
@@ -47,7 +47,7 @@ resuelta solo por cambiar un ajuste o por compilar.
 | PAD-01 | P1 | REVISIÓN | Codex / agente de controles | Backend SDL de prueba de mandos implementado y probado con dispositivos virtuales/ABI real. Reservados `controller_probe.py`, `controller_ui.py`, `tests/test_controller_probe.py`. UI visual se integra con ART-01. |
 | VRR-01 | P1 | REVISIÓN | Codex / agente de render | Estado real de presentación por VK_EXT_present_timing, unknown/fixed/variable; nunca inferir VRR por FIFO/mailbox. Reservados `vrr_adapt.py`, overlays `snap_vrr*`, `display_status.py`, `display_ui.py`, tests y `docs/DISPLAY.md`. Falta prueba swapchain real integrada. |
 | MENU-01 | P1 | REVISIÓN | Codex / agente de render | Menú dentro del juego: Original/Auto/DLSS/FSR 3.1/FSR 4, Native AA/DLAA y tres presets reducidos. Quitar FSR 3 genérico, XeSS/FSR espacial y opciones artísticas ignoradas. Reservados `menu_adapt.py`, `tests/test_snap_menu.py`. |
-| CACHE-01 | P2 | REVISIÓN | Codex / agente de mantenimiento | Caché privada de C generado, con import/recipe/dependencias verificadas, límite y limpieza segura. Reservados `generation_cache.py`, `build.py`, `maintenance.py`, tests y `docs/GENERATION_CACHE.md`. Falta cold/warm real. |
+| CACHE-01 | P2 | HECHA | Codex / agente de mantenimiento | Caché privada de C generado, con import/recipe/dependencias verificadas, límite y limpieza segura. Reservados `generation_cache.py`, `build.py`, `maintenance.py`, tests y `docs/GENERATION_CACHE.md`. Revisión independiente aprobada tras corregir identidad LZ4 y módulos inesperados; ensayo real `build/v05-generation-cache-real/evidence.json`: generación 86,820 s frente a restore 3,044 s + verificación 0,265 s, 150 archivos idénticos, sin reutilizar ejecutables. |
 | QA-01 | P1 | LIBRE · CLAUDE | Sin asignar | Auditar updater/launcher sin editar integración: escenarios 0.4→0.5, misma versión, sin estable, manual alpha/latest, GameData antiguo y cancelación. Agregar tests en nuevo `tests/test_launcher_acceptance.py` y hallazgos `docs/bugs/launcher-acceptance.md`. Coordinar APIs con Codex. |
 | LEARN-01 | P2 | LIBRE · CLAUDE | Sin asignar | Consolidar lecciones verificadas para OptiPort y matriz AMD/NVIDIA. Crear `docs/bugs/GPU_MATRIX.md`; separar observado/inferido/corregido/validado por GPU. No publicar ni editar la skill global hasta revisión de Codex. |
 
@@ -71,6 +71,17 @@ resuelta solo por cambiar un ajuste o por compilar.
 `C:/Users/MP/Documents/00 Claude/KHCoMPC/LEEME.md` y `CLAUDE.md`.
 No recorrer junctions ni duplicar hardlinks. Reutilizar solo el gráfico de mando
 original solicitado por el propietario, adaptando sus etiquetas a Switch.
+
+**Original localizado por Codex:** en el repositorio `khcom`, ref
+`refs/heads/release/v2.9-20261106` (commit `51edf7efa2c49c97a1c389ae2e4cd7e3b749448c`),
+`port/assets/controller/ultimate2c-sprite.png` (104×72 RGBA) y
+`ultimate2c-transparent.png` (1254×1254). El checkout HEAD antiguo no los contiene.
+`port/assets/controller/README.md` confirma que es el arte elegido por el usuario;
+`port/src/port_controller_art.inc` tiene paleta/índices del sprite. Copias de
+referencia local en `build/controller-reference-rekhcom/`, sin editar. SHA-256
+del sprite: `a8daabc38680527ad0bb4cc3115b9b07e157b0ea4f00aac27d1d042536b103c4`.
+ART-01 sigue libre para Claude; ya puede trabajar sobre el original localizado.
+
 
 ## Puerta de salida 0.5
 

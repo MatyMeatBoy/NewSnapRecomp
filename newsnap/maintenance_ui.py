@@ -3,9 +3,6 @@ import queue
 import threading
 from tkinter import ttk
 
-from .paths import data_dir, is_release_layout
-
-
 class RuntimeMaintenance:
     def __init__(self, launcher, parent, status):
         self.launcher, self.status = launcher, status
@@ -20,16 +17,6 @@ class RuntimeMaintenance:
         self.cancel=ttk.Button(row,text='Cancelar preparación',command=self.cancel_event.set,state='disabled')
         self.cancel.pack(side='left',padx=8)
         launcher.root.after(150,self.poll)
-        if is_release_layout(launcher.project) and (data_dir(launcher.project)/'newsnap-game.json').is_file():
-            launcher.root.after(1800,self.check_automatic)
-
-    def check_automatic(self):
-        if self.launcher.busy:
-            self.launcher.root.after(1000,self.check_automatic)
-            return
-        from .maintenance import assess_runtime
-        if assess_runtime(self.launcher.project)['needs_rebuild']:
-            self.start()
 
     def start(self, *, force=False, resume_game=False):
         if self.active or self.launcher.busy:
@@ -65,6 +52,8 @@ class RuntimeMaintenance:
         try:
             while True:
                 kind,value=self.events.get_nowait()
+                if not self.active:
+                    continue  # Late events cannot release another operation's busy ownership.
                 if kind=='progress':
                     self.status.configure(text=value)
                     self.launcher.status.set(value)
@@ -73,7 +62,8 @@ class RuntimeMaintenance:
                 self.repair.configure(state='normal')
                 self.cancel.configure(state='disabled')
                 self.launcher._set_busy(False)
-                message=('Juego reconstruido y verificado. Los shaders se prepararán antes de jugar.'
+                message=(('Juego reconstruido y verificado. Los shaders se prepararán antes de jugar.'
+                          if value.get('rebuilt') else 'Juego verificado; listo para iniciar.')
                          if kind=='done' else value)
                 self.status.configure(text=message)
                 self.launcher.status.set(message)

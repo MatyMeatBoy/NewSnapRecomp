@@ -328,7 +328,8 @@ def game_environment(environment=None, root=None):
     for name in list(env):
         upper = name.upper()
         if (upper.startswith(('AC_INPUT', 'AC_TEST_', 'AC_DUMP', 'AC_FLIGHT', 'AC_SHOTS', 'AC_REC_'))
-                or upper in {'NEWSNAP_OODLE_REQUESTS', 'NEWSNAP_OODLE_OUTPUT', 'AC_SWKBD_ANSWER',
+                or upper in {'NEWSNAP_OODLE_REQUESTS', 'NEWSNAP_OODLE_OUTPUT', 'NEWSNAP_DISPLAY_STATUS',
+                             'NEWSNAP_PHOTO_TRACE_DIR', 'NEWSNAP_UPLOAD_TRACE', 'AC_SWKBD_ANSWER',
                              'AC_SWKBD_TEST', 'AC_TRACE', 'AC_PRESENT_SHOT', 'AC_PIPELINE_CACHE', 'AC_SHADER_CACHE'}
                 or upper in {'AC_EXEFS', 'AC_ROMFS', 'AC_PROFILE_DIR', 'AC_ROMFS_INDEX'}
                 or _key(name) in ENV_UI_OVERRIDES):
@@ -389,6 +390,10 @@ def load_profile(root):
         record = json.loads(_preferences_path(root).read_text(encoding='utf-8'))
         if not isinstance(record, dict):
             raise ValueError('Invalid launcher preferences')
+        data_relative=record.get('profile_data_relative')
+        if isinstance(data_relative,str) and data_relative and not Path(data_relative).is_absolute():
+            candidate=(data_dir(root)/data_relative).resolve()
+            if candidate.is_relative_to(data_dir(root).resolve()):return candidate
         relative = record.get('profile_relative')
         if isinstance(relative, str) and relative and not Path(relative).is_absolute():
             candidate = (root / relative).resolve()
@@ -404,7 +409,9 @@ def load_profile(root):
 
 def save_profile(root, profile):
     root, profile = Path(root).resolve(), Path(profile).resolve()
-    record = ({'profile_relative': profile.relative_to(root).as_posix()} if profile.is_relative_to(root)
+    record = ({'profile_data_relative':profile.relative_to(data_dir(root).resolve()).as_posix()}
+              if is_release_layout(root) and profile.is_relative_to(data_dir(root).resolve()) else
+              {'profile_relative': profile.relative_to(root).as_posix()} if profile.is_relative_to(root)
               else {'profile': str(profile)})
     _atomic_write(_preferences_path(root), json.dumps(record, ensure_ascii=False).encode('utf-8'))
 

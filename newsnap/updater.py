@@ -176,9 +176,16 @@ def check_stable():
         if exc.code in (401, 403):
             raise UpdateError(f'GitHub access failed (HTTP {exc.code}); check repository token access and API rate limits') from exc
         raise UpdateError(f'GitHub release lookup failed (HTTP {exc.code})') from exc
+    return parse_release(data, stable_only=True)
+
+
+def parse_release(data, *, stable_only=False):
+    """The same integrity policy applies to manually selected prereleases."""
     if not isinstance(data, dict):
         raise UpdateError('Invalid release metadata')
-    if data.get('draft') is not False or data.get('prerelease') is not False:
+    if data.get('draft') is not False:
+        return None
+    if stable_only and data.get('prerelease') is not False:
         return None
     tag = data.get('tag_name')
     if not isinstance(tag, str) or not tag:
@@ -207,6 +214,23 @@ def check_stable():
     if not isinstance(revision, str) or not re.fullmatch('[0-9a-fA-F]{40}', revision):
         revision = None  # A branch name is not a source revision; the manifest supplies it.
     return Release(tag, tag.removeprefix('v'), archive['name'], urls[0], urls[1], revision)
+
+
+def list_releases(limit=20):
+    """Manual catalog: published stable and prerelease launcher packages."""
+    if type(limit) is not int or not 1 <= limit <= 30:
+        raise UpdateError('Invalid release list limit')
+    try:
+        data=_read_json(REPO_URL+f'/releases?per_page={limit}')
+    except HTTPError as error:
+        raise UpdateError(f'No se pudieron consultar las versiones (HTTP {error.code}). Revisa el acceso a GitHub.') from error
+    if not isinstance(data,list):raise UpdateError('Invalid release catalog')
+    result=[]
+    for value in data:
+        try:release=parse_release(value)
+        except UpdateError:continue  # Historical/source-only releases have no launcher package.
+        if release is not None:result.append(release)
+    return result
 
 
 def _relative(name):
