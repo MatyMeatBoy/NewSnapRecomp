@@ -1,6 +1,13 @@
 # Revisión independiente de FOTO-02
 
-2026-11-13 · RTX tester · **Cambios requeridos**. Archivos de MatyMeatBoy sin modificar.
+2026-11-13 · RTX tester · **Correcciones aprobadas e integradas en el PR #1**.
+
+La revisión del commit `23f9d79` confirmó la protección de entradas, el manejo de
+JPEG malformados y el veredicto incompleto ante datos no verificables. Las
+20 pruebas de auditoría y 5 de fotografías pasan. La evidencia AMD sigue
+pendiente; aprobar la herramienta no atribuye la causa de las franjas.
+
+Los hallazgos iniciales se conservan a continuación para trazabilidad.
 
 Las 17 pruebas existentes pasan, pero tres reproducciones sintéticas encontraron:
 
@@ -26,5 +33,6 @@ coincidencia de franjas y rechazo del sujeto no demuestra por sí sola que la
 evaluación lea esos píxeles, ni excluye presentación, pitch o JPEG. La geometría
 medida en una captura reescalada orienta pruebas; no determina la causa.
 
-Para MatyMeatBoy: conservar la reserva FOTO-02, corregir en sus archivos y solicitar
-otra revisión. No hace falta ningún dato real para reproducir estos tres casos.
+Los tres casos se reprodujeron con datos sintéticos y ahora tienen regresiones.
+La validación con bytes reales AMD deberá hacerse sobre una copia del perfil,
+sin modificar el guardado del propietario.
