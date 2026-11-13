@@ -8,6 +8,9 @@ import subprocess
 import sys
 
 ROOT = Path(__file__).resolve().parent.parent
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+from newsnap.version import VERSION
 
 
 def source_fingerprints(root=ROOT):
@@ -41,7 +44,7 @@ def build():
         shutil.copy2(ROOT / 'third_party/astral/recomp' / name, target)
     shutil.copy2(ROOT / 'third_party/astral/LICENSE', application / 'third_party/astral/LICENSE')
     shutil.copy2(ROOT / 'third_party/astral/THIRD_PARTY_NOTICES.md', application / 'third_party/astral/THIRD_PARTY_NOTICES.md')
-    (application / 'VERSION').write_text('0.2-alpha\n', encoding='ascii')
+    (application / 'VERSION').write_text(VERSION + '\n', encoding='ascii')
     notices = application / 'licenses/runtime'
     notices.mkdir(parents=True, exist_ok=True)
     shutil.copy2(Path(sys.base_prefix) / 'LICENSE.txt', notices / 'Python-LICENSE.txt')
