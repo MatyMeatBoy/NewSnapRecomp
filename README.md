@@ -40,7 +40,16 @@ The current bring-up exposes an offline network interface; online socket/TLS ser
 
 ## Shader preparation and performance
 
-The target is to prepare shader variants and GPU pipelines before gameplay, persist compatible caches, and measure first-use misses across routes. Translation alone does not prove the GPU driver has compiled every pipeline. No complete Snap shader inventory or first-use coverage is claimed yet.
+The tools can decode the 3,138 shader libraries locally, using the original decoder in your verified executable. No proprietary decoder is included. To prepare their supported stages with default texture answers plus recorded variants:
+
+```powershell
+.venv\Scripts\python -m newsnap unpack-shaders
+.venv\Scripts\python -m newsnap prepare --all
+```
+
+The local test prepared 3,493 variants in the RTX 4060 driver cache, with zero translation or driver-preparation failures. Two geometry-stage entries are explicitly unsupported by the current backend. Default answers cannot establish coverage for every unseen texture type or pipeline combination. `prepare` without `--all` uses only recorded variants; startup also rebuilds recorded pipelines before guest execution (38 in the tested setup sequence).
+
+The next setup blocker is the SDK profanity filter's system dictionary, loaded when entering the player's name. A firmware-backed mount is still needed. No playable route or first-use coverage across the game is verified.
 
 Optimization will compare identical scenes and settings, preserving photography evaluation, event order, audio, camera motion and saves. Frame-time percentiles, startup time, memory use and compilation misses matter alongside FPS.
 

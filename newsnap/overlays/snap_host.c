@@ -90,30 +90,3 @@ SNAP_MS_QUERY(nvnMultisampleStateGetSampleLocationsEnable, sl_en)
 SNAP_MS_QUERY(nvnMultisampleStateGetSampleLocationsGridEnable, sl_grid)
 SNAP_MS_QUERY(nvnMultisampleStateGetAlphaToCoverageDither, a2c_dither)
 
-void snap_program_installed(const prog_t *p) {
-    static unsigned invalid;
-    for (unsigned i = 0; i < p->nstage; i++) {
-        const uint8_t *control = p->sd[i].control;
-        if (!control) continue;
-        uint32_t c1, length, stage;
-        memcpy(&c1, control + 0x700, 4);
-        memcpy(&length, control + 0x704, 4);
-        memcpy(&stage, control + 0x714, 4);
-        if ((stage != 5 && length <= 48) || c1 > length) {
-            unsigned count = __atomic_add_fetch(&invalid, 1, __ATOMIC_RELAXED);
-            if (count <= 8) rt_log("Snap shader at install: stage %u, length %u, c1 %u", stage, length, c1);
-            const char *dir = getenv("NEWSNAP_SHADER_DIAG");
-            if (count == 1 && dir && *dir) {
-                char path[2048];
-                if (snprintf(path, sizeof path, "%s/install-control.dat", dir) < (int)sizeof path) {
-                    FILE *f = fopen(path, "wb");
-                    if (f) { fwrite(control, 1, 0x880, f); fclose(f); }
-                }
-                if (length && length < 1024 * 1024 && snprintf(path, sizeof path, "%s/install-code.dat", dir) < (int)sizeof path) {
-                    FILE *f = fopen(path, "wb");
-                    if (f) { fwrite((void *)(uintptr_t)p->sd[i].data, 1, length, f); fclose(f); }
-                }
-            }
-        }
-    }
-}

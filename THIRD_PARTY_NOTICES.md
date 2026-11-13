@@ -29,3 +29,9 @@ The complete notice is in `licenses/NewSnap-ISC.txt`. The reader indexes metadat
 without distributing or invoking the proprietary Oodle DLL.
 
 The NACP field layout was checked against switchbrew/libnx `nx/include/switch/nacp.h`.
+
+`newsnap/nushdb.py` follows the SSBH shader-library layout documented in
+[ultimate-research/ssbh_lib](https://github.com/ultimate-research/ssbh_lib)
+at `c1149c2822b857a351ed1c130aef2c6ec7430094` (MIT; Copyright 2020 Smash Ultimate
+Research Group). Its full notice is retained in `licenses/ssbh_lib-MIT.txt`.
+Shader seed layouts and runtime hashes follow the pinned Astral tools/runtime.

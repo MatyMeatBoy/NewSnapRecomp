@@ -3,7 +3,7 @@ import struct
 import unittest
 import zlib
 
-from newsnap.drp import entries
+from newsnap.drp import entries, payload
 
 
 def archive():
@@ -30,6 +30,19 @@ class DrpTests(unittest.TestCase):
         data[0x14] ^= 1
         with self.assertRaises(ValueError):
             entries(io.BytesIO(data), 0, len(data))
+
+    def test_payload_checks_plaintext_crc_and_compression_marker(self):
+        data = bytearray(archive())
+        struct.pack_into('<I', data, 0x94, zlib.crc32(b'abc!'))
+        stream = io.BytesIO(data)
+        item, = entries(stream, 0, len(data))
+        self.assertEqual(payload(stream, 0, item), b'abc!')
+        data[-1] ^= 1
+        with self.assertRaises(ValueError):
+            payload(io.BytesIO(data), 0, item)
+        item['compressed'] = True
+        with self.assertRaises(ValueError):
+            payload(io.BytesIO(data), 0, item)
         data = bytearray(archive())
         struct.pack_into('<I', data, 0x94 + 8, 0x10000000)
         with self.assertRaises(ValueError):

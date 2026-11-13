@@ -33,6 +33,14 @@ def adapt_sources(destination, *, patch_output=None):
             ('"_ZN2nn4init5StartEmmPFvvES2_"', '"_ZN2nn4init5StartEmmPFvvES2_S2_"'),
             ('stack != 0x100000', 'stack != 0x4000'),
             ('kernel.c builds 44, 0, 0x100000', 'kernel.c builds 44, 0, 0x4000'),
+            ('if (!rt_config()->shot) vk_pipeline_async_enable();', 'vk_pipeline_async_enable(); // Record/prewarm even for deterministic screenshots.'),
+            ('if (rt_config()->seconds) return;   // --seconds: the run goes on into the game', '''extern void snap_decode_requested(Cpu *cpu);
+        snap_decode_requested(c);
+        if (rt_config()->seconds) return;   // --seconds: the run goes on into the game'''),
+        ],
+        'runtime/vk_pipeline.c': [
+            ('int vk_pipeline_async_on(void) { return A.on; }', 'int vk_pipeline_async_on(void) { return A.on && !rt_config()->shot; }'),
+            ('return graphics(s, info, A.on, pending, wait_ms);', 'return graphics(s, info, vk_pipeline_async_on(), pending, wait_ms);'),
         ],
         'runtime/kernel.c': [
             ('#define MAIN_STACK (1ull << 20)', '#define MAIN_STACK 0x4000ull'),

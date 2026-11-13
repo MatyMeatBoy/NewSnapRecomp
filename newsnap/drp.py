@@ -92,7 +92,37 @@ def entries(stream, offset, size):
         if not compressed and packed != unpacked:
             raise ValueError('Invalid uncompressed DRPF size')
         result.append({'name': name.decode('ascii'), 'extension_crc': f'{extension:08x}',
+                       'block_offset': offset + pos, 'block_size': total, 'crc32': seed,
                        'payload_offset': offset + pos + cursor, 'compressed_size': packed,
                        'decompressed_size': unpacked, 'compressed': compressed, 'encrypted': encrypted})
         pos += total
     return result
+
+
+def payload(stream, archive_offset, entry):
+    """Return decrypted stored bytes; compressed members still need Oodle decoding."""
+    stream.seek(archive_offset + 0x14)
+    table = stream.read(128)
+    if len(table) != 128:
+        raise ValueError('Truncated DRPF seed table')
+    relative = entry['payload_offset'] - entry['block_offset']
+    end = (relative + entry['compressed_size'] + 3) & ~3
+    if relative < 24 or end > entry['block_size']:
+        raise ValueError('Invalid DRPF payload range')
+    stream.seek(entry['block_offset'] + 4)
+    data = bytearray(stream.read(end - 4))
+    if len(data) != end - 4:
+        raise ValueError('Truncated DRPF payload')
+    if entry['encrypted']:
+        rng = Cipher(entry['crc32'], table)
+        for offset in range(0, len(data), 4):
+            word = struct.unpack_from('<I', data, offset)[0]
+            struct.pack_into('<I', data, offset, rng.word(word))
+    data = bytes(data[relative - 4:relative - 4 + entry['compressed_size']])
+    if entry['compressed']:
+        if data[:4] != struct.pack('<I', 0xE42D98BA):
+            raise ValueError('Missing DRPF Oodle marker')
+        return data[4:]
+    if zlib.crc32(data) != entry['crc32']:
+        raise ValueError('DRPF member checksum mismatch')
+    return data

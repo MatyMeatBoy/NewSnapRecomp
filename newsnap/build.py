@@ -51,9 +51,13 @@ def build(sdk_root, shader_tools=None, jobs=0, generate=True, cpu='v3'):
     else:
         verify_generation(gen, recipe)
     out = ROOT / 'build/updated'
+    profile = json.loads((ROOT / 'profiles/snap-2.0.1.json').read_text(encoding='utf-8'))
+    main_hash = next(f['sha256'] for f in manifest['files'] if f['name'] == 'main')
+    decoder = profile['oodle_decompress_offset'] if main_hash == profile['main_sha256'] else 0
     write_changed(out / 'snap_metadata.h', '#pragma once\n'
                   f'#define SNAP_SAVE_SIZE {control["save_size"]}ull\n'
-                  f'#define SNAP_JOURNAL_SIZE {control["journal_size"]}ull\n')
+                  f'#define SNAP_JOURNAL_SIZE {control["journal_size"]}ull\n'
+                  f'#define SNAP_OODLE_OFFSET {decoder}ull\n')
     command = [sys.executable, source / 'tools/build_game.py', '--version', 'snap', '--gen', gen,
                '--out', out, '--exefs', extracted / 'exefs', '--romfs', extracted / 'romfs',
                '--profile', ROOT / 'build/profile', '--expected', expected, '--toolchain', sdk_root / 'llvm',
