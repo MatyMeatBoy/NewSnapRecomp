@@ -5,6 +5,7 @@ import os
 import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 from .adapt import adapt_sources, write_changed
@@ -78,7 +79,8 @@ def run_logged(command, logfile, env=None):
         raise ValueError(f'Build command failed ({code}); see {logfile}')
 
 
-def build(sdk_root, shader_tools=None, jobs=0, generate=True, cpu='v3', *, owner_data=None, work_dir=None):
+def build(sdk_root, shader_tools=None, jobs=0, generate=True, cpu='v3', *, owner_data=None, work_dir=None,
+          generation_cache_root=None):
     sdk_root = Path(sdk_root).resolve()
     work = Path(work_dir).resolve() if work_dir else ROOT / 'build'
     profile = json.loads((ROOT / 'profiles/snap-2.0.1.json').read_text(encoding='utf-8'))
@@ -123,15 +125,40 @@ def build(sdk_root, shader_tools=None, jobs=0, generate=True, cpu='v3', *, owner
         raise ValueError('This runtime adaptation requires the verified Snap 2.0.1 code module')
     gen = work / 'generated' if owner_data else ROOT / 'generated/updated'
     recipe = generation_recipe(source, manifest, patches)
+    cache, identity, restored = None, None, False
+    lookup_seconds = generation_seconds = publish_seconds = 0.0
+    if owner_data and generate:
+        from .generation_cache import GenerationCache, owner_identity
+        # Original ExeFS and the entire RomFS were verified above, even on a hit.
+        identity = owner_identity(owner_data, manifest, profile['romfs_sha256'])
+        cache = GenerationCache(generation_cache_root)
+        started = time.perf_counter()
+        restored = cache.restore(identity, recipe, gen)
+        lookup_seconds = time.perf_counter() - started
+        if restored:
+            print('generation cache: reused independently copied, verified private code', flush=True)
     if generate:
-        command = [sys.executable, source / 'recomp/gen.py', '--exefs', exefs,
-                   '--out', gen, '--version', 'snap', '--patches', patches]
-        if jobs:
-            command += ['--jobs', str(jobs)]
-        run_logged(command, work / 'logs/generate.log')
-        record_generation(gen, recipe)
+        if not restored:
+            command = [sys.executable, source / 'recomp/gen.py', '--exefs', exefs,
+                       '--out', gen, '--version', 'snap', '--patches', patches]
+            if jobs:
+                command += ['--jobs', str(jobs)]
+            started = time.perf_counter()
+            run_logged(command, work / 'logs/generate.log')
+            record_generation(gen, recipe)
+            generation_seconds = time.perf_counter() - started
+            if cache:
+                started = time.perf_counter()
+                cache.publish(identity, recipe, gen)
+                publish_seconds = time.perf_counter() - started
     else:
         verify_generation(gen, recipe)
+    if owner_data:
+        write_json(work / 'logs/generation-cache.json', {
+            'format': 1, 'restored': restored, 'generator_ran': bool(generate and not restored),
+            'cache_status': cache.status if cache else 'unused', 'lookup_seconds': lookup_seconds,
+            'generation_seconds': generation_seconds, 'publish_seconds': publish_seconds,
+            'generator_environment': cache.generator_environment if cache else None})
     out = work / 'updated'
     decoder = profile['oodle_decompress_offset'] if main_hash == profile['main_sha256'] else 0
     write_changed(out / 'snap_metadata.h', '#pragma once\n'

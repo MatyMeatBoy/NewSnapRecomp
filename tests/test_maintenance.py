@@ -102,6 +102,12 @@ class MaintenanceTests(OwnerRuntimeFixture, TestCase):
                    'romfs_sha256': hashlib.sha256(b'romf').hexdigest(),
                    'verified_control': {'display_version': '2.0.1', 'save_size': 42, 'journal_size': 2}}
         self.assertEqual(m.verify_owner_inputs(self.data, profile)[1]['save_size'], 42)
+        for module in ('sdk','subsdk0','subsdk9'):
+            extra=self.data/'exefs'/module
+            extra.write_bytes(b'unverified module')
+            with self.assertRaisesRegex(ValueError,'Unexpected ExeFS module'):
+                m.verify_owner_inputs(self.data,profile)
+            extra.unlink()
         (self.data / 'romfs/romfs.bin').write_bytes(b'evil')
         with self.assertRaisesRegex(ValueError, 'RomFS'):
             m.verify_owner_inputs(self.data, profile)

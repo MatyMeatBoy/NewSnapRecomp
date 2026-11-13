@@ -89,12 +89,20 @@ def _verify_runtime_files(directory, marker):
             raise ValueError(f'El archivo {name} necesita reparación.')
 
 
+def validate_owner_modules(directory, expected):
+    """Reject unverified modules that the generator's load order would consume."""
+    for name in ('main', *(f'subsdk{i}' for i in range(10)), 'sdk'):
+        if name not in expected and (Path(directory)/'exefs'/name).exists():
+            raise ValueError(f'Unexpected ExeFS module {name}; use the verified game 2.0.1 inputs')
+
+
 def verify_owner_inputs(directory, profile, cancel_event=None):
     """Verify original bytes against the public supported-version fingerprints."""
     directory = Path(directory)
     expected = profile.get('exefs_sha256')
     if not isinstance(expected, dict) or not expected or not profile.get('romfs_sha256'):
         raise ValueError('The build recipe has no verified owner-input fingerprints')
+    validate_owner_modules(directory,expected)
     files = []
     for name, checksum in expected.items():
         if PurePosixPath(name).name != name or name in ('.', '..') or '\\' in name:
@@ -371,10 +379,13 @@ def run_build_command(command, cwd, logfile, cancel_event=None, progress=None):
     logfile.parent.mkdir(parents=True, exist_ok=True)
     flags = {'creationflags': subprocess.CREATE_NO_WINDOW | subprocess.CREATE_NEW_PROCESS_GROUP} if os.name == 'nt' else {'start_new_session': True}
     environment = dict(os.environ)
+    cache_optout = environment.get('NEWSNAP_GENERATION_CACHE') == '0'
     for key in list(environment):
         if key.upper().startswith(('PYTHON', 'AC_', 'NEWSNAP_')):
             environment.pop(key)
     environment['PYTHONDONTWRITEBYTECODE'] = '1'
+    if cache_optout:
+        environment['NEWSNAP_GENERATION_CACHE'] = '0'
     with logfile.open('wb') as log:
         process = subprocess.Popen([str(p) for p in command], cwd=cwd, env=environment,
                                    stdout=log, stderr=subprocess.STDOUT, **flags)
@@ -390,7 +401,7 @@ def run_build_command(command, cwd, logfile, cancel_event=None, progress=None):
             raise
 
 
-def rebuild_runtime(root, kit_root, cancel_event=None, progress=None, force=False):
+def rebuild_runtime(root, kit_root, cancel_event=None, progress=None, force=False, *, generation_cache_root=None):
     from .launcher_settings import ProfileLock, load_profile
     root, kit = Path(root), Path(kit_root).resolve()
     progress = progress or (lambda text: None)
@@ -409,12 +420,22 @@ def rebuild_runtime(root, kit_root, cancel_event=None, progress=None, force=Fals
             command = [kit / 'python/python.exe', '-B', '-E', '-s', '-m', 'newsnap.maintenance',
                        '--worker', '--data', directory.resolve(), '--work', work.resolve(),
                        '--sdk', kit / 'sdk', '--source-revision', manifest['source_revision']]
+            if generation_cache_root is not None:
+                # Preserve raw link components so the cache's reparse-point
+                # guards can reject them before any writes or eviction.
+                command += ['--generation-cache-root', Path(generation_cache_root).absolute()]
             logfile = directory / 'logs/runtime-rebuild.log'
             run_build_command(command, source, logfile, cancel_event, progress)
             _cancel(cancel_event)
+            cache_record = None
+            cache_receipt = work / 'logs/generation-cache.json'
+            if cache_receipt.is_file():
+                cache_record = _json(cache_receipt)
+                shutil.copy2(cache_receipt, directory / 'logs/generation-cache.json')
             progress('Activando el runtime verificado…')
             install_candidate(root, work / 'candidate', cancel_event)
-            return {'rebuilt': True, 'runtime_version': VERSION, 'logfile': str(logfile)}
+            return {'rebuilt': True, 'runtime_version': VERSION, 'logfile': str(logfile),
+                    'generation_cache': cache_record}
         finally:
             shutil.rmtree(work)
 
@@ -429,10 +450,12 @@ def _worker():
     parser.add_argument('--work', type=Path, required=True)
     parser.add_argument('--sdk', type=Path, required=True)
     parser.add_argument('--source-revision', required=True)
+    parser.add_argument('--generation-cache-root', type=Path)
     args = parser.parse_args()
     tools = args.sdk / 'shader-tools'
     exe = build(args.sdk, shader_tools=tools if tools.is_dir() else None,
-                owner_data=args.data, work_dir=args.work, jobs=min(8, os.cpu_count() or 1))
+                owner_data=args.data, work_dir=args.work, jobs=min(8, os.cpu_count() or 1),
+                generation_cache_root=args.generation_cache_root)
     candidate = args.work / 'candidate'
     candidate.mkdir()
     for name in RUNTIME_FILES:
