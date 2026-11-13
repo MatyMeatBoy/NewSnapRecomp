@@ -109,7 +109,7 @@ int main(void) {
 ''', encoding='utf-8')
             exe = folder / ('input-test.exe' if os.name == 'nt' else 'input-test')
             subprocess.run([compiler, str(folder / 'input_map.c'), str(folder / 'test.c'),
-                            '-o', str(exe)], check=True, capture_output=True)
+                            '-o', str(exe), *([] if os.name == 'nt' else ['-lm'])], check=True, capture_output=True)
             result = subprocess.run([str(exe)], capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 

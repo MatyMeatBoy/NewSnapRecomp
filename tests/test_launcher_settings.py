@@ -173,12 +173,15 @@ class LauncherSettingsTests(unittest.TestCase):
         command = settings.game_command(root, root / 'my profile')
         self.assertEqual(command, [str(root / 'build/updated/newsnap.exe'), '--profile', str(root / 'my profile'), '--boot'])
         env = settings.game_environment({'PATH': 'system', 'AC_INPUT': 'script', 'AC_INPUT_SCRIPT': 'x',
-                                         'AC_FULLSCREEN': '0', 'AC_TEST_PAD': '1', 'AC_GPU': 'null'})
+                                         'AC_FULLSCREEN': '0', 'AC_TEST_PAD': '1', 'AC_GPU': 'null',
+                                         'AC_EXEFS': 'old computer', 'AC_ROMFS': 'old game'})
         self.assertEqual(env['PATH'], 'system')
         self.assertNotIn('AC_INPUT', env)
         self.assertNotIn('AC_INPUT_SCRIPT', env)
         self.assertNotIn('AC_FULLSCREEN', env)
         self.assertNotIn('AC_TEST_PAD', env)
+        self.assertNotIn('AC_EXEFS', env)
+        self.assertNotIn('AC_ROMFS', env)
         self.assertEqual(env['AC_GPU'], 'vulkan')
         self.assertEqual(env['NEWSNAP_LAUNCHER'], '1')
 

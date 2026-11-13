@@ -218,6 +218,9 @@ def adapt_sources(destination, *, patch_output=None):
     for overlay in (ROOT / 'newsnap/overlays').glob('*'):
         if overlay.is_file():
             write_changed(destination / 'runtime' / overlay.name, overlay.read_text(encoding='utf-8'))
+    # Keep the donor resource filename expected by its build rule, but embed
+    # this project's original camera artwork in the actual game executable.
+    shutil.copy2(ROOT / 'assets/icons/newsnap.ico', destination / 'runtime/astralchain.ico')
     shutil.copy2(UPSTREAM / 'LICENSE', destination / 'LICENSE')
     if patch_output:
         write_changed(Path(patch_output), ''.join(diff))

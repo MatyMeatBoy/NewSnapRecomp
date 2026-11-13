@@ -9,9 +9,16 @@ from xml.etree import ElementTree as ET
 from PIL import Image
 
 from tools.generate_icons import ICO_SIZES, OUTPUT, SIZES, generate, svg_bytes
+from newsnap.adapt import adapt_sources
 
 
 class IconTests(unittest.TestCase):
+    def test_game_resource_uses_original_project_artwork(self):
+        with tempfile.TemporaryDirectory() as directory:
+            source = adapt_sources(Path(directory))
+            self.assertEqual((source / 'runtime/astralchain.ico').read_bytes(),
+                             (OUTPUT / 'newsnap.ico').read_bytes())
+
     def test_png_dimensions_and_transparency(self):
         expected = {f"icon-{size}.png": size for size in SIZES}
         expected["apple-touch-icon.png"] = 180
@@ -54,8 +61,19 @@ class IconTests(unittest.TestCase):
             self.assertEqual({p.name for p in generated.iterdir()},
                              {p.name for p in OUTPUT.iterdir() if p.suffix != ".md"})
             for path in generated.iterdir():
-                self.assertEqual(path.read_bytes(), (OUTPUT / path.name).read_bytes(),
-                                 f"Regenerate {path.name} with tools/generate_icons.py")
+                checked_in = OUTPUT / path.name
+                if path.suffix in ('.png', '.ico'):
+                    # zlib versions can encode identical pixels differently.
+                    with Image.open(path) as actual, Image.open(checked_in) as expected:
+                        sizes = actual.ico.sizes() if path.suffix == '.ico' else {actual.size}
+                        if path.suffix == '.ico':
+                            self.assertEqual(sizes, expected.ico.sizes())
+                        for size in sizes:
+                            a = actual.ico.getimage(size) if path.suffix == '.ico' else actual
+                            b = expected.ico.getimage(size) if path.suffix == '.ico' else expected
+                            self.assertEqual(a.convert('RGBA').tobytes(), b.convert('RGBA').tobytes(), path.name)
+                else:
+                    self.assertEqual(path.read_text(), checked_in.read_text(), path.name)
 
 
 if __name__ == "__main__":

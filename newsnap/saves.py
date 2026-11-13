@@ -43,6 +43,8 @@ def decode_moves(image, offset):
 def local_save_key():
     profile = json.loads((ROOT / 'profiles/snap-2.0.1.json').read_text(encoding='utf-8'))
     path = ROOT / 'build/extracted/updated/exefs/main'
+    if not path.is_file():
+        path = ROOT / 'build/updated/exefs/main'  # Owner's portable data package.
     if not path.is_file() or source_digest(path) != profile['main_sha256']:
         raise ValueError('Importa tu versión 2.0.1 verificada para leer sus fotos guardadas')
     spec = importlib.util.spec_from_file_location('newsnap_photo_nso', UPSTREAM / 'recomp/nso.py')

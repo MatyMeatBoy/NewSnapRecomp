@@ -196,6 +196,7 @@ def game_environment(environment=None):
         if (upper.startswith(('AC_INPUT', 'AC_TEST_', 'AC_DUMP', 'AC_FLIGHT', 'AC_SHOTS', 'AC_REC_'))
                 or upper in {'NEWSNAP_OODLE_REQUESTS', 'NEWSNAP_OODLE_OUTPUT', 'AC_SWKBD_ANSWER',
                              'AC_SWKBD_TEST', 'AC_TRACE', 'AC_PRESENT_SHOT', 'AC_PIPELINE_CACHE', 'AC_SHADER_CACHE'}
+                or upper in {'AC_EXEFS', 'AC_ROMFS', 'AC_PROFILE_DIR', 'AC_ROMFS_INDEX'}
                 or _key(name) in DEFAULTS):
             env.pop(name)
     env['AC_GPU'] = 'vulkan'
