@@ -1,5 +1,6 @@
 """Reproduce the private experimental build using the selected upstream tools."""
 import json
+import importlib.util
 import os
 import shutil
 import subprocess
@@ -10,6 +11,38 @@ from .adapt import adapt_sources, write_changed
 from .importer import write_json
 from .upstream import ROOT
 from .provenance import verify_import, generation_recipe, record_generation, verify_generation
+from .importer import source_digest
+
+
+def python_script_command(script, *arguments):
+    """Embedded Python's ._pth omits script directories; provide the owned one."""
+    bootstrap = ('import sys,runpy; from pathlib import Path; '
+                 'script=sys.argv[1]; sys.path.insert(0,str(Path(script).resolve().parent)); '
+                 'sys.argv=sys.argv[1:]; runpy.run_path(script,run_name="__main__")')
+    return [sys.executable, '-c', bootstrap, str(script), *arguments]
+
+
+def stage_runtime_shaders(sdk_root, source, out):
+    """Use an exact public native-shader header when the portable kit supplies it."""
+    header = Path(sdk_root) / 'precompiled/fsr3_spv.h'
+    if not header.is_file():
+        return False
+    pin = json.loads((ROOT / 'profiles/runtime-shaders.json').read_text(encoding='utf-8'))
+    spec = importlib.util.spec_from_file_location('newsnap_public_shader_recipe', source / 'tools/ffx_sdk.py')
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    stamp = '// recipe sha256 ' + module.recipe_hash()
+    if (source_digest(header) != pin['fsr3_spv_sha256'] or
+            module.recipe_hash() != pin['fsr3_recipe_sha256'] or
+            stamp not in header.read_text(encoding='utf-8').splitlines()[:3]):
+        raise ValueError('Public native shader header differs from the pinned donor recipe')
+    out.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(header, out / 'fsr3_spv.h')
+    terms = Path(sdk_root) / 'licenses/FidelityFX-SDK-1.1.4-LICENSE.txt'
+    if terms.is_file():
+        (out / 'licenses').mkdir(exist_ok=True)
+        shutil.copy2(terms, out / 'licenses' / terms.name)
+    return True
 
 
 def run_logged(command, logfile, env=None):
@@ -45,52 +78,88 @@ def run_logged(command, logfile, env=None):
         raise ValueError(f'Build command failed ({code}); see {logfile}')
 
 
-def build(sdk_root, shader_tools=None, jobs=0, generate=True, cpu='v3'):
+def build(sdk_root, shader_tools=None, jobs=0, generate=True, cpu='v3', *, owner_data=None, work_dir=None):
     sdk_root = Path(sdk_root).resolve()
-    extracted = ROOT / 'build/extracted/updated'
-    manifest_path = extracted / 'extraction-manifest.json'
-    if not manifest_path.is_file() or not (extracted / 'romfs/import-receipt.json').is_file():
-        raise ValueError('Run the verified import before building')
-    source = adapt_sources(ROOT / 'build/source', patch_output=ROOT / 'patches/001-snap-bringup.patch')
-    print('Checking imported modules, RomFS and control metadata', flush=True)
-    manifest, control = verify_import(extracted)
-    expected = ROOT / 'build/expected-snap.json'
-    write_json(expected, {'exefs_sha256': {f['name']: f['sha256'] for f in manifest['files']}})
+    work = Path(work_dir).resolve() if work_dir else ROOT / 'build'
     profile = json.loads((ROOT / 'profiles/snap-2.0.1.json').read_text(encoding='utf-8'))
+    if owner_data is None:
+        extracted = ROOT / 'build/extracted/updated'
+        manifest_path = extracted / 'extraction-manifest.json'
+        if not manifest_path.is_file() or not (extracted / 'romfs/import-receipt.json').is_file():
+            raise ValueError('Run the verified import before building')
+        print('Checking imported modules, RomFS and control metadata', flush=True)
+        manifest, control = verify_import(extracted)
+        exefs, romfs = extracted / 'exefs', extracted / 'romfs'
+    else:
+        from .maintenance import verify_owner_inputs
+        from .upstream import extractor
+        owner_data = Path(owner_data).resolve()
+        print('Checking original owner modules and RomFS against the supported-version recipe', flush=True)
+        manifest, control = verify_owner_inputs(owner_data, profile)
+        exefs = owner_data / 'exefs'
+        romfs = work / 'owner-romfs'
+        romfs.mkdir(parents=True, exist_ok=True)
+        image = owner_data / 'romfs/romfs.bin'
+        staged = romfs / 'romfs.bin'
+        if not staged.exists():
+            # Same volume for normal maintenance; no duplicate 7 GiB image.
+            try:
+                os.link(image, staged)
+            except OSError:
+                shutil.copyfile(image, staged)
+        write_json(romfs / 'index.json', {'status': 'pass', 'romfs_size': image.stat().st_size,
+                   'romfs_sha256': profile['romfs_sha256'], 'files': extractor().index_romfs(image)})
+    source = adapt_sources(work / 'source', patch_output=(work / 'snap-bringup.patch' if owner_data else
+                                                        ROOT / 'patches/001-snap-bringup.patch'))
+    if not stage_runtime_shaders(sdk_root, source, work / 'updated') and owner_data:
+        raise ValueError('Owner rebuild requires the public native shader header from its build kit')
+    expected = work / 'expected-snap.json'
+    write_json(expected, {'exefs_sha256': {f['name']: f['sha256'] for f in manifest['files']}})
     main_hash = next(f['sha256'] for f in manifest['files'] if f['name'] == 'main')
-    patches = ROOT / 'build/snap-runtime-patches.txt'
+    patches = work / 'snap-runtime-patches.txt'
     write_changed(patches, '\n'.join((ROOT / 'patches' / name).read_text(encoding='utf-8')
                                     for name in ('snap-2.0.1-render.txt', 'snap-2.0.1-supersample.txt')))
     if main_hash != profile['main_sha256']:
         raise ValueError('This runtime adaptation requires the verified Snap 2.0.1 code module')
-    gen = ROOT / 'generated/updated'
+    gen = work / 'generated' if owner_data else ROOT / 'generated/updated'
     recipe = generation_recipe(source, manifest, patches)
     if generate:
-        command = [sys.executable, source / 'recomp/gen.py', '--exefs', extracted / 'exefs',
+        command = [sys.executable, source / 'recomp/gen.py', '--exefs', exefs,
                    '--out', gen, '--version', 'snap', '--patches', patches]
         if jobs:
             command += ['--jobs', str(jobs)]
-        run_logged(command, ROOT / 'build/logs/generate.log')
+        run_logged(command, work / 'logs/generate.log')
         record_generation(gen, recipe)
     else:
         verify_generation(gen, recipe)
-    out = ROOT / 'build/updated'
+    out = work / 'updated'
     decoder = profile['oodle_decompress_offset'] if main_hash == profile['main_sha256'] else 0
     write_changed(out / 'snap_metadata.h', '#pragma once\n'
                   f'#define SNAP_SAVE_SIZE {control["save_size"]}ull\n'
                   f'#define SNAP_JOURNAL_SIZE {control["journal_size"]}ull\n'
                   f'#define SNAP_OODLE_OFFSET {decoder}ull\n')
-    command = [sys.executable, source / 'tools/build_game.py', '--version', 'snap', '--gen', gen,
-               '--out', out, '--exefs', extracted / 'exefs', '--romfs', extracted / 'romfs',
-               '--profile', ROOT / 'build/profile', '--expected', expected, '--toolchain', sdk_root / 'llvm',
-               '--deps', sdk_root / 'runtime/deps', '--ninja', sdk_root / 'bin/ninja.exe', '--cpu', cpu]
+    command = python_script_command(source / 'tools/build_game.py', '--version', 'snap', '--gen', gen,
+               '--out', out, '--exefs', exefs, '--romfs', romfs,
+               '--profile', work / 'probe-profile' if owner_data else ROOT / 'build/profile',
+               '--expected', expected, '--toolchain', sdk_root / 'llvm',
+               '--deps', sdk_root / 'runtime/deps', '--ninja', sdk_root / 'bin/ninja.exe', '--cpu', cpu)
     if jobs:
         command += ['--jobs', str(jobs)]
     env = dict(os.environ)
+    from tools.fetch_upscaler_sdk import DEFAULT_OUT as FSR_DEFAULT, verify as verify_fsr
+    from .upscaler_adapt import stage_sdk
+    fsr_sdk = Path(env.get('NEWSNAP_FSR_SDK', str(FSR_DEFAULT))).resolve()
+    if not verify_fsr(fsr_sdk):
+        raise ValueError('Missing verified FSR SDK: run python tools/fetch_upscaler_sdk.py before building')
+    env['NEWSNAP_FSR_SDK'] = str(fsr_sdk)
     if shader_tools:
         env['NEWSNAP_SHADER_TOOLS'] = str(Path(shader_tools).resolve())
-    run_logged(command, ROOT / 'build/logs/compile.log', env)
+    run_logged(command, work / 'logs/compile.log', env)
     for name in ('SDL3.dll', 'libopus-0.dll', 'ac_xlate.exe', 'ac_xlate.id'):
         shutil.copy2(sdk_root / 'bin' / name, out / name)
+    stage_sdk(fsr_sdk, out)
+    from tools.fetch_dlss import DEFAULT_OUT as DLSS_DEFAULT, verify as verify_dlss, install as install_dlss
+    if verify_dlss(DLSS_DEFAULT):
+        install_dlss(DLSS_DEFAULT, out)
     print(f'Experimental executable: {out / "newsnap.exe"}', flush=True)
     return out / 'newsnap.exe'

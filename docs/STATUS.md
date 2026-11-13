@@ -4,6 +4,13 @@ The intended deliverable remains a playable native New Pokémon Snap recompilati
 
 ## Verified locally
 
+The 0.4 candidate now includes real official FSR 3.1.6 Vulkan dispatch and DLSS
+Native AA/DLAA in Snap, with a validated Snap camera/depth contract. A complete
+portable owner-local rebuild has generated 62,961 functions, compiled 275
+objects and passed selftest/loader before switching outputs while preserving
+isolated profile/settings sentinels. See [0.4 evidence and remaining scope](V04.md).
+Physical RX 6900 XT/FSR 4 validation remains pending.
+
 - Base title `0100F4300BF2C000`, cumulative update title `0100F4300BF2C800`; NACP confirms display version 2.0.1.
 - Both ExeFS packages verified by block hashes. Updated RomFS merged with the selected upstream's hactool and all six IVFC levels verified: 7,316,217,452 bytes, 3,310 files.
 - 1,125 DRPF archives indexed: 82,127 members, 71,868 compressed members and 3,138 `nushdb` entries. This is an archive inventory, not a count of fully prepared shader variants.

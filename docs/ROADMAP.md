@@ -1,5 +1,9 @@
 # Work after the 0.3 alpha
 
+Implementation and acceptance for these targets now live in the
+[0.4 work board](V04.md). The hardware/scene coverage below remains an acceptance
+requirement; SDK detection alone is still insufficient.
+
 ## Owner targets for v0.4
 
 - FSR 4 with its supported quality presets and automatic compatible model selection,

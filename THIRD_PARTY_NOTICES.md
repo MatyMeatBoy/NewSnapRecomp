@@ -44,6 +44,21 @@ Its full notice is included with the executable.
 
 The NACP field layout was checked against switchbrew/libnx `nx/include/switch/nacp.h`.
 
+Version 0.4 optionally uses the official AMD FSR SDK 2.4.0 Vulkan binaries and
+headers, pinned to `7539ae8b6568ad29ed78a753404351daf3b5cca7`. Their complete
+license and third-party notice accompany `upscalers/`; component-specific terms
+apply independently of this repository's MIT license. The public precompiled
+native FSR shader header derives from AMD's MIT-licensed FidelityFX SDK 1.1.4;
+its license accompanies the build kit/runtime.
+
+The optional NVIDIA DLSS Super Resolution 310.9.16 binary is pinned to NVIDIA's
+`9981c6350dc58c0ce21f024fd65e31e851c31689` distribution. It is proprietary under
+the NVIDIA RTX SDKs license, retained as `licenses/NVIDIA-DLSS.txt` together with
+its version/hash receipt. NVIDIA and DLSS are NVIDIA Corporation trademarks.
+The launcher credits these providers and displays their complete terms.
+These providers accompany this application, rather than standalone SDK products.
+No game data or generated game code is included in the build kit.
+
 `newsnap/nushdb.py` follows the SSBH shader-library layout documented in
 [ultimate-research/ssbh_lib](https://github.com/ultimate-research/ssbh_lib)
 at `c1149c2822b857a351ed1c130aef2c6ec7430094` (MIT; Copyright 2020 Smash Ultimate

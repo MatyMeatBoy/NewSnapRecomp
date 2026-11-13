@@ -7,13 +7,13 @@ from pathlib import Path
 import re
 import sys
 import tempfile
-from .paths import runtime_dir, default_profile, shader_library_dir, is_release_layout
+from .paths import runtime_dir, data_dir, default_profile, shader_library_dir, is_release_layout
 from .version import VERSION, RUNTIME_API, RUNTIME_CAPABILITIES
 
 DEFAULTS = {'fullscreen': '1', 'window_size': '1920x1080', 'vk_present': 'mailbox',
             'fps': '60', 'volume': '100', 'mouse_sens': '1', 'motion': '1',
-            'operation_mode': 'docked', 'render_scale': 'game', 'upscaler': 'fsr',
-            'sharpness': '80', 'aniso': 'game', 'aspect': 'fit', 'color_preset': 'default',
+            'operation_mode': 'docked', 'render_scale': 'game', 'upscaler': 'bilinear',
+            'sharpness': '0', 'aniso': 'game', 'aspect': 'fit', 'color_preset': 'default',
             'color_brightness': '0', 'color_contrast': '100', 'color_saturation': '100', 'color_gamma': '1'}
 SECTIONS = {'fullscreen': 'display', 'window_size': 'display', 'vk_present': 'display',
             'fps': 'frame rate', 'volume': 'audio', 'mouse_sens': 'input', 'motion': 'input',
@@ -21,6 +21,8 @@ SECTIONS = {'fullscreen': 'display', 'window_size': 'display', 'vk_present': 'di
                 ('fullscreen', 'window_size', 'vk_present', 'fps', 'volume', 'mouse_sens', 'motion', 'operation_mode')}}
 # Same four actual colour adjustments as runtime/ui/menu.cpp; the preset name alone has no visual effect.
 COLOR_KEYS = ('color_brightness', 'color_contrast', 'color_saturation', 'color_gamma')
+NEUTRAL_SETTINGS = {'color_preset':'default', 'color_brightness':'0', 'color_contrast':'100',
+                    'color_saturation':'100', 'color_gamma':'1', 'sharpness':'0', 'upscaler':'bilinear'}
 COLOR_PRESETS = {name: dict(zip(COLOR_KEYS, values)) for name, values in {
     'default': ('0', '100', '100', '1'), 'vivid': ('0', '115', '135', '0.95'),
     'clarity': ('2', '110', '115', '1')}.items()}
@@ -51,9 +53,14 @@ CONTROL_DEFAULTS = {'mouse_sens': '1', 'motion': '1', 'pad_layout': 'auto', 'rum
                     'lstick_deadzone': '', 'rstick_deadzone': '', **BINDING_DEFAULTS}
 DEFAULTS.update(CONTROL_DEFAULTS)
 DEFAULTS.update(lang='', audio_prefill_ms='20', perf_overlay='off')
+DEFAULTS.update(upscaling='off', upscaling_quality='quality')
+ENV_UI_OVERRIDES = ENV_UI_OVERRIDES | {'upscaling', 'upscaling_quality'}
+SECTIONS.update(upscaling='display', upscaling_quality='display')
 SECTIONS.update({key: 'input' for key in CONTROL_DEFAULTS})
 SECTIONS.update(lang='language', audio_prefill_ms='audio', perf_overlay='display')
 CHOICES.update(lang=LANGUAGES, pad_layout=('auto', 'nintendo', 'xbox', 'playstation'),
+               upscaling=('off', 'auto', 'fsr3', 'fsr4', 'dlss'),
+               upscaling_quality=('native', 'quality', 'balanced', 'performance'),
                perf_overlay=('off', 'fps', 'full'))
 RANGES.update(rumble_strength=(0, 300, True), rumble_curve=(0.2, 1.5, False),
               stick_deadzone=(0, 50, False), lstick_deadzone=(0, 50, False),
@@ -129,6 +136,8 @@ def validate_settings(values):
 
 
 def validate_video_combination(values):
+    if values.get('upscaling', 'off') != 'off' and values.get('render_scale') in ('125', '150', '200'):
+        raise ValueError('El reescalado temporal usa su preset de calidad. Elige una escala de 100 % o menos para activarlo.')
     if values.get('operation_mode') == 'handheld' and values.get('render_scale') in ('125', '150', '200'):
         raise ValueError('La escala experimental superior al 100 % requiere salida TV. Elige «TV · 1920 × 1080» o reduce la escala al 100 % o menos para usar el modo portátil.')
 
@@ -330,6 +339,9 @@ def game_environment(environment=None, root=None):
         root = Path(root)
         translator = root / 'ac_xlate.exe'
         env['AC_XLATE'] = str(translator if translator.is_file() else runtime_dir(root) / 'ac_xlate.exe')
+        env['AC_EXEFS'] = str((data_dir(root) / 'exefs').resolve())
+        env['AC_ROMFS'] = str((data_dir(root) / 'romfs').resolve())
+        env['AC_ROMFS_INDEX'] = str((runtime_dir(root) / 'romfs-index.bin').resolve())
         env['PATH'] = os.pathsep.join(filter(None, (str(root), str(runtime_dir(root)), env.get('PATH', ''))))
     return env
 
@@ -353,6 +365,22 @@ def preparation_command(root):
     if all((runtime_dir(root) / name).is_file() for name in ('shader-programs.bin', 'shader-answers.bin')):
         return command
     return None
+
+
+def shader_preparation_required(root):
+    marker = runtime_dir(root) / 'newsnap-game.json'
+    try:
+        return json.loads(marker.read_text(encoding='utf-8')).get('shader_preparation_required') is True
+    except (OSError, ValueError, AttributeError):
+        return False
+
+
+def clear_shader_preparation_required(root):
+    marker = runtime_dir(root) / 'newsnap-game.json'
+    if shader_preparation_required(root):
+        metadata = json.loads(marker.read_text(encoding='utf-8'))
+        metadata['shader_preparation_required'] = False
+        _atomic_write(marker, (json.dumps(metadata, indent=2) + '\n').encode('utf-8'))
 
 
 def load_profile(root):

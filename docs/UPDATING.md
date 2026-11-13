@@ -25,16 +25,23 @@ recuperación automática ante un corte de energía.
 ## Tus datos y la versión del juego
 
 Se conservan `GameData`/`newsnapGameData`, perfiles, partidas, ajustes INI y archivos
-ajenos al paquete. El actualizador no descarga el juego ni sustituye su ejecutable
-privado. La carpeta pública `profiles` contiene especificaciones de la versión
-del juego, no las partidas del propietario.
+ajenos al paquete. El actualizador público no descarga el juego. La carpeta
+pública `profiles` contiene especificaciones de la versión del juego, no partidas.
 
-Un launcher nuevo no convierte por sí solo el runtime privado 0.2 en el runtime
-0.3. La pestaña muestra su compatibilidad y las capacidades que faltan. Si hace
-falta recompilarlo, se reutilizan los datos importados; no es necesario volver
-a dumpear el juego. Una compilación local puede reutilizar la generación y sus
-objetos cuando su procedencia siga siendo válida; un cambio de instrucciones
-requiere regenerar lo que corresponda.
+Desde la 0.4, si el runtime no coincide con la versión, capacidades, hashes o
+receta del launcher, se reconstruye localmente con tus datos importados. No hace
+falta volver a dumpear el juego ni instalar Python o un compilador. El kit de
+herramientas se descarga de la misma versión y revisión exacta del launcher;
+se verifica su SHA-256 y cada archivo antes de ejecutar las herramientas.
+Un kit verificado queda disponible en la caché local para trabajar sin conexión.
+
+La reconstrucción puede tardar varios minutos y comprobará el RomFS completo.
+Puedes cancelar la descarga o la compilación. El candidato pasa las pruebas del
+ejecutable y del cargador antes de activarse. Un fallo conserva el runtime
+anterior; los respaldos y el diario permiten recuperar una sustitución
+interrumpida. **Verificar / reconstruir juego** también permite reparar el
+runtime de la misma versión. La preparación de shaders se exige después de
+cambiar el runtime, aunque la casilla estuviera desactivada.
 
 La caché de shaders/pipelines depende de la GPU, el controlador y el traductor.
 Después de trasladar la instalación, por ejemplo de NVIDIA a una RX 6900 XT,

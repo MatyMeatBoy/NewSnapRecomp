@@ -92,7 +92,16 @@ def _asset_url(url):
     return url
 
 
-def _download(url, path, limit):
+class DownloadCancelled(UpdateError):
+    """The caller cancelled a bounded download between transport operations."""
+
+
+def _download(url, path, limit, *, cancel_event=None):
+    def check_cancel():
+        if cancel_event is not None and cancel_event.is_set():
+            raise DownloadCancelled('Download cancelled')
+
+    check_cancel()
     _validate_url(url)
     api = _canonical_api(url)
     accept = ('application/vnd.github+json' if api and '/releases/assets/' not in urlsplit(url).path
@@ -107,18 +116,27 @@ def _download(url, path, limit):
             # urllib omits unredirected headers when following an asset redirect.
             request.add_unredirected_header('Authorization', 'Bearer ' + token)
     try:
+        check_cancel()
         with build_opener(_SafeRedirect()).open(request, timeout=30) as response:
+            check_cancel()
             _validate_url(response.geturl())
             length = response.headers.get('Content-Length')
             if length is not None and (not length.isdigit() or int(length) > limit):
                 raise UpdateError('Update download exceeds the permitted size')
             size = 0
             with Path(path).open('xb') as output:
-                while chunk := response.read(1024 * 1024):
+                while True:
+                    check_cancel()
+                    chunk = response.read(1024 * 1024)
+                    check_cancel()
+                    if not chunk:
+                        break
                     size += len(chunk)
                     if size > limit:
                         raise UpdateError('Update download exceeds the permitted size')
+                    check_cancel()
                     output.write(chunk)
+                check_cancel()
             if length is not None and size != int(length):
                 raise UpdateError('Update download was truncated')
     except HTTPError:
@@ -169,6 +187,7 @@ def check_stable():
     if not isinstance(assets, list):
         raise UpdateError('Invalid release asset inventory')
     candidates = [a for a in assets if isinstance(a, dict) and isinstance(a.get('name'), str)
+                  and not a['name'].lower().startswith('newsnapbuildkit-')
                   and a['name'].lower().endswith('.zip') and 'windows' in a['name'].lower()
                   and 'arm64' not in a['name'].lower()]
     if len(candidates) != 1:

@@ -161,7 +161,7 @@
  HOST_OVERRIDE("_ZN2nn4time13ClockSnapshotC1Ev", ov_snapshot_init);
 --- a/runtime/cfg.c
 +++ b/runtime/cfg.c
-@@ -113,10 +113,10 @@
+@@ -113,20 +113,20 @@
  static const CfgMeta metas[] = {
      // Screen
      {"FULLSCREEN", "1", "0|1", LIVE}, {"WINDOW_SIZE", "1920x1080", NULL, LIVE},
@@ -170,12 +170,15 @@
      {"PERF_OVERLAY", "off", "off|fps|full", LIVE},
      // the size the game renders itself (resolution.c: TotK's output set, or on 1.0.1 the res set, res_pick)
 -    {"OUTPUT_RES", "1920x1080", NULL, RESTART}, {"RENDER_SCALE", "game", "game|50|67|75|100|125|150|200", RESTART},
+-    {"UPSCALER", "fsr", "fsr|bilinear", LIVE}, {"SHARPNESS", "80", "0..100", LIVE},
 +    {"OUTPUT_RES", "1920x1080", NULL, RESTART}, {"RENDER_SCALE", "game", "game|50|60|70|80|90|100|125|150|200", RESTART},
-     {"UPSCALER", "fsr", "fsr|bilinear", LIVE}, {"SHARPNESS", "80", "0..100", LIVE},
++    {"UPSCALER", "bilinear", "fsr|bilinear", LIVE}, {"SHARPNESS", "0", "0..100", LIVE},
      // the scene's temporal upscaler and its mode (vk_dlaa.c taa_pick, resolution.c scene_init), native (DLAA, XeSS or
      // FSR 3 Native AA) first, and the game's anti-aliasing for when none runs. The upscaler is live between what can run
-@@ -125,8 +125,8 @@
-     {"UPSCALING", "off", "off|auto|dlss|xess|fsr3", LIVE},
+     // in this run: NGX (dlss, auto) and libxess.dll (xess) are loaded at start for the choice made then; FSR 3 is built
+     // in. The mode sets the size the game makes its scene targets at, once, at start. The values are in the menu's order.
+-    {"UPSCALING", "off", "off|auto|dlss|xess|fsr3", LIVE},
++    {"UPSCALING", "off", "off|auto|dlss|xess|fsr3|fsr4", LIVE},
      {"UPSCALING_QUALITY", "native", "native|quality|balanced|performance|ultra_performance", RESTART},
      {"ANTI_ALIASING", "smaa", "off|smaa", LIVE},
 -    {"ASPECT", "wide", "fit|stretch|wide", LIVE}, {"FOV", "100", "70..140", LIVE},
@@ -185,6 +188,15 @@
      // colour adjustment (vk_color.c); the preset is the menu's, the four values are what the present uses
      {"COLOR_PRESET", "default", "default|vivid|clarity|custom", LIVE}, {"COLOR_BRIGHTNESS", "0", "-30..30", LIVE},
      {"COLOR_CONTRAST", "100", "70..150", LIVE}, {"COLOR_SATURATION", "100", "50..200", LIVE},
+@@ -136,7 +136,7 @@
+     {"HDR_UI_NITS", "203", "80..500", LIVE}, {"HDR_HUE", "80", "0..100", LIVE},
+     {"DEVICE_PROFILE", "auto", "auto|desktop|deck", RESTART},
+     {"SHADOW_RES", "game", "game|512|768|1024|1536|2048", RESTART},
+-    {"SHADOW_SCALE", "2", "1..4", RESTART},   // vk_texture.c shadow_scale_of; 1 in the Steam Deck profile
++    {"SHADOW_SCALE", "1", "1..4", RESTART},   // vk_texture.c shadow_scale_of; 1 in the Steam Deck profile
+     {"SHADOW_RANGE", "100", "50..400", RESTART}, {"CONTACT_SHADOWS", "0", "0..100", RESTART},
+     {"PCSS", "0", "0..200", RESTART},
+     // ambient occlusion (vk_ao.c): read again at the next present after a change
 @@ -146,7 +146,7 @@
      {"REALTIME", "1", "0|1", RESTART}, {"CLOTH_REALTIME", "1", "0|1", RESTART},
      {"MODS_REBUILD", "auto", "auto|off", RESTART},
@@ -194,6 +206,18 @@
      {"OPERATION_MODE", "docked", "docked|handheld", RESTART},
      {"ASSUME_FOCUS", "1", "0|1", LIVE},   // read on every focus change (ov_system.c)
      {"HUD", "1", "0|1", LIVE},            // the gameplay HUD is drawn (resolution.c res_hud_tick); F12 switches it
+@@ -548,7 +548,11 @@
+ 
+ const CfgMeta *cfg_meta_at(int i) { return i >= 0 && (size_t)i < sizeof metas / sizeof *metas ? &metas[i] : NULL; }
+ 
++#include "snap_neutral.h"
++
+ const char *cfg_value(const char *name) {
++    const char *neutral = snap_neutral_value(name);
++    if (neutral) return neutral;
+     const char *e = cfg_get(name);
+     if (e && *e) return e;
+     const CfgMeta *m = cfg_meta(name);
 --- a/runtime/vk_pipeline.c
 +++ b/runtime/vk_pipeline.c
 @@ -2138,7 +2138,7 @@
@@ -532,6 +556,16 @@
  
  
  def on_path(name):
+@@ -350,6 +350,9 @@
+     vma = f'{cmd_path(DEPS / "include")} -I {cmd_path(DEPS / "include" / "vma")}' if DEPS else cmd_path(vma_include())
+     imgui = cmd_path(RUNTIME / 'third_party' / 'imgui')
+     rt_inc = f'{inc} -I {cmd_path(out)} -I {vma} -I {imgui}'   # romfs_config.h, vk_mem_alloc.h (+ deps headers), imgui.h
++    sdk = os.environ.get('NEWSNAP_FSR_SDK')
++    if sdk and WIN:
++        rt_inc += f' -DNEWSNAP_FSR_SDK=1 -I {cmd_path(Path(sdk) / "Kits/FidelityFX")}'
+     libs = [f'-L {cmd_path(DEPS / "lib")}'] + (LLVM_LINK_LIBS if WIN else LINK_LIBS) if DEPS else LINK_LIBS
+     # A compiler cache (sccache) may front clang: every lift rewrites the generated chunks with the same contents, so
+     # the cached objects save the compile step on the next build.
 --- a/recomp/gen.py
 +++ b/recomp/gen.py
 @@ -43,6 +43,7 @@
@@ -705,6 +739,137 @@
                                    d->width, d->height, d->format, w, h, (double)mi.size / 1048576.0);
      }
      // The recompression accounting of the perf line (vk_texture_new_submit): the scan's cost, the format
+@@ -1278,6 +1284,92 @@
+ }
+ 
+ // Copies the whole storage into the image (every level and layer the image has).
++
++// Snap upload diagnostics: no upload is skipped, thawed, or otherwise changed.
++// tex_lock serializes this ring. Host NOACCESS can be a legitimate mem_hold.
++typedef struct { char text[640]; } SnapUploadRecord;
++static SnapUploadRecord snap_upload_ring[200];
++static unsigned snap_upload_count, snap_upload_dumps;
++static int snap_upload_trace_on(void) {
++    const char *value = getenv("NEWSNAP_UPLOAD_TRACE");
++    return value && !strcmp(value, "1");
++}
++static void snap_upload_record(const char *text, int suspect) {
++    unsigned sequence = snap_upload_count++;
++    unsigned long long frame = __atomic_load_n(&gfx_counters.frames, __ATOMIC_RELAXED);
++    snprintf(snap_upload_ring[sequence % 200].text, 640, "frame=%llu %.600s", frame, text);
++    if (sequence < 200) rt_log("upload_trace[%u]: %s", sequence, snap_upload_ring[sequence % 200].text);
++    if (suspect) {
++        rt_log("upload_trace suspect[%u]: %s", sequence, snap_upload_ring[sequence % 200].text);
++        if (snap_upload_dumps++ < 3) {
++            unsigned begin = snap_upload_count > 200 ? snap_upload_count - 200 : 0;
++            for (unsigned i = begin; i < snap_upload_count; i++)
++                rt_log("upload_trace history[%u]: %s", i, snap_upload_ring[i % 200].text);
++        }
++    }
++}
++static void snap_upload_gone(uint64_t lo, uint64_t size) {
++    if (!snap_upload_trace_on()) return;
++    char text[640];
++    snprintf(text, sizeof text, "range_gone addr=%#llx size=%#llx",
++             (unsigned long long)lo, (unsigned long long)size);
++    snap_upload_record(text, 0);
++}
++static void snap_upload_trace(const tex_t *t, uint64_t addr, unsigned level, unsigned layer, size_t pitch) {
++    if (!snap_upload_trace_on()) return;
++    nvn_texlayout layout;
++    nvn_tex_layout(&t->d, &layout);
++    uint32_t row = 0, rows = 0, slices = 0, bpb = 0;
++    uint64_t base = 0;
++    unsigned th = 0, td = 0;
++    int geom = nvn_deswizzle_geom(&t->d, level, layer, &row, &rows, &slices, &base, &th, &td, &bpb);
++    uint64_t a = (uint64_t)(uintptr_t)t->mem, end = a + t->L.size, bad = 0;
++    RtMemoryInfo guest = {0};
++    int host = 0, logical_bad = end < a, host_bad = 0, held_possible = 0;
++    uint64_t host_end = a;
++    // Logical guest permissions distinguish freed/unmapped data from a mirror's
++    // legitimate host NOACCESS hold. Queries are observations, not lifetime pins.
++    for (uint64_t p = a; p < end;) {
++        RtMemoryInfo q = {0};
++        uint64_t next;
++        if (mem_query(p, &q) || !(q.perm & 1) || q.base > p || q.size > UINT64_MAX - q.base
++                || q.base + q.size <= p) {
++            guest = q; bad = p; logical_bad = 1; break;
++        }
++        next = q.base + q.size;
++        if (next > end) next = end;
++        p = next;
++    }
++    for (uint64_t p = a; p < end;) {
++        uint64_t next = p;
++        int state = plat_mem_state(p, end, &next);
++        if (state == PLAT_PROT_NONE) held_possible = 1;
++        if (state < 0 || next <= p) {
++            host = state; host_end = next; host_bad = 1;
++            if (!bad) bad = p;
++            break;
++        }
++        if (p == a) host = state, host_end = next;
++        p = next;
++    }
++    int suspect = logical_bad || host_bad || layout.size != t->L.size || (!geom && base >= t->L.size);
++    char text[640];
++    snprintf(text, sizeof text,
++        "deswizzle addr=%#llx mem=%#llx size=%#llx calculated=%#llx fmt=%#x target=%u "
++        "whd=%ux%ux%u levels=%u level=%u layer=%u layer_size=%#llx pitch=%llu "
++        "geom=%d base=%#llx row=%u rows=%u slices=%u th=%u td=%u "
++        "bad=%#llx logical_bad=%d guest=%#llx+%#llx state=%#x perm=%#x "
++        "host=%d host_end=%#llx held_possible=%d",
++        (unsigned long long)addr, (unsigned long long)a, (unsigned long long)t->L.size,
++        (unsigned long long)layout.size, t->d.format, t->d.target,
++        t->d.width, t->d.height, t->d.depth, t->d.levels, level, layer,
++        (unsigned long long)layout.layer_size, (unsigned long long)pitch, geom,
++        (unsigned long long)base, row, rows, slices, th, td, (unsigned long long)bad, logical_bad,
++        (unsigned long long)guest.base, (unsigned long long)guest.size, guest.state, guest.perm,
++        host, (unsigned long long)host_end, held_possible);
++    snap_upload_record(text, suspect);
++}
++
+ static void upload(Tex *e) {
+     static volatile int32_t n_bad, n_undecoded, n_split;
+     const tex_t *t = &e->t;
+@@ -1343,6 +1435,7 @@
+             size_t raw = (size_t)rb * rows * sl;
+             rg[k].bufferOffset -= base;
+             uint8_t *dst = stg + rg[k].bufferOffset, *tmp = (astc && !agpu) || rgb ? malloc(raw) : NULL;
++            snap_upload_trace(t, e->pub.addr, lv + skip, ly, rb);
+             if (nvn_deswizzle(d, lv + skip, ly, t->mem, tmp ? tmp : dst, rb)) {
+                 log_limited(&n_bad, "texture %#llx fmt %#x target %d: level %u layer %u has no CPU layout; uploaded as zeros",
+                             (unsigned long long)e->pub.addr, d->format, d->target, lv + skip, ly);
+@@ -1716,7 +1809,29 @@
+ 
+ void vk_texture_range_gone(uint64_t lo, uint64_t size, VmaAllocation alloc) {
+     lock();
++    snap_upload_gone(lo, size);
+     pre_range_gone(lo, size, 0);
++
++    // Snap: pool retirement happens after replay drain. A copied descriptor may
++    // no longer recreate an image from this retired storage through slot_resolve.
++    // Test overlap by subtraction: adjacent/empty ranges do not intersect and
++    // address arithmetic never wraps a high range into low memory.
++    int invalidated_slots = 0;
++    for (int id = 0; size && id < ntslots; id++) {
++        TexSlot *s = &tslots[id];
++        uint64_t address = (uint64_t)(uintptr_t)s->t.mem, bytes = s->t.L.size;
++        if (!s->used || !bytes) continue;
++        int overlaps = address <= lo ? lo - address < bytes : address - lo < size;
++        if (!overlaps) continue;
++        s->used = 0;
++        s->ce = NULL;
++        s->cgen = s->cepoch = 0;
++        s->t.mem = NULL;
++        if (sinfo) __atomic_store_n(&sinfo[id], 0, __ATOMIC_RELEASE);
++        invalidated_slots = 1;
++    }
++    if (invalidated_slots) slots_gen++;
++
+     Tex **list = malloc(sizeof *list * (size_t)(by_key.n + 1));
+     int n = 0;
+     for (uint32_t i = 0; i < by_key.cap; i++) {
 --- a/runtime/vk_exec.c
 +++ b/runtime/vk_exec.c
 @@ -27,6 +27,7 @@
@@ -724,3 +889,334 @@
      o->format = fmt;
      o->view_type = layers > 1 ? VK_IMAGE_VIEW_TYPE_2D_ARRAY : VK_IMAGE_VIEW_TYPE_2D;
      o->aspect = depth_slot ? img->aspect & (VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT)
+--- a/runtime/resolution.c
++++ b/runtime/resolution.c
+@@ -39,6 +39,8 @@
+ #include <zstd.h>
+ 
+ #include "cfg.h"
++#define NEWSNAP_TEMPORAL_CONFIG
++#include "snap_temporal.h"
+ #include "cpu.h"
+ #include "gfx.h"
+ #include "host.h"
+@@ -450,7 +452,7 @@
+     }
+ }
+ 
+-void res_game_size(unsigned out[2]) {
++void res_game_size(unsigned out[2]) { snap_temporal_output(out); return;
+     if (rt_patch_enabled(rt_patch_set("res"))) {
+         res_size(&out[0], &out[1]);
+     } else if (rt_patch_enabled(rt_patch_set("res1062"))) {
+@@ -508,12 +510,12 @@
+     scene_for(S.set >= 0 ? mode : "native", g, out);
+ }
+ 
+-void res_scene_size(unsigned out[2]) {
++void res_scene_size(unsigned out[2]) { snap_temporal_output(out); unsigned scale=snap_temporal_percent(); out[0]=out[0]*scale/100; out[1]=out[1]*scale/100; return;
+     if (S.gw) out[0] = S.w, out[1] = S.h;
+     else res_game_size(out);
+ }
+ 
+-int res_scene_reduced(void) { return S.reduced; }
++int res_scene_reduced(void) { return snap_temporal_percent()<100; }
+ 
+ static void scene_apply(unsigned w, unsigned h) {
+     S.w = w, S.h = h, S.reduced = w < S.gw;
+--- a/runtime/vk_dlaa.c
++++ b/runtime/vk_dlaa.c
+@@ -33,6 +33,9 @@
+ #include "vk_exec.h"
+ #include "vk_rec.h"
+ #include "vk_fsr3.h"
++#include "snap_fsr_runtime.h"
++#define NEWSNAP_TEMPORAL_CONFIG
++#include "snap_temporal.h"
+ #include "vk_xess.h"
+ #include "nvn_api.h"
+ #include "platform/platform.h"
+@@ -335,12 +338,12 @@
+ uint32_t vk_dlaa_swap_w;
+ VkImage vk_dlaa_swap_pic;   // the image behind vk_dlaa_swap_view (vk_hdr.c records it as the frame's scene)
+ 
+-enum { BK_NONE, BK_DLSS, BK_XESS, BK_FSR3 };
++enum { BK_NONE, BK_DLSS, BK_XESS, BK_FSR3, BK_FSR4 };
+ 
+ static int dl_active(void) {
+     return D.backend == BK_DLSS   ? N.available && !D.failed
+            : D.backend == BK_XESS ? vk_xess_available()
+-           : D.backend == BK_FSR3 ? vk_fsr3_available()
++           : (D.backend == BK_FSR3 || D.backend == BK_FSR4) ? snap_fsr_runtime_available(D.backend == BK_FSR4)
+                                   : 0;
+ }
+ 
+@@ -352,7 +355,7 @@
+ // the game's plain scaling never shows a scene at 33..67 % of the output; the menu says that the choice waits for a
+ // restart. can() makes nothing: FSR 3's pipelines are made when it is picked (dl_active).
+ static int can(int bk) {
+-    return bk == BK_DLSS ? N.available && !D.failed : bk == BK_XESS ? vk_xess_available() : bk == BK_FSR3 ? !vk_fsr3_failed() : 0;
++    return bk == BK_DLSS ? N.available && !D.failed : bk == BK_XESS ? vk_xess_available() : (bk == BK_FSR3 || bk == BK_FSR4) ? snap_fsr_runtime_available(bk == BK_FSR4) : 0;
+ }
+ 
+ static int chosen(void) {
+@@ -360,11 +363,13 @@
+     return !strcmp(up, "dlss") ? BK_DLSS
+            : !strcmp(up, "xess") ? BK_XESS
+            : !strcmp(up, "fsr3") ? BK_FSR3
+-           : !strcmp(up, "auto") ? (can(BK_DLSS) ? BK_DLSS : BK_FSR3)
++           : !strcmp(up, "fsr4") ? BK_FSR4
++           : !strcmp(up, "auto") ? (can(BK_DLSS) ? BK_DLSS : can(BK_FSR4) ? BK_FSR4 : BK_FSR3)
+                                  : BK_NONE;
+ }
+ 
+ static int pick(void) {
++    if (!strcmp(cfg_upscaling(), "off")) return BK_NONE;
+     int bk = chosen();
+     if (bk != BK_NONE && can(bk)) return bk;
+     if (!res_scene_reduced()) return BK_NONE;
+@@ -377,7 +382,7 @@
+ // here (NGX answered, libxess.dll came up on this GPU, FSR 3's pipelines can be made).
+ int vk_dlaa_upscaler_ok(void) {
+     int bk = chosen();
+-    if (bk == BK_FSR3) return vk_pipeline_push_fn() ? vk_fsr3_available() : !vk_fsr3_failed();
++    if (bk == BK_FSR3 || bk == BK_FSR4) return snap_fsr_runtime_available(bk == BK_FSR4);
+     return bk != BK_NONE && can(bk);
+ }
+ 
+@@ -425,6 +430,7 @@
+ static struct { NgxHandle *feat; uint64_t after; } dead_feat[16];
+ 
+ static void features_sweep(int all) {
++    snap_fsr_runtime_sweep(all);
+     uint64_t done = vk_sync_fence_done();
+     for (int i = 0; i < 16; i++)
+         if (dead_feat[i].feat && (all || dead_feat[i].after <= done)) N.release(dead_feat[i].feat), dead_feat[i].feat = NULL;
+@@ -448,6 +454,7 @@
+ // deferred destruction of vk_memory.c and the feature to dead_feat: no wait for the device in the middle of a frame.
+ // The HDR present may hold the upscaler's picture as the frame's scene (vk_hdr_draw): it lets go of it.
+ static void free_size(struct Size *e) {
++    snap_fsr_runtime_retire(e->out);
+     if (e->out) vk_hdr_image_gone(e->out);
+     if (e->sharp) vk_hdr_image_gone(e->sharp);
+     vk_defer_view(e->out_view), vk_defer_view(e->mv_view), vk_defer_view(e->sharp_view);
+@@ -737,7 +744,7 @@
+     if (!dl_active() || D.ended) return;
+     const p_bind_buf *b = &ex->ubo[0][0];   // constant bank c3: the replay keeps user banks from c3 on
+     const VkExecTarget *z = &ex->depth;
+-    if (!(b->size == CAM_BYTES && b->addr && z->image &&
++    if (!(b->size == 0x2e8 && b->addr && z->image &&
+           ((D.armed && z->image == D.depth.image) || (D.jdepth && z->image == D.jdepth))))
+         return;
+     int i = 0, low = 0;
+@@ -746,8 +753,10 @@
+     if (i == 4) i = low, D.cams[i].addr = 0;   // full: the rarest makes room
+     struct Cam *c = &D.cams[i];
+     if (c->addr != b->addr) {
+-        if (!vk_usnap_copy(b->addr, CAM_BYTES, c->block))   // no snapshot (AC_UBO_SNAPSHOT=0): guest memory
+-            memcpy(c->block, (const void *)(uintptr_t)b->addr, CAM_BYTES);
++        float raw[0x2e8 / sizeof(float)];
++        if (!vk_usnap_copy(b->addr, sizeof raw, raw))
++            memcpy(raw, (const void *)(uintptr_t)b->addr, sizeof raw);
++        if (!snap_camera_decode(raw, sizeof raw, c->block)) { c->have = 0; return; }
+         c->addr = b->addr, c->n = 0;
+         c->have = 1;
+     }
+@@ -788,7 +797,8 @@
+ static const char *backend_name(int b, int up) {
+     return b == BK_DLSS   ? (up ? "DLSS" : "DLAA")
+            : b == BK_XESS ? (up ? "XeSS" : "XeSS Native AA")
+-           : b == BK_FSR3 ? (up ? "FSR 3" : "FSR 3 Native AA")
++           : b == BK_FSR4 ? (up ? "FSR 4" : "FSR 4 Native AA")
++           : b == BK_FSR3 ? (up ? "FSR 3.1.6" : "FSR 3.1.6 Native AA")
+                           : "off";
+ }
+ 
+@@ -830,7 +840,10 @@
+ // HDR output (RCAS's limiter works on 0..1). The frame then tells the present to copy it (vk_dlaa_frame's return,
+ // vk_fsr_presharp_set); frames without an upscaled scene (the title, loads, native modes) are sharpened at the present
+ // as before. *img, *view: the picture the scaling pass is to read, replaced by the sharpened one.
++#include "snap_fsr_runtime.inc"
++
+ static void sharpen(VkCommandBuffer cb, struct Size *e, VkImage *img, VkImageView *view) {
++    return; // Snap keeps linear scene light until its own tone-map; no donor pre-HUD RCAS.
+     if (vk_hdr_wanted() || vk_fsr_present_scales() || !vk_fsr_rcas_on()) return;
+     if (!e->sharp) {
+         if (!image2d(e->ow, e->oh, VK_FORMAT_R16G16B16A16_SFLOAT,
+@@ -854,6 +867,7 @@
+ // scene's own size in place. 0: the frame stays unresolved.
+ static int motion(VkExec *ex, uint32_t ow, uint32_t oh) {
+     const VkExecTarget *t = &D.color, *z = &D.depth;
++    uint64_t verified_camera; if (!frame_camera(&verified_camera)) return 0;
+     uint32_t w = t->width, h = t->height;
+     VkCommandBuffer cb = ex->cb;
+     if (ow == w && oh == h && !blit_ok(t->format)) return 0;
+@@ -899,7 +913,7 @@
+     uint32_t w = e->w, h = e->h, ow = e->ow, oh = e->oh;
+     int up = ow != w || oh != h;
+     // linear scene light (the light target), or the composite with HDR output, which keeps highlights above 1
+-    int hdr = !up || vk_hdr_wanted();
++    int hdr = 1; // Snap HDR composite remains linear until the final RGBA8 tone-map pass.
+     VkCommandBuffer cb = ex->cb;
+     if (up) vk_exec_barrier(ex);   // the composite and SMAA's passes are done (no pass is open here)
+     VkImageView zv = vk_exec_target_view(z->img, z->format, VK_IMAGE_VIEW_TYPE_2D, VK_IMAGE_ASPECT_DEPTH_BIT, z->level,
+@@ -916,11 +930,8 @@
+     // NGX and XeSS record into the command buffer themselves: the recorder thread must have made every call so far.
+     // FSR 3's passes go through the recorder like the replay's own commands.
+     if (D.backend != BK_FSR3) rec_drain();
+-    if (D.backend == BK_FSR3) {
+-        Fsr3Eval f = {.color = cv, .depth = zv, .mv = e->mv_view, .out = e->out_view, .w = w, .h = h, .ow = ow, .oh = oh,
+-                      .jx = jx, .jy = jy, .phases = jitter_phases(w, ow), .dt_ms = dt_ms, .reset = D.reset, .hdr = hdr};
+-        camera_planes(&f.near_z, &f.far_z, &f.fov_y);
+-        if (!vk_fsr3_evaluate(cb, &f)) return 0;   // off for the rest of the run (vk_fsr3.c)
++    if (D.backend == BK_FSR3 || D.backend == BK_FSR4) {
++        if (!snap_fsr_runtime_evaluate(cb, t, z, e, jx, jy, dt_ms, hdr, D.reset, D.backend == BK_FSR4, ex->fence)) return 0;
+     } else if (D.backend == BK_DLSS) {
+         if (!D.params && !NGX_OK(N.alloc_params(&D.params))) return dl_fail("parameter allocation", 0), 0;
+         NgxParam *p = D.params;
+@@ -935,7 +946,7 @@
+             p_seti(p, "PerfQualityValue", q);
+             // MVLowRes: motion vectors at the render size. Linear scene light: IsHDR | AutoExposure, no exposure
+             // texture; the tonemapped composite (0..1) neither.
+-            p_seti(p, "DLSS.Feature.Create.Flags", (1 << 1) | (hdr ? (1 << 0) | (1 << 6) : 0));
++            p_seti(p, "DLSS.Feature.Create.Flags", (1 << 1) | (1 << 3) | (hdr ? (1 << 0) | (1 << 6) : 0));
+             p_seti(p, "DLSS.Enable.Output.Subrects", 0);
+             // The model per mode (NVSDK_NGX_DLSS_Hint_Render_Preset: 11 K, 12 L, 13 M), as NVIDIA recommends for DLSS
+             // 4.5 (310.x): K (the transformer) for DLAA, Quality and Balanced, M for Performance, L for Ultra
+@@ -1056,7 +1067,8 @@
+ static int target_scaled(const VkExecTarget *c) {
+     unsigned s[2];
+     res_scene_size(s);
+-    return res_scene_reduced() && c->width == s[0] && c->height == s[1];
++    uint32_t o[2]; game_size(o);
++    return c->width < o[0] && c->height < o[1];
+ }
+ 
+ void vk_dlaa_pass(VkExec *ex) {
+@@ -1075,7 +1087,8 @@
+         return;
+     }
+     // a light-target pass; a smaller pair never takes over an armed one
+-    if (D.gbuf && !D.ended && ex->pass_ncolor == 1 && c->image && scene_color(c->format) && scene_depth(z) &&
++    unsigned expected_scene[2]; res_scene_size(expected_scene);
++    if (c->width == expected_scene[0] && c->height == expected_scene[1] && D.gbuf && !D.ended && ex->pass_ncolor == 1 && c->image && scene_color(c->format) && scene_depth(z) &&
+         c->width == z->width && c->height == z->height && c->samples <= 1 && !c->is3d &&
+         (!D.armed || (c->width >= D.color.width && c->height >= D.color.height))) {
+         D.color = *c, D.depth = *z, D.armed = 1;
+@@ -1098,7 +1111,8 @@
+             if (!resolve(ex, &D.color)) unresolved(ex);
+             return;
+         }
+-        D.resolved = 1;   // SMAA's edges and weights, which come first, are skipped for the upscaler
++        D.comp = D.color, D.comp_ok = 1;
++        D.resolved = 1; // Snap composite remains the full scene image
+         return;
+     }
+     // upscaling: the composite, a pass at the light target's size into one HDR-format target with the scene depth (the
+@@ -1157,6 +1171,7 @@
+     if (no_taa == OFF_PRESENTS)
+         for (int i = 0; i < 3; i++)
+             if (D.sizes[i].out) free_size(&D.sizes[i]);
++    snap_fsr_runtime_sweep(0); // reap FSR-only retirements even after temporal AA is switched off
+     if (N.loaded) features_sweep(0);
+     if (bk != D.backend) {
+         int reduced = res_scene_reduced(), want = chosen();
+@@ -1203,7 +1218,9 @@
+     if (!strcmp(up, "off")) return res_scene_reduced() ? 1 : 0;
+     if (!strcmp(up, "dlss")) return !N.tried ? 1 : N.available && !D.failed ? 0 : 2;
+     if (!strcmp(up, "xess")) return !vk_xess_tried() ? 1 : vk_xess_available() ? 0 : 2;
+-    if (!strcmp(up, "fsr3") || !strcmp(up, "auto")) return vk_fsr3_failed() && !can(BK_DLSS) ? 2 : 0;
++    if (!strcmp(up, "fsr3")) return can(BK_FSR3) ? 0 : 2;
++    if (!strcmp(up, "fsr4")) return can(BK_FSR4) ? 0 : 2;
++    if (!strcmp(up, "auto")) return pick() != BK_NONE ? 0 : 2;
+     return 0;
+ }
+ 
+@@ -1280,6 +1297,7 @@
+ // process's end, like the back end's other pipelines.
+ void vk_dlaa_release(void) {
+     const VkCtx *c = vk_ctx();
++    snap_fsr_runtime_shutdown();
+     for (int i = 0; i < 3; i++) {
+         struct Size *e = &D.sizes[i];
+         if (e->out_view) vkDestroyImageView(c->device, e->out_view, NULL);
+--- a/runtime/vk_mvprev.c
++++ b/runtime/vk_mvprev.c
+@@ -161,11 +161,11 @@
+         int64_t at = copy_block(u->addr, n);
+         if (at < 0) return 0;   // a block the draw needs is missing: it keeps the camera's motion
+         o->off[b - 3] = (uint32_t)at, o->size[b - 3] = n;
+-        if (b != 3 && n >= 48 && (ab < 0 || b == 14)) ab = b;   // the place (c14) over any other bank
++        if (b != 3 && n >= 64 && (ab < 0 || b == 4)) ab = b;   // the place (c14) over any other bank
+     }
+     if (ab >= 0) {   // the first matrix's translation: rows' fourth floats
+         const float *m = (const float *)(M.map + (size_t)f->slot * SLOT_BYTES + o->off[ab - 3]);
+-        o->anchor[0] = m[3], o->anchor[1] = m[7], o->anchor[2] = m[11], o->has_anchor = 1;
++        o->anchor[0] = m[12], o->anchor[1] = m[13], o->anchor[2] = m[14], o->has_anchor = 1;
+     }
+     uint64_t t1 = M.timed ? kern_now_ns() : 0;
+     if (M.timed) M.ns[0] += t1 - t0;
+--- a/runtime/vk_device.c
++++ b/runtime/vk_device.c
+@@ -13,6 +13,7 @@
+ #include "cfg.h"
+ #include "host.h"
+ #include "vk.h"
++#include "snap_fsr_sdk.h"
+ #include "platform/platform.h"
+ #include "vk_dlaa.h"
+ #include "vk_xess.h"
+@@ -226,6 +227,15 @@
+     VkPhysicalDeviceAttachmentFeedbackLoopLayoutFeaturesEXT fbl;
+     VkPhysicalDeviceDynamicRenderingLocalReadFeaturesKHR lr;
+     VkPhysicalDeviceMutableDescriptorTypeFeaturesEXT mut;   // XeSS (vk_xess.c) only
++#ifdef VK_KHR_compute_shader_derivatives
++    VkPhysicalDeviceComputeShaderDerivativesFeaturesKHR fsr_derivatives;
++#endif
++#ifdef VK_KHR_cooperative_matrix
++    VkPhysicalDeviceCooperativeMatrixFeaturesKHR fsr_coop;
++#endif
++#ifdef VK_EXT_shader_float8
++    VkPhysicalDeviceShaderFloat8FeaturesEXT fsr_float8;
++#endif
+ } FeatureChain;
+ 
+ static int create_device(void) {
+@@ -284,6 +294,24 @@
+     }
+     // GPU breadcrumbs for a lost device (vk_crumbs.c): AMD's drivers and RADV report it.
+     if (has_ext(ep, ne, VK_AMD_BUFFER_MARKER_EXTENSION_NAME)) { g_vk.has_buffer_marker = 1; ext[n_ext++] = VK_AMD_BUFFER_MARKER_EXTENSION_NAME; }
++#ifdef VK_KHR_compute_shader_derivatives
++    if (has_ext(ep, ne, VK_KHR_COMPUTE_SHADER_DERIVATIVES_EXTENSION_NAME) && n_ext < 80) {
++        ext[n_ext++] = VK_KHR_COMPUTE_SHADER_DERIVATIVES_EXTENSION_NAME;
++        CHAIN(fsr_derivatives, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_COMPUTE_SHADER_DERIVATIVES_FEATURES_KHR);
++    }
++#endif
++#ifdef VK_KHR_cooperative_matrix
++    if (has_ext(ep, ne, VK_KHR_COOPERATIVE_MATRIX_EXTENSION_NAME) && n_ext < 80) {
++        ext[n_ext++] = VK_KHR_COOPERATIVE_MATRIX_EXTENSION_NAME;
++        CHAIN(fsr_coop, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_COOPERATIVE_MATRIX_FEATURES_KHR);
++    }
++#endif
++#ifdef VK_EXT_shader_float8
++    if (has_ext(ep, ne, VK_EXT_SHADER_FLOAT8_EXTENSION_NAME) && n_ext < 80) {
++        ext[n_ext++] = VK_EXT_SHADER_FLOAT8_EXTENSION_NAME;
++        CHAIN(fsr_float8, VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_FLOAT8_FEATURES_EXT);
++    }
++#endif
+     // Graphics pipeline library: chained last so it can be dropped again when vk_caps_gpl declines it.
+     void **gpl_link = NULL;
+     if (has_ext(ep, ne, VK_KHR_PIPELINE_LIBRARY_EXTENSION_NAME) && has_ext(ep, ne, VK_EXT_GRAPHICS_PIPELINE_LIBRARY_EXTENSION_NAME)) {
+@@ -297,6 +325,12 @@
+     // The driver fills the chain with what it supports; the same chain then enables all of it (robustBufferAccess
+     // stays on: guest shaders index constant buffers freely and out-of-range reads must stay harmless).
+     vkGetPhysicalDeviceFeatures2(g_vk.phys, &c->f2);
++    snap_fsr_sdk_int8_enabled = 0;
++#ifdef VK_KHR_compute_shader_derivatives
++    // The pinned SDK specifically identifies derivativeGroupLinear for its INT8 prepass.
++    // Its provider query/create determines model compatibility; do not invent extra model requirements.
++    snap_fsr_sdk_int8_enabled = c->fsr_derivatives.computeDerivativeGroupLinear;
++#endif
+     vk_caps_driver(g_vk.phys);
+     vk_caps_features(&c->f2.features);
+     if (gpl_link) {

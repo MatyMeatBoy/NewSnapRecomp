@@ -12,7 +12,7 @@ from unittest.mock import patch
 from pathlib import Path
 from newsnap import launcher_settings as settings
 from newsnap.upstream import ROOT, UPSTREAM
-from newsnap.version import VERSION, RUNTIME_CAPABILITIES
+from newsnap.version import VERSION, RUNTIME_API, RUNTIME_CAPABILITIES
 
 
 class LauncherSettingsTests(unittest.TestCase):
@@ -25,7 +25,7 @@ class LauncherSettingsTests(unittest.TestCase):
             native = b'private native fixture, not game content'
             (data / 'newsnap.exe').write_bytes(native)
             marker = data / 'newsnap-game.json'
-            valid = {'format': 1, 'runtime_api': 2, 'game_version': '2.0.1',
+            valid = {'format': 1, 'runtime_api': RUNTIME_API, 'game_version': '2.0.1',
                      'native_executable_sha256': hashlib.sha256(native).hexdigest(),
                      'runtime_source_revision': 'compatible-different-source-revision',
                      'capabilities': list(RUNTIME_CAPABILITIES)}
@@ -37,7 +37,7 @@ class LauncherSettingsTests(unittest.TestCase):
                 with self.subTest(invalid=invalid), self.assertRaisesRegex(ValueError, re.escape(VERSION)):
                     settings.validate_runtime_data(root)
             marker.write_text(json.dumps(valid))
-            self.assertEqual(settings.validate_runtime_data(root)['runtime_api'], 2)
+            self.assertEqual(settings.validate_runtime_data(root)['runtime_api'], RUNTIME_API)
             (data / 'newsnap.exe').write_bytes(native + b'tampered')
             with self.assertRaisesRegex(ValueError, re.escape(VERSION)):
                 settings.validate_runtime_data(root)
@@ -389,7 +389,7 @@ int main(void) {
             original = path.read_bytes()
             for key, value in [('fps', '120'), ('volume', '101'), ('mouse_sens', 'nan'),
                                ('mouse_sens', '-1'), ('motion', 'yes'), ('window_size', '0x720'),
-                               ('vk_present', 'adaptive'), ('upscaling', 'dlss')]:
+                               ('vk_present', 'adaptive'), ('upscaling', 'unknown')]:
                 with self.subTest(key=key, value=value), self.assertRaises(ValueError):
                     settings.save_settings(path, {key: value})
                 self.assertEqual(path.read_bytes(), original)
