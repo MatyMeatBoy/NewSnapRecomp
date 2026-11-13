@@ -27,7 +27,7 @@ class AlphaPackageTests(unittest.TestCase):
                 directory, archive = package_alpha.package()
                 with self.assertRaises(FileExistsError):
                     package_alpha.package()
-            self.assertIn('0.1-alpha-source', archive.name)
+            self.assertIn(f'{package_alpha.VERSION}-source', archive.name)
             self.assertFalse((directory / 'prod.keys').exists())
             manifest = json.loads((directory / 'MANIFEST.json').read_text())
             self.assertFalse(manifest['private_game_data'])

@@ -6,6 +6,23 @@ from newsnap import launcher_settings as settings
 
 
 class LauncherSettingsTests(unittest.TestCase):
+    def test_internal_profile_follows_moved_application_folder(self):
+        with tempfile.TemporaryDirectory() as folder:
+            first, moved = Path(folder) / 'original', Path(folder) / 'moved'
+            profile = first / 'build/profile'
+            settings.save_profile(first, profile)
+            first.rename(moved)
+            self.assertEqual(settings.load_profile(moved), moved / 'build/profile')
+
+    def test_relative_profile_cannot_escape_application_folder(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            (root / 'build').mkdir()
+            (root / 'build/launcher.json').write_text('{"profile_relative":"../../other-profile"}')
+            self.assertEqual(settings.load_profile(root), root / 'build/profile')
+            (root / 'build/launcher.json').write_text('[]')
+            self.assertEqual(settings.load_profile(root), root / 'build/profile')
+
     def test_legacy_anisotropy_is_shown_and_preserved_until_edited(self):
         with tempfile.TemporaryDirectory() as folder:
             path = Path(folder) / 'settings.ini'
