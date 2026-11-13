@@ -2,7 +2,7 @@
 
 Work in progress: a native Windows x64 recompilation of **New Pokémon Snap** using the infrastructure of [Astral Chain Recomp](https://github.com/captainj-sparrow/astral-chain-pc-recomp), which builds on [TotK Recomp](https://github.com/valentderah/totk-pc-recomp).
 
-**Status:** verified import of the owner's base and cumulative update is working. Runtime adaptation is in progress. This is **not yet a playable port**; no FPS or stutter-free gameplay result has been measured.
+**Status:** the owner's base and update **2.0.1** import with verified integrity. A private Windows x64 executable builds, passes its memory/dispatch and loader checks, boots into `nnMain`, and displays the autosave notice with audio. Runtime adaptation is in progress. This is **not yet a verified playable port**; no gameplay FPS or stutter-free result is claimed.
 
 The upstream is pinned as a submodule. Snap-specific offsets, SDK bindings, shader formats and timing must be verified against Snap; Astral Chain patches are not interchangeable.
 
@@ -22,6 +22,21 @@ Use the selected upstream's patched hactool (see its `tools/build_hactool.py`). 
 ```powershell
 .venv\Scripts\python -m unittest discover -s tests -v
 ```
+
+## Experimental build
+
+Unpack the selected upstream's Windows setup release locally. Its `llvm/`, `runtime/deps/` and `bin/` directories provide the compiler, headers, libraries and translator. Install `glslc` and `spirv-val` for the host-side FSR shader build, then run:
+
+```powershell
+.venv\Scripts\python -m newsnap build --sdk-root "path\Astral Chain-Setup" --shader-tools "path\shader-tools" --jobs 8
+build\updated\newsnap.exe --selftest
+build\updated\newsnap.exe --probe-loader
+build\updated\newsnap.exe --boot
+```
+
+The executable and all game-derived C stay local. The build verifies the imported modules, RomFS and index before compiling. `--no-generate` is allowed only when a receipt binds every generated source to the current modules and generator. Control metadata is rederived from the verified NACP; editing a cached JSON cannot inject compiler definitions.
+
+The current bring-up exposes an offline network interface; online socket/TLS services report unavailable. Native game timing is retained: none of Astral Chain's instruction or FPS patches are applied.
 
 ## Shader preparation and performance
 

@@ -19,6 +19,15 @@
  def align_up(v, a=ALIGN):
 --- a/runtime/boot.c
 +++ b/runtime/boot.c
+@@ -21,7 +21,7 @@
+ #include "vk_dlaa.h"
+ #include "platform/platform.h"
+ 
+-#define SYM_INIT_START "_ZN2nn4init5StartEmmPFvvES2_"
++#define SYM_INIT_START "_ZN2nn4init5StartEmmPFvvES2_S2_"
+ #define CTOR_DONE 2                      // a module's constructor flag after its DT_INIT ran the init_array
+ 
+ static volatile int32_t inits_done;
 @@ -41,8 +41,8 @@
      memcpy(&stack, npdm + 0x1C, 4);
      int prio = npdm[0xE], core = npdm[0xF];
@@ -80,6 +89,61 @@
                               NULL, inst, NULL);
      if (!g_hwnd) {
          rt_log("gfx: CreateWindowEx failed (%lu)", GetLastError());
+--- a/runtime/nvn_procs.inc
++++ b/runtime/nvn_procs.inc
+@@ -229,6 +229,7 @@
+ NVN_PROC(nvnDeviceGetTextureHandle)
+ NVN_PROC(nvnDeviceGetTimestampInNanoseconds)
+ NVN_PROC(nvnDeviceGetWindowOriginMode)
++NVN_PROC(nvnSetExternalDebuggerEnabledNVX)
+ NVN_PROC(nvnDeviceInitialize)
+ NVN_PROC(nvnDeviceInstallDebugCallback)
+ NVN_PROC(nvnDeviceIsExternalDebuggerAttached)
+--- a/runtime/nvn_api_obj.c
++++ b/runtime/nvn_api_obj.c
+@@ -418,6 +418,8 @@
+ }
+ static void prog_release(prog_t *o) {
+     if (o->serial) gfx_backend()->program_release(o);
++    free(o->control_copy);
++    o->control_copy = NULL;
+     o->serial = 0;
+ }
+ // void nvnProgramFinalize(NVNprogram *p)
+@@ -431,9 +433,21 @@
+         rt_log("nvn: ProgramSetShaders with %d stages at %p", n, (const void *)sd);
+         return 0;
+     }
++    // NVN consumes control metadata at SetShaders. Snap can release its archive
++    // metadata afterwards, so the deferred renderer needs a program-owned copy.
++    uint8_t *copy = n ? malloc((size_t)n * 0x880) : NULL;
++    if (n && !copy) return 0;
++    for (int i = 0; i < n; i++) {
++        if (!sd[i].control) { free(copy); return 0; }
++        memcpy(copy + (size_t)i * 0x880, sd[i].control, 0x880);
++    }
+     prog_release(o);
++    o->control_copy = copy;
+     o->nstage = (uint32_t)n;
+-    if (n) memcpy(o->sd, sd, (size_t)n * sizeof *sd);
++    for (int i = 0; i < n; i++) {
++        o->sd[i] = sd[i];
++        o->sd[i].control = copy + (size_t)i * 0x880;
++    }
+     o->serial = nvn_new_serial();
+     NVN_LOG("ProgramSetShaders %p n=%d data0=%#llx", (void *)o, n, n ? (unsigned long long)sd[0].data : 0ull);
+     return 1;
+--- a/runtime/nvn_obj.h
++++ b/runtime/nvn_obj.h
+@@ -67,7 +67,7 @@
+ typedef struct { uint32_t magic; samp_par p; } samp_t;                                        FITS(samp_t, NVNsampler);
+ _Static_assert(sizeof(samp_par) == 44, "TOTK sampler parameters");
+ 
+-typedef struct { uint32_t magic, nstage; NVNshaderData sd[6]; uint64_t serial; } prog_t;     FITS(prog_t, NVNprogram);   // serial: table key for the back end's resolved result
++typedef struct { uint32_t magic, nstage; NVNshaderData sd[6]; uint64_t serial; void *control_copy; } prog_t;     FITS(prog_t, NVNprogram);   // serial: table key for the back end's resolved result
+ 
+ typedef struct { uint32_t magic, fenced; uint64_t fence; } sync_t;                            FITS(sync_t, NVNsync);
+ typedef struct { const pool_t *pool; int64_t off; } ev_builder_t;                             FITS(ev_builder_t, NVNeventBuilder);
 --- a/tools/ffx_sdk.py
 +++ b/tools/ffx_sdk.py
 @@ -85,7 +85,7 @@
@@ -91,6 +155,118 @@
  HEADER = 'fsr3_spv.h'
  
  
+--- a/runtime/ipc.c
++++ b/runtime/ipc.c
+@@ -11,6 +11,7 @@
+ #include "audren.h"
+ #include "host.h"
+ #include "ipc.h"
++#include "ipc_frame.h"
+ #include "nfp.h"
+ #include "ov.h"
+ #include "platform/platform.h"
+@@ -211,6 +212,7 @@
+     switch (rq->cmd) {
+     case 0:   // ConvertToDomain: the session now takes DomainMessageHeader-prefixed requests
+         s->domain = 1;
++        { uint32_t root = 1; IPC_OUT(rs, root); }
+         return;
+     case 3: { uint16_t n = POINTER_BUFFER_SIZE; IPC_OUT(rs, n); return; }   // QueryPointerBufferSize
+     case 2: case 4: rs->move[rs->nmove++] = session_clone(s); return;          // CloneCurrentObject(Ex)
+@@ -238,22 +240,17 @@
+         rq.data_size = (uint32_t)(end - bytes);
+     } else if (rq.type == T_REQUEST || rq.type == T_REQUEST_CTX || rq.type == T_CONTROL || rq.type == T_CONTROL_CTX) {
+         const uint8_t *payload = (const uint8_t *)m + (((bytes - (const uint8_t *)m) + 15) & ~15);
+-        uint32_t h[4];
+-        memcpy(h, payload, 16);
+-        if (h[0] != CMIF_IN_MAGIC) {
++        SnapCmif frame;
++        int is_domain = s->domain && rq.type != T_CONTROL && rq.type != T_CONTROL_CTX;
++        if (payload > end || !snap_cmif_frame(payload, (size_t)(end - payload), is_domain, &frame)) {
+             ipc_backtrace();
+-            rt_fatal("ipc: %s: CMIF magic %#x (domain sessions are not served)", s->name, h[0]);
++            rt_fatal("ipc: %s: invalid CMIF/domain frame", s->name);
+         }
+-        rq.cmd = h[2];
+-        rq.data = payload + 16;
+-        rq.data_size = payload + 16 <= end ? (uint32_t)(end - payload - 16) : 0;
+-        if (s->domain && rq.type != T_CONTROL && rq.type != T_CONTROL_CTX && rq.data_size >= 16) {
+-            const uint32_t *dh = (const uint32_t *)rq.data;
+-            if ((dh[0] & 0xff) == 2) return;   // CloseVirtualHandle
+-            rq.data += 16;
+-            rq.data_size -= 16;
+-            domain = 1;
+-        }
++        if (frame.close) return;
++        rq.cmd = frame.command;
++        rq.data = frame.data;
++        rq.data_size = frame.size;
++        domain = frame.domain;
+     } else {
+         fflush(stdout);
+         rt_logf("ipc: %s message type %u:", s->name, rq.type);
+--- a/runtime/gfx_shader.c
++++ b/runtime/gfx_shader.c
+@@ -1204,7 +1204,13 @@
+     uint32_t c1_off;
+     memcpy(&c1_off, control + 0x700, 4), memcpy(&r->length, control + 0x704, 4);
+     uint64_t skip = stage == GFX_STAGE_CS ? 0 : CODE_SKIP;
+-    if (!code || r->length > code_size || c1_off > r->length || skip >= r->length) return fail("bad control section", NULL), 0;
++    if (!code || r->length > code_size || c1_off > r->length || skip >= r->length) {
++        static int snap_bad_controls;
++        if (snap_bad_controls++ < 12)
++            rt_log("Snap shader control: stage %d, code %p, available %llu, length %u, c1 %u, skip %llu",
++                   stage, code, (unsigned long long)code_size, r->length, c1_off, (unsigned long long)skip);
++        return fail("bad control section", NULL), 0;
++    }
+     r->c1_len = r->length - c1_off;
+     r->c1 = c1 ? c1 : code + c1_off;
+     if (!build_code_hash(stage, control, code, r->length, r->c1, r->c1_len, r->code_hash))
+--- a/runtime/memory.c
++++ b/runtime/memory.c
+@@ -478,12 +478,27 @@
+     if (!inside(dst, n, L.stack)) return R_INVALID_REGION;
+     int in_heap = inside(src, n, (RtRange){L.heap.base, heap_size});
+     int in_alias = inside(src, n, L.alias);
+-    if (!in_heap && !in_alias) return R_INVALID_REGION;
++    int in_module_data = 0;
++    int snap_module = module_index(src);
++    if (snap_module >= 0) {
++        const RtLoaded *m = ldr_module(snap_module);
++        in_module_data = inside(src, n, (RtRange){m->base + m->data_off, m->size - m->data_off});
++    }
++    if (!in_heap && !in_alias && !in_module_data) return R_INVALID_REGION;
+     plat_mutex_lock(&lock);
+     uint32_t r = R_OK;
+     if (in_alias && !alias_all_mapped(src, n)) {
+         r = R_INVALID_REGION;
+         goto out;
++    }
++    if (in_module_data) {
++        const RtLoaded *m = ldr_module(snap_module);
++        for (uint64_t off = src - m->base; off < src - m->base + n; off += PAGE) {
++            if (module_page_perm(snap_module, off) != PERM_RW) {
++                r = R_INVALID_STATE;
++                goto out;
++            }
++        }
+     }
+     unsigned found = nstack_maps;
+     for (unsigned i = 0; i < nstack_maps; i++)
+@@ -668,11 +683,11 @@
+             break;
+         }
+         if (a >= m->src && a < send) {
+-            r = (RtMemoryInfo){.base = m->src, .size = m->size, .state = ST_NORMAL, .perm = PERM_NONE, .attr = 4};
++            r = (RtMemoryInfo){.base = m->src, .size = m->size, .state = module_index(m->src) >= 0 ? ST_CODEDATA : ST_NORMAL, .perm = PERM_NONE, .attr = 4};
+             break;
+         }
+         uint64_t lo = r.base, hi = r.base + r.size;
+-        uint64_t b = r.state == ST_FREE ? m->dst : r.state == ST_NORMAL ? m->src : 0;
++        uint64_t b = r.state == ST_FREE ? m->dst : (r.state == ST_NORMAL || r.state == ST_CODEDATA) ? m->src : 0;
+         uint64_t e = b + m->size;
+         if (!b) continue;
+         if (e <= a && e > lo) lo = e;
 --- a/tools/build_game.py
 +++ b/tools/build_game.py
 @@ -80,7 +80,7 @@

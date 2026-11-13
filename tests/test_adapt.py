@@ -16,6 +16,7 @@ class AdaptTests(unittest.TestCase):
             self.assertIn("'snap': 0", layout)
             self.assertIn('return 0  # Snap uses nn::fs', layout)
             self.assertIn('stack != 0x4000', boot)
+            self.assertIn('"_ZN2nn4init5StartEmmPFvvES2_S2_"', boot)
             self.assertIn('#define MAIN_STACK 0x4000ull', (dst / 'runtime/kernel.c').read_text())
             self.assertIn("EXE = 'newsnap.exe'", (dst / 'tools/build_game.py').read_text())
             # Upstream stays pristine; this also keeps patches independently reviewable.

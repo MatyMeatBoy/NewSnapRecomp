@@ -21,3 +21,11 @@ It is ignored by Git. Its hactool is by SciresM and contributors; its license
 ships with that distribution. Python dependencies retain their own licenses.
 
 Witch Time was consulted as a research reference; no Witch Time source is copied.
+
+`newsnap/drp.py` adapts the DRPF format and XorShift description in
+[kwsch/NewSnap](https://github.com/kwsch/NewSnap) at
+`2da13570960124f263e439994064d00c1a48788d` (ISC; Copyright 2021 SciresM and Kaphotics).
+The complete notice is in `licenses/NewSnap-ISC.txt`. The reader indexes metadata
+without distributing or invoking the proprietary Oodle DLL.
+
+The NACP field layout was checked against switchbrew/libnx `nx/include/switch/nacp.h`.

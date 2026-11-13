@@ -6,6 +6,7 @@ import tempfile
 from pathlib import Path
 
 from .upstream import COMMIT, TITLE_ID, UPDATE_ID, extractor
+from .metadata import parse_nacp
 
 
 def select_program(records, update=False):
@@ -86,6 +87,7 @@ def import_game(base, update, keys, work, *, hactool=None, exefs_only=False):
     manifests = {}
     for tag, source in (('base', base), ('updated', update)):
         manifests[tag] = import_exefs(source, keys, work / tag, update=tag == 'updated')
+    import_control(update, keys, work / 'updated' / 'control', manifests['updated']['source_sha256'])
     if exefs_only:
         return manifests
     if not hactool or not Path(hactool).is_file():
@@ -123,3 +125,49 @@ def import_game(base, update, keys, work, *, hactool=None, exefs_only=False):
         stage.rename(romfs)
     print(f'Updated RomFS verified: {len(report["files"])} files, {report["romfs_size"]} bytes', flush=True)
     return manifests
+
+
+def import_control(source, keys, destination, source_hash):
+    e = extractor(2)
+    if destination.exists():
+        receipt = json.loads((destination / 'receipt.json').read_text(encoding='utf-8'))
+        if (receipt.get('source_sha256') == source_hash
+                and source_digest(destination / 'romfs.bin') == receipt.get('romfs_sha256')):
+            return read_control_metadata(destination)
+        raise ValueError('Stale control metadata; use another --work directory')
+    with source.open('rb') as stream:
+        _, entries = e.container_entries(stream, source.stat().st_size)
+        record, _ = e.program_nca(e.nca_inventory(stream, entries, e.load_keys(keys)))
+    with tempfile.TemporaryDirectory(prefix='control-', dir=destination.parent) as temporary:
+        stage = Path(temporary) / 'complete'
+        report = e.extract_romfs(source, keys, {'program': record}, stage)
+        nacp = [item for item in report['files'] if item['path'] == 'control.nacp']
+        if len(nacp) != 1 or nacp[0]['size'] != 0x4000:
+            raise ValueError('Control NCA has no valid control.nacp')
+        with (stage / 'romfs.bin').open('rb') as stream:
+            stream.seek(nacp[0]['offset'])
+            metadata = parse_nacp(stream.read(0x4000))
+        write_json(stage / 'metadata.json', metadata)
+        write_json(stage / 'receipt.json', {'source_sha256': source_hash,
+                                          'romfs_sha256': report['romfs_sha256']})
+        stage.rename(destination)
+    print(f'Control metadata verified: game {metadata["display_version"]}', flush=True)
+    return metadata
+
+
+def read_control_metadata(destination):
+    """Derived JSON is informative only: parse NACP again from its verified image."""
+    destination = Path(destination)
+    receipt = json.loads((destination / 'receipt.json').read_text(encoding='utf-8'))
+    image = destination / 'romfs.bin'
+    if source_digest(image) != receipt.get('romfs_sha256'):
+        raise ValueError('Control image differs from its verified import')
+    files = extractor(2).index_romfs(image)
+    nacp = [item for item in files if item['path'] == 'control.nacp']
+    if len(nacp) != 1 or nacp[0]['size'] != 0x4000:
+        raise ValueError('Control image has no valid NACP')
+    with image.open('rb') as stream:
+        stream.seek(nacp[0]['offset'])
+        metadata = parse_nacp(stream.read(0x4000))
+    write_json(destination / 'metadata.json', metadata)
+    return metadata

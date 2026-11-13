@@ -11,7 +11,7 @@ UPDATE_ID = '0100F4300BF2C800'
 
 
 @functools.lru_cache
-def extractor():
+def extractor(content_type=0):
     path = UPSTREAM / 'tools' / 'extract.py'
     if not path.is_file():
         raise ValueError('Initialize the upstream with git submodule update --init')
@@ -22,5 +22,15 @@ def extractor():
     module.UPDATE_TITLE_ID = UPDATE_ID
     # The reader is shared, but title identity and program selection belong to Snap.
     from .importer import select_program
-    module.program_nca = select_program
+    if content_type == 0:
+        module.program_nca = select_program
+    elif content_type == 2:
+        def select_control(records, update=False):
+            controls = [(r, h) for r, h in records if r['content_type'] == 2 and r['title_id'] == TITLE_ID]
+            if len(controls) != 1:
+                raise ValueError('Expected one New Pokémon Snap Control NCA')
+            return controls[0]
+        module.program_nca = select_control
+    else:
+        raise ValueError('Unsupported NCA content selection')
     return module
