@@ -1,6 +1,8 @@
 # Cola compartida: Codex + Claude
 
-**Rama única: `main`.** Las ramas auxiliares 0.4/0.5 ya se integraron y eliminaron.
+**Integración en `main`; entregas por PR temático.** Las ramas auxiliares
+0.4/0.5 ya se integraron y eliminaron; no recrearlas. Preparar PR de Claude en
+un worktree aislado, conservando el checkout compartido en `main`.
 La release/tag `v0.4.0-alpha` permanece inmutable. La 0.5 está en desarrollo y
 **no se publica hasta resolver y validar todos los fallos reportados**.
 
@@ -28,8 +30,9 @@ resuelta solo por cambiar un ajuste o por compilar.
 - No sobrescribir trabajo de otro responsable. Evitar reformateos globales.
   Avisar a Codex antes de editar `launcher.py`, `adapt.py`, `build.py`,
   `maintenance.py`, `version.py` o el empaquetado: son puntos de integración.
-- Commits/merge/publicación y cambio de versión los coordina Codex. No crear
-  nuevas ramas por cuenta propia en esta sesión compartida.
+- Cada autor puede commitear solo su reserva en su rama temática de PR. Codex
+  revisa, prueba e integra en `main`, y coordina publicación/cambio de versión.
+  No cambiar de rama en el checkout compartido ni mezclar trabajo ajeno.
 
 ## Tareas y reservas
 
@@ -50,7 +53,7 @@ resuelta solo por cambiar un ajuste o por compilar.
 | MENU-01 | P1 | REVISIÓN | Codex / agente de render | Menú dentro del juego: Original/Auto/DLSS/FSR 3.1/FSR 4, Native AA/DLAA y tres presets reducidos. Quitar FSR 3 genérico, XeSS/FSR espacial y opciones artísticas ignoradas. Reservados `menu_adapt.py`, `tests/test_snap_menu.py`. |
 | CACHE-01 | P2 | HECHA | Codex / agente de mantenimiento | Caché privada de C generado, con import/recipe/dependencias verificadas, límite y limpieza segura. Reservados `generation_cache.py`, `build.py`, `maintenance.py`, tests y `docs/GENERATION_CACHE.md`. Revisión independiente aprobada tras corregir identidad LZ4 y módulos inesperados; ensayo real `build/v05-generation-cache-real/evidence.json`: generación 86,820 s frente a restore 3,044 s + verificación 0,265 s, 150 archivos idénticos, sin reutilizar ejecutables. |
 | QA-01 | P1 | LIBRE · CLAUDE | Sin asignar | Auditar updater/launcher sin editar integración: escenarios 0.4→0.5, misma versión, sin estable, manual alpha/latest, GameData antiguo y cancelación. Agregar tests en nuevo `tests/test_launcher_acceptance.py` y hallazgos `docs/bugs/launcher-acceptance.md`. Coordinar APIs con Codex. |
-| LEARN-01 | P2 | EN CURSO | Codex · 2026-11-13 | Consolidar lecciones verificadas para OptiPort y matriz AMD/NVIDIA. Crear `docs/bugs/GPU_MATRIX.md`; separar observado/inferido/corregido/validado por GPU. No publicar ni editar la skill global hasta revisión de Codex. |
+| LEARN-01 | P2 | HECHA | Codex · 2026-11-13 | Consolidar lecciones verificadas para OptiPort y matriz AMD/NVIDIA. Crear `docs/bugs/GPU_MATRIX.md`; separar observado/inferido/corregido/validado por GPU. Revisado y promovido a OptiPort `9673006`; siete referencias instaladas en Codex, checkout activo y cambios locales de Claude preservados. Evidencia/matriz en `docs/bugs/GPU_MATRIX.md`. |
 
 ## Evidencia ya disponible (local, no subir)
 
