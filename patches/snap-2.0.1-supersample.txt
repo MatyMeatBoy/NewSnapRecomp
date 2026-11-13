@@ -1,0 +1,13 @@
+# Experimental docked supersampling; native settings and handheld are unchanged.
+# Snap 2.0.1 main build ddb900ff04a912ed42430508389853cfaf1accce.
+# NSO SHA256 ef20d6317d909bde106fec0958b58ccfdf4c46f36d9fa5ef8785ce54fff75443.
+# Both original BLs target main+0x98d160. x2=W,x3=H,w4=flags (originally 2).
+# Helper changes x2/x3/x4 and the verified window resource eligibility byte
+# for docked 125/150/200. Invalid memory/native/handheld settings are no-ops.
+# Guest ORR/MOV keep the original post-call width/height stores consistent;
+# the host helper itself does not clobber guest callee-saved registers.
+# The original engine call must follow the helper, with its original guest LR.
+# CPU argument tests do not establish actual image growth, heap sufficiency or photo correctness.
+set snap_supersample AC_SNAP_SUPERSAMPLE_PATCH 1
+site snap_supersample main 5d6d54 940ed903 @fn:snap_supersample_resize aa038054 aa0303f5 940ed903
+site snap_supersample main 634e6c 940d60bd @fn:snap_supersample_resize aa038053 aa0303f7 940d60bd

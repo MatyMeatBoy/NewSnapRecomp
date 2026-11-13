@@ -40,6 +40,16 @@ The current bring-up exposes an offline network interface; online socket/TLS ser
 
 ## Local launcher
 
+Windows 0.2 alpha includes `NewSnapLauncher.exe`, its dependencies and the
+original camera icon. Extract the whole Windows release and place your own
+`GameData` (or `newsnapGameData`) folder beside that executable. Python installation
+is not required. The owner-data folder contains the imported assets, locally
+generated native executable, shader inputs and profile; it is never a GitHub
+asset. Keep its runtime compatible with the selected release. See
+[0.2 alpha notes](docs/releases/0.2-alpha.md) for controls and tested limits.
+
+From a development checkout:
+
 ```powershell
 .venv\Scripts\python -m newsnap launcher
 ```

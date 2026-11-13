@@ -8,6 +8,7 @@ from pathlib import Path
 
 from .upstream import ROOT, UPSTREAM
 from .input_adapt import edits as input_edits
+from .output_adapt import edits as output_edits
 
 
 def replace_once(text, before, after):
@@ -60,7 +61,7 @@ def adapt_sources(destination, *, patch_output=None):
     if (!snap_exit_begin_close()) return;'''),
         ],
         'runtime/cpu.h': [
-            ('typedef void (*GuestFn)(Cpu *);', 'typedef void (*GuestFn)(Cpu *);\nvoid snap_render_select(Cpu *c); // Verified Snap render graph selection hook.'),
+            ('typedef void (*GuestFn)(Cpu *);', 'typedef void (*GuestFn)(Cpu *);\nvoid snap_render_select(Cpu *c); // Verified Snap render graph selection hook.\nvoid snap_supersample_resize(Cpu *c); // Opt-in engine resize prototype.'),
         ],
         'runtime/ov_system.c': [
             ('static void location_name(char out[0x24])', 'void ov_time_location(char out[0x24])'),
@@ -71,7 +72,7 @@ def adapt_sources(destination, *, patch_output=None):
         'runtime/cfg.c': [
             ('{"ANISO", "auto", "auto|game|2|4|8|16", RESTART}', '{"ANISO", "game", "game|2|4|8|16", RESTART}'),
             ('{"ASPECT", "wide", "fit|stretch|wide", LIVE}', '{"ASPECT", "fit", "fit|stretch", LIVE}'),
-            ('"game|50|67|75|100|125|150|200"', '"game|50|60|70|80|90|100"'),
+            ('"game|50|67|75|100|125|150|200"', '"game|50|60|70|80|90|100|125|150|200"'),
             ('"mailbox|fifo|immediate"', '"mailbox|fifo|fifo_relaxed|immediate"'),
         ],
         'runtime/vk_pipeline.c': [
@@ -195,6 +196,8 @@ def adapt_sources(destination, *, patch_output=None):
         ],
     }
     for name, changes in input_edits().items():
+        edits.setdefault(name, []).extend(changes)
+    for name, changes in output_edits().items():
         edits.setdefault(name, []).extend(changes)
     for folder in ('runtime', 'recomp', 'tools'):
         for src in (UPSTREAM / folder).rglob('*'):
