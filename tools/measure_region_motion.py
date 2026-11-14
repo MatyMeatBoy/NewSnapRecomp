@@ -67,26 +67,48 @@ def displacement(previous, current, box, pad=6, iterations=20):
     return float(dx), float(dy), residual
 
 
-def regularity(dx, dy, window=5):
+def regularity(dx, dy, window=5, frame_numbers=None):
     """How uneven a series of per-frame steps is.
 
     irregularity: RMS of the steps' deviation from their running mean over
     `window` frames, relative to the mean step length.  alternation: the part of
     that deviation that flips sign every frame (a component updated at half the
-    frame rate), relative to the mean step length.
+    frame rate), relative to the mean step length. Frame numbers identify the
+    original present of each step; gaps split the running mean into independent
+    segments and never change the even/odd phase of later frames.
     """
     dx, dy = np.asarray(dx, dtype=np.float64), np.asarray(dy, dtype=np.float64)
+    frame_numbers = np.arange(len(dx)) if frame_numbers is None else np.asarray(frame_numbers)
+    if dx.ndim != 1 or dy.shape != dx.shape or frame_numbers.shape != dx.shape:
+        raise ValueError('Steps and frame numbers must be equally sized one-dimensional arrays')
+    if len(frame_numbers) and (not np.issubdtype(frame_numbers.dtype, np.integer) or
+                               np.any(frame_numbers[1:] <= frame_numbers[:-1])):
+        raise ValueError('Frame numbers must be strictly increasing integers')
     length = float(np.hypot(dx, dy).mean()) if len(dx) else 0.0
-    if len(dx) < window + 4 or length == 0.0:
-        return {'frames': int(len(dx)), 'mean_step': round(length, 4), 'irregularity': None, 'alternation': None}
+    cuts = np.flatnonzero(np.diff(frame_numbers) != 1) + 1
+    segments = np.split(np.arange(len(dx)), cuts) if len(dx) else []
+    result = {'frames': int(len(dx)), 'segments': len(segments), 'analyzed_pairs': 0,
+              'mean_step': round(length, 4), 'irregularity': None, 'alternation': None}
+    if length == 0.0:
+        return result
     half = window // 2 + 1
     kernel = np.ones(window) / window
-    deviation = [(axis - np.convolve(axis, kernel, mode='same'))[half:-half] for axis in (dx, dy)]
+    parts, scored_frames = [], []
+    for segment in segments:
+        if len(segment) < window + 4:
+            continue
+        parts.append([(axis[segment] - np.convolve(axis[segment], kernel, mode='same'))[half:-half]
+                      for axis in (dx, dy)])
+        scored_frames.append(frame_numbers[segment][half:-half])
+    if not parts:
+        return result
+    deviation = [np.concatenate([part[axis] for part in parts]) for axis in (0, 1)]
     rms = float(np.sqrt(sum((d * d).mean() for d in deviation)))
-    sign = np.where(np.arange(len(deviation[0])) % 2 == 0, 1.0, -1.0)
+    sign = np.where(np.concatenate(scored_frames) % 2 == 0, 1.0, -1.0)
     alternating = float(np.hypot(*((d * sign).mean() for d in deviation)))
-    return {'frames': int(len(dx)), 'mean_step': round(length, 4), 'irregularity': round(rms / length, 4),
-            'alternation': round(alternating / length, 4)}
+    result.update(analyzed_pairs=len(deviation[0]), irregularity=round(rms / length, 4),
+                  alternation=round(alternating / length, 4))
+    return result
 
 
 def frame_files(folder):
@@ -132,8 +154,9 @@ def measure(folder, boxes, first=None, last=None, residual_limit=15.0):
         previous, previous_number = current, number
     summary = {}
     for name in boxes:
-        usable = [row[name] for row in rows if row[name]['residual'] <= residual_limit]
-        summary[name] = regularity([item['dx'] for item in usable], [item['dy'] for item in usable])
+        usable = [row for row in rows if row[name]['residual'] <= residual_limit]
+        summary[name] = regularity([row[name]['dx'] for row in usable], [row[name]['dy'] for row in usable],
+                                   frame_numbers=[row['frame'] for row in usable])
         summary[name]['discarded'] = len(rows) - len(usable)
     present = [row['interval_ms'] for row in rows if row['interval_ms'] is not None]
     if present:

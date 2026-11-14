@@ -61,6 +61,22 @@ class DisplacementTests(unittest.TestCase):
 
 
 class RegularityTests(unittest.TestCase):
+    def test_discarded_middle_step_keeps_original_parity_and_segments(self):
+        steps = np.array([1.3, 0.7] * 20)
+        frames_ = np.arange(40)
+        keep = frames_ != 19
+        full = motion.regularity(steps, np.zeros(40))
+        filtered = motion.regularity(steps[keep], np.zeros(39), frame_numbers=frames_[keep])
+        # Dropping a low step changes the mean-step normalizer slightly, not its phase.
+        self.assertAlmostEqual(filtered['alternation'], full['alternation'], delta=0.003)
+        self.assertEqual(filtered['segments'], 2)
+
+    def test_short_disconnected_segments_have_no_invented_neighbors(self):
+        report = motion.regularity([1.3, 0.7] * 8, [0.0] * 16,
+                                   frame_numbers=[*range(8), *range(20, 28)])
+        self.assertIsNone(report['irregularity'])
+        self.assertIsNone(report['alternation'])
+
     def test_uniform_alternating_and_random_series(self):
         uniform = motion.regularity([1.0] * 40, [0.0] * 40)
         self.assertEqual((uniform['irregularity'], uniform['alternation']), (0.0, 0.0))
@@ -80,6 +96,18 @@ class RegularityTests(unittest.TestCase):
 
 
 class MeasureTests(unittest.TestCase):
+    def test_residual_rejection_preserves_frame_ids_for_summary(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            folder = Path(temporary)
+            frames(folder, [1.0] * 40, [1.0] * 40)
+            samples = [(1.3 if i % 2 == 0 else 0.7, 0.0, 30.0 if i == 19 else 0.0)
+                       for i in range(40)]
+            with patch.object(motion, 'displacement', side_effect=samples):
+                result = motion.measure(folder, {'subject': SUBJECT})['summary']['subject']
+            self.assertEqual(result['frames'], 39)
+            self.assertEqual(result['discarded'], 1)
+            self.assertAlmostEqual(result['alternation'], 0.24, delta=0.003)
+
     def test_separates_an_uneven_subject_from_a_smooth_background(self):
         with tempfile.TemporaryDirectory() as temporary:
             folder = Path(temporary) / 'dump'
@@ -99,7 +127,9 @@ class MeasureTests(unittest.TestCase):
             self.assertEqual(report['summary']['present_interval_ms']['mean'], 16.67)
             # A missing frame is never bridged.
             (folder / 'f000120.png').unlink()
-            self.assertEqual(motion.measure(folder, {'background': BACKGROUND})['measured_pairs'], count - 2)
+            gapped = motion.measure(folder, {'background': BACKGROUND})
+            self.assertEqual(gapped['measured_pairs'], count - 2)
+            self.assertEqual(gapped['summary']['background']['segments'], 2)
 
     def test_cli_writes_outside_the_frame_folder_and_reads_only(self):
         with tempfile.TemporaryDirectory() as temporary:
