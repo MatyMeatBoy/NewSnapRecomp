@@ -28,8 +28,7 @@ def select_data_dir(root, selected):
     """Select existing owner inputs without copying, moving or modifying them."""
     root,selected=Path(root).resolve(),Path(selected).resolve()
     candidates=[selected,selected/'GameData',selected/'newsnapGameData']
-    selected=next((p for p in candidates if (p/'exefs/main').is_file() and
-                   (p/'exefs/sdk').is_file() and (p/'romfs/romfs.bin').is_file()),None)
+    selected=next((p for p in candidates if _has_inputs(p)),None)
     if selected is None:
         raise ValueError('Elige una carpeta GameData con ExeFS y RomFS importados de tu juego.')
     path=root/'launcher-settings.json'
@@ -51,18 +50,47 @@ def select_data_dir(root, selected):
     return selected
 
 
+def _has_inputs(directory):
+    """Cheap presence check only; verification separately hashes the owner inputs."""
+    return all((directory/name).is_file()
+               for name in ('exefs/main', 'exefs/sdk', 'romfs/romfs.bin'))
+
+
+def _data_candidates(root):
+    """Known portable layouts only; never enumerate an arbitrary directory tree."""
+    root=Path(root)
+    selected=_selected_data_dir(root)
+    candidates=[selected] if selected is not None else []
+    names=('GameData', 'newsnapGameData')
+    candidates.extend(root/name for name in names)
+    candidates.append(root)
+    candidates.extend(root/outer/inner for outer in names for inner in names)
+    candidates.extend(root.parent/name for name in names)
+    candidates.extend(root.parent/outer/inner for outer in names for inner in names)
+    return list(dict.fromkeys(candidates))
+
+
+def _discovered_data_dir(root):
+    if not Path(root).is_dir():
+        return None
+    candidates=_data_candidates(root)
+    # Complete imported inputs outrank stale settings and marker-only runtime stubs.
+    for directory in candidates:
+        if _has_inputs(directory):
+            return directory
+    # Assessment fixtures and pre-import runtime layouts still need marker lookup.
+    for directory in candidates:
+        if (directory / 'newsnap-game.json').is_file():
+            return directory
+    return None
+
+
 def has_game_data(root):
-    return _selected_data_dir(root) is not None or any((Path(root) / name / 'newsnap-game.json').is_file() for name in ('GameData', 'newsnapGameData'))
+    return _discovered_data_dir(root) is not None
 
 
 def data_dir(root):
-    selected=_selected_data_dir(root)
-    if selected is not None:return selected
-    for name in ('GameData', 'newsnapGameData'):
-        directory = Path(root) / name
-        if (directory / 'newsnap-game.json').is_file():
-            return directory
-    return Path(root) / 'GameData'
+    return _discovered_data_dir(root) or Path(root) / 'GameData'
 
 
 def is_release_layout(root):

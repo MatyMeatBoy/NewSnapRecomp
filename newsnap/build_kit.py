@@ -8,6 +8,7 @@ import shutil
 import stat
 import tempfile
 from urllib.parse import quote
+from urllib.error import HTTPError
 import zipfile
 
 from . import updater
@@ -78,7 +79,14 @@ def _verify(kit, root, revision, cancel_event):
 
 
 def _release(root, revision, tag):
-    metadata = updater._read_json(updater.REPO_URL + '/releases/tags/' + quote(tag, safe=''))
+    try:
+        metadata = updater._read_json(updater.REPO_URL + '/releases/tags/' + quote(tag, safe=''))
+    except HTTPError as error:
+        if error.code != 404:
+            raise
+        raise updater.UpdateError(
+            'No se puede acceder al kit de esta versión en GitHub. Usa el paquete Windows completo '
+            'con sus herramientas incluidas o configura el acceso al repositorio.') from error
     # The installed manifest/tag is already bound to this launcher in _identity.
     # Fetching its exact kit must also work after an explicit alpha/dev install;
     # this does not discover newer prereleases or change automatic update policy.
@@ -159,6 +167,26 @@ def _extract(archive_path, destination, revision, cancel_event):
                 raise updater.UpdateError('Build-kit extracted checksum or size mismatch')
 
 
+def _bundled_archive(root, revision, cancel_event):
+    name = f'build-kits/NewSnapBuildKit-{VERSION}-{revision[:8]}.zip'
+    archive = root / name
+    updater._no_links(archive)
+    metadata = _json(root / 'MANIFEST.json')
+    files = metadata.get('files', {})
+    pin = files.get(name) if isinstance(files, dict) else None
+    if not archive.exists() and pin is None:
+        return None
+    if (not isinstance(pin, dict) or not isinstance(pin.get('size'), int)
+            or isinstance(pin['size'], bool) or not 0 < pin['size'] <= MAX_ARCHIVE_BYTES
+            or not isinstance(pin.get('sha256'), str)
+            or not re.fullmatch('[0-9a-f]{64}', pin['sha256'])
+            or not archive.is_file() or archive.stat().st_size != pin['size']):
+        raise updater.UpdateError('El kit incluido falta o difiere del manifiesto del launcher.')
+    if digest(archive, cancel_event) != pin['sha256']:
+        raise updater.UpdateError('El kit incluido está dañado; extrae de nuevo el paquete completo.')
+    return archive
+
+
 def ensure_build_kit(root, progress=None, cancel_event=None):
     """Return an exactly verified offline cache, or acquire this installed release.
 
@@ -184,22 +212,28 @@ def ensure_build_kit(root, progress=None, cancel_event=None):
     if target.exists():
         progress('Verificando las herramientas guardadas…')
         return _verify(target, root, revision, cancel_event)
-    progress('Buscando las herramientas de esta versión…')
-    name, urls = _release(root, revision, tag)
+    bundled = _bundled_archive(root, revision, cancel_event)
+    if bundled is None:
+        progress('Buscando las herramientas de esta versión…')
+        name, urls = _release(root, revision, tag)
     _cancel(cancel_event)
     scratch = Path(tempfile.mkdtemp(prefix='.build-kit-', dir=cache))
     try:
-        sidecar, archive = scratch / 'checksum', scratch / 'archive.zip'
-        updater._download(urls[1], sidecar, 4096, cancel_event=cancel_event)
-        _cancel(cancel_event)
-        checksum = sidecar.read_text(encoding='ascii').strip().split()
-        if (len(checksum) not in (1, 2) or not re.fullmatch('[0-9a-fA-F]{64}', checksum[0])
-                or len(checksum) == 2 and checksum[1].lstrip('*') != name):
-            raise updater.UpdateError('Invalid build-kit SHA-256 sidecar')
-        progress('Descargando las herramientas de reconstrucción…')
-        updater._download(urls[0], archive, MAX_ARCHIVE_BYTES, cancel_event=cancel_event)
-        if digest(archive, cancel_event) != checksum[0].lower():
-            raise updater.UpdateError('Build-kit ZIP checksum does not match')
+        archive = bundled
+        if archive is None:
+            sidecar, archive = scratch / 'checksum', scratch / 'archive.zip'
+            updater._download(urls[1], sidecar, 4096, cancel_event=cancel_event)
+            _cancel(cancel_event)
+            checksum = sidecar.read_text(encoding='ascii').strip().split()
+            if (len(checksum) not in (1, 2) or not re.fullmatch('[0-9a-fA-F]{64}', checksum[0])
+                    or len(checksum) == 2 and checksum[1].lstrip('*') != name):
+                raise updater.UpdateError('Invalid build-kit SHA-256 sidecar')
+            progress('Descargando las herramientas de reconstrucción…')
+            updater._download(urls[0], archive, MAX_ARCHIVE_BYTES, cancel_event=cancel_event)
+            if digest(archive, cancel_event) != checksum[0].lower():
+                raise updater.UpdateError('Build-kit ZIP checksum does not match')
+        else:
+            progress('Preparando las herramientas incluidas…')
         candidate = scratch / 'kit'
         _extract(archive, candidate, revision, cancel_event)
         _verify(candidate, root, revision, cancel_event)
