@@ -185,7 +185,7 @@ static int create_locked(uint32_t dw, uint32_t dh, uint32_t rw, uint32_t rh, VkF
     }
     G.dw = dw, G.dh = dh, G.rw = rw, G.rh = rh, G.fmt = fmt;
     G.reset = 1;
-    rt_log("frame generation: FSR context %ux%u (render up to %ux%u, format %d), no HUD-less image, in %.1f ms",
+    rt_log("frame generation: FSR context %ux%u (render up to %ux%u, format %d), in %.1f ms",
            dw, dh, rw, rh, (int)fmt, (kern_now_ns() - t0) / 1e6);
     return 1;
 }
@@ -305,6 +305,95 @@ static void barrier(VkCommandBuffer cb, VkImage img, VkImageLayout from, VkImage
     vkCmdPipelineBarrier(cb, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0, 0, NULL, 0, NULL, 1, &b);
 }
 
+// FG-02: the HUD-less picture. Snap tonemaps the scene into a full-size RGBA8_SRGB target and the next pass draws the
+// interface over it into the RGBA8 picture that is presented. When that next pass begins, the tonemapped target is
+// complete: it is copied (same bytes, UNORM) to a ring slot of the frame's prepare id, and the generation dispatch of
+// that frame gets it as HUDLessColor, so FFX keeps the interface out of the interpolation (no HUD trails). Matched by
+// format and size, no vendor branch. Replay thread (vk_exec.c vk_exec_pass_begin).
+#define HUDLESS_N 3
+static struct { VkImage img; VmaAllocation mem; uint32_t w, h; uint64_t id; } HL[HUDLESS_N];
+static VkImage hl_src;
+static uint32_t hl_w, hl_h;
+
+static int hl_slot_locked(int i, uint32_t w, uint32_t h, VkCommandBuffer cb) {
+    if (HL[i].img && HL[i].w == w && HL[i].h == h) return 1;
+    const VkCtx *c = vk_ctx();
+    if (HL[i].img) vk_defer_image(HL[i].img, HL[i].mem), HL[i].img = VK_NULL_HANDLE;
+    VkImageCreateInfo ii = {.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO, .imageType = VK_IMAGE_TYPE_2D,
+                            .format = VK_FORMAT_R8G8B8A8_UNORM, .extent = {w, h, 1}, .mipLevels = 1, .arrayLayers = 1,
+                            .samples = VK_SAMPLE_COUNT_1_BIT, .tiling = VK_IMAGE_TILING_OPTIMAL,
+                            .usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
+                            .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED};
+    VmaAllocationCreateInfo ai = {.usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE};
+    if (vmaCreateImage(c->vma, &ii, &ai, &HL[i].img, &HL[i].mem, NULL) != VK_SUCCESS) {
+        HL[i].img = VK_NULL_HANDLE;
+        return 0;
+    }
+    HL[i].w = w, HL[i].h = h, HL[i].id = 0;
+    barrier(cb, HL[i].img, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL, 0, VK_ACCESS_TRANSFER_WRITE_BIT);
+    return 1;
+}
+
+void snap_fg_hudless_pass(VkCommandBuffer cb, const VkTexImage *img, VkFormat view) {
+    if (!img || !snap_fg_enabled() || img->type != VK_IMAGE_TYPE_2D || img->layers > 1) return;
+    // The tonemap pass draws the full-size RGBA8_SRGB image through an sRGB view; the interface pass then draws into
+    // the same image (same storage) through a UNORM view. At that second begin the image holds the scene without HUD.
+    if (img->format == VK_FORMAT_R8G8B8A8_SRGB && view == VK_FORMAT_R8G8B8A8_SRGB && img->width >= 640) {
+        hl_src = img->image, hl_w = img->width, hl_h = img->height;
+        return;
+    }
+    if (!hl_src || img->image != hl_src || view != VK_FORMAT_R8G8B8A8_UNORM) return;
+    VkImage src = hl_src;
+    hl_src = VK_NULL_HANDLE;
+    plat_mutex_lock(&fg_lock);
+    uint64_t id = G.prepared;
+    int i = (int)(id % HUDLESS_N);
+    if (id && G.ctx && hl_slot_locked(i, hl_w, hl_h, cb)) {
+        VkMemoryBarrier mb = {.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER, .srcAccessMask = VK_ACCESS_MEMORY_WRITE_BIT,
+                              .dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT | VK_ACCESS_TRANSFER_WRITE_BIT};
+        vkCmdPipelineBarrier(cb, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 1, &mb, 0, NULL, 0, NULL);
+        VkImageCopy rg = {.srcSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1},
+                          .dstSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1}, .extent = {hl_w, hl_h, 1}};
+        vkCmdCopyImage(cb, src, VK_IMAGE_LAYOUT_GENERAL, HL[i].img, VK_IMAGE_LAYOUT_GENERAL, 1, &rg);
+        mb.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT, mb.dstAccessMask = VK_ACCESS_MEMORY_READ_BIT;
+        vkCmdPipelineBarrier(cb, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0, 1, &mb, 0, NULL, 0, NULL);
+        HL[i].id = id;
+    }
+    plat_mutex_unlock(&fg_lock);
+}
+
+static void hudless_configure_locked(uint64_t id, uint32_t w, uint32_t h, VkCommandBuffer cb, VkImage *used) {
+    *used = VK_NULL_HANDLE;
+    int i = (int)(id % HUDLESS_N);
+    struct ffxConfigureDescFrameGeneration cf;
+    memset(&cf, 0, sizeof cf);
+    cf.header.type = FFX_API_CONFIGURE_DESC_TYPE_FRAMEGENERATION;
+    cf.frameGenerationEnabled = true;
+    cf.flags = FFX_FRAMEGENERATION_FLAG_NO_SWAPCHAIN_CONTEXT_NOTIFY;
+    cf.generationRect.width = (int32_t)w;
+    cf.generationRect.height = (int32_t)h;
+    cf.frameID = id;
+    if (HL[i].img && HL[i].id == id && HL[i].w == w && HL[i].h == h) {
+        barrier(cb, HL[i].img, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                VK_ACCESS_MEMORY_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT);
+        cf.HUDLessColor = res(HL[i].img, VK_FORMAT_R8G8B8A8_UNORM, w, h, 0, 0);
+        *used = HL[i].img;
+    }
+    static int state = -1;
+    if (G.configure(&G.ctx, &cf.header) != FFX_API_RETURN_OK) {
+        if (*used) barrier(cb, *used, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_GENERAL,
+                           VK_ACCESS_SHADER_READ_BIT, VK_ACCESS_MEMORY_READ_BIT);
+        *used = VK_NULL_HANDLE;
+        return;
+    }
+    static int changes;
+    if (state != (*used != VK_NULL_HANDLE) && changes++ < 8) {   // menus have no tonemap pass: no HUD-less image there
+        state = *used != VK_NULL_HANDLE;
+        rt_log("frame generation: %s", state ? "HUD-less image from the tonemapped scene (no HUD trails)"
+                                              : "no HUD-less image this frame");
+    }
+}
+
 VkImage snap_fg_present_source(VkCommandBuffer cb, VkImage src, VkFormat fmt, int w, int h) {
     if (!snap_fg_enabled() || !src || w <= 0 || h <= 0) return VK_NULL_HANDLE;
     fmt = unorm(fmt);
@@ -338,7 +427,11 @@ VkImage snap_fg_present_source(VkCommandBuffer cb, VkImage src, VkFormat fmt, in
     gd.generationRect.width = w;
     gd.generationRect.height = h;
     gd.frameID = id;
+    VkImage hl_used;
+    hudless_configure_locked(id, (uint32_t)w, (uint32_t)h, cb, &hl_used);
     ffxReturnCode_t r = G.dispatch(&G.ctx, &gd.header);
+    if (hl_used) barrier(cb, hl_used, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_GENERAL,
+                         VK_ACCESS_SHADER_READ_BIT, VK_ACCESS_MEMORY_READ_BIT);
     barrier(cb, src, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_GENERAL,
             VK_ACCESS_SHADER_READ_BIT, VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT);
     barrier(cb, G.out, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_GENERAL,
@@ -361,6 +454,8 @@ void snap_fg_release(void) {
     plat_mutex_lock(&fg_lock);
     if (G.ctx) { G.destroy(&G.ctx, NULL); G.ctx = NULL; }
     if (G.out) { vmaDestroyImage(vk_ctx()->vma, G.out, G.out_mem); G.out = VK_NULL_HANDLE; }
+    for (int i = 0; i < HUDLESS_N; i++)
+        if (HL[i].img) vmaDestroyImage(vk_ctx()->vma, HL[i].img, HL[i].mem), HL[i].img = VK_NULL_HANDLE;
     plat_mutex_unlock(&fg_lock);
 }
 
@@ -375,4 +470,5 @@ VkImage snap_fg_present_source(VkCommandBuffer cb, VkImage src, VkFormat fmt, in
     return VK_NULL_HANDLE;
 }
 void snap_fg_release(void) {}
+void snap_fg_hudless_pass(VkCommandBuffer cb, const VkTexImage *img, VkFormat view) { (void)cb; (void)img; (void)view; }
 #endif

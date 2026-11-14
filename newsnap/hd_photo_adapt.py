@@ -19,7 +19,7 @@ def edits():
         'runtime/vk_exec.c': [
             ('#include "snap_output_scale.h"', '#include "snap_output_scale.h"\n#include "snap_hd_photo.h"'),
             ('    vkCmdBeginRendering(ex->cb, &ri);\n    vk_exec_frame.passes++;',
-             '    if (ex->pass_ncolor && ex->color[0].image) snap_hd_photo_pass(ex->cb, ex->color[0].img);   // SS-03\n'
+             '    if (ex->pass_ncolor && ex->color[0].image) snap_hd_photo_pass(ex->cb, ex->color[0].img), snap_fg_hudless_pass(ex->cb, ex->color[0].img, ex->color[0].format);   // SS-03, FG-02\n'
              '    vkCmdBeginRendering(ex->cb, &ri);\n    vk_exec_frame.passes++;'),
         ],
         'runtime/vk_exec_draw.c': [
