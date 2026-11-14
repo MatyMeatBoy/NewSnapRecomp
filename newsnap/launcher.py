@@ -70,6 +70,8 @@ class Launcher:
         option_pages=ttk.Notebook(self.options_tab);option_pages.pack(fill='both',expand=True)
         self.video_tab,self.audio_tab,self.game_tab=[ttk.Frame(option_pages,padding=8) for _ in range(3)]
         for frame,title in ((self.video_tab,'Vídeo'),(self.audio_tab,'Audio'),(self.game_tab,'Juego')):option_pages.add(frame,text=title)
+        self.mods_tab = ttk.Frame(self.tabs, padding=16)
+        self.tabs.add(self.mods_tab, text='Mods')
         self.update_tab = ttk.Frame(self.tabs, padding=16)
         self.tabs.add(self.update_tab, text='Actualizaciones')
         from .home_ui import HomePanel
@@ -236,7 +238,7 @@ class Launcher:
         self._choice(video, 'Escala interna de la escena', 'render_scale', {'Según el juego': 'game', **{f'{n} %': str(n) for n in (50, 60, 70, 80, 90, 100)},
                      '1,25× (125 %) · experimental': '125', '1,5× (150 %) · experimental': '150', '2× (200 %) · experimental': '200'},
                      choice_width=31,
-                     help_text='Hasta el 100 %, una escala menor favorece el rendimiento y pierde detalle; el HUD conserva su resolución de salida. 125 %, 150 % y 200 % son supersampling experimental exclusivo del modo TV: aumentan el detalle y el coste de GPU. Para modo portátil elige 100 % o menos; guardar una combinación incompatible muestra un error sin cambiar tu elección.')
+                     help_text='Hasta el 100 %, una escala menor favorece el rendimiento y pierde detalle; el HUD conserva su resolución de salida. 125 %, 150 % y 200 % son supersampling experimental exclusivo del modo TV: aumentan el detalle y el coste de GPU, pero hoy rompen las fotos (la foto y su miniatura solo muestran una parte de la imagen); no los uses para fotografiar. Para modo portátil elige 100 % o menos; guardar una combinación incompatible muestra un error sin cambiar tu elección.')
         self._choice(video, 'Filtrado anisotrópico · AF', 'aniso', {'Según el juego': 'game', **{f'{n}×': str(n) for n in (2, 4, 8, 16)}, 'Automático heredado': 'auto'},
                      help_text='Mejora las texturas vistas en ángulo. El controlador y la GPU pueden limitar el nivel efectivo. Automático heredado conserva la heurística de la base, aún sin validar para Snap; elige un nivel explícito para personalizarlo.')
         self._choice(video, 'Relación de aspecto · Aspect ratio', 'aspect', {'Conservar proporciones': 'fit', 'Estirar a la ventana': 'stretch'},
@@ -247,6 +249,7 @@ class Launcher:
         self._audio_options()
         self._game_options()
         self._control_options()
+        self._mod_options()
         for key in ('render_scale', 'aniso', 'upscaling'):
             self.variables[key].trace_add('write', self._quality_preset_changed)
 
@@ -323,14 +326,10 @@ class Launcher:
         sections.add(bindings_tab, text='Asignaciones')
         general, bindings = self._scrolling_options(general_tab), self._scrolling_options(bindings_tab)
         self._help(general, 'Los cambios se aplican al próximo inicio. El ratón conserva la puntería libre de la cámara.')
-        self._choice(general, 'Sensibilidad del ratón · 0 a 10', 'mouse_sens', None)
+        self._help(general, 'La sensibilidad del ratón y la puntería con giroscopio están en la pestaña Mods.')
         self._choice(general, 'Distribución del mando', 'pad_layout', {'Automática': 'auto', 'Nintendo': 'nintendo', 'Xbox': 'xbox', 'PlayStation': 'playstation'},
                      help_text='Cambia cómo se interpretan los botones físicos. Los dibujos de botones del juego conservan su aspecto original.')
-        motion = ttk.Checkbutton(general, text='Giroscopio · controles de movimiento', variable=self.variables['motion'], onvalue='1', offvalue='0')
-        motion.pack(anchor='w', pady=10)
         from .tooltip import Tooltip
-        Tooltip(motion, 'Habilita la entrada de movimiento/giroscopio cuando el mando y su controlador la proporcionan. Desactívalo si prefieres apuntar solo con ratón o sticks.')
-        self._help(general, 'Utiliza los sensores de movimiento si el mando, su conexión y el controlador los proporcionan.')
         self._heading(general, 'Zona muerta de los sticks')
         self._choice(general, 'Zona muerta común · 0 a 50 %', 'stick_deadzone', None)
         self._choice(general, 'Stick izquierdo · 0 a 50 %', 'lstick_deadzone', None)
@@ -350,6 +349,24 @@ class Launcher:
         for key in settings.BINDING_DEFAULTS:
             name = key.removeprefix('bind_').upper().replace('LSTICK_', 'Stick izq. · ').replace('RSTICK_', 'Stick der. · ')
             self._choice(bindings, 'A · Foto / confirmar' if key == 'bind_a' else name, key, None)
+
+    def _mod_options(self):
+        ttk.Label(self.mods_tab, text='Mods de puntería', style='Title.TLabel').pack(anchor='w', pady=(0, 8))
+        self._settings_footer(self.mods_tab, controls=True)
+        content = self._scrolling_options(self.mods_tab)
+        self._help(content, 'Opciones del port que amplían la Switch sin cambiar la lógica del juego. Las sensibilidades se aplican en vivo; el resto al próximo inicio.')
+        self._heading(content, 'Giroscopio')
+        from .tooltip import Tooltip
+        motion = ttk.Checkbutton(content, text='Apuntar con giroscopio cuando el mando lo tenga', variable=self.variables['motion'], onvalue='1', offvalue='0')
+        motion.pack(anchor='w', pady=(0, 8))
+        Tooltip(motion, 'Activado: si el mando conectado tiene giroscopio se usa; si no lo tiene, el juego lo ve como un mando quieto. Actívalo también en las opciones del propio juego.')
+        self._choice(content, 'Sensibilidad del giroscopio · 0.1 a 10', 'gyro_sens', None,
+                     help_text='2.5 es la base recomendada (1 equivale a la Switch). Súbela para girar más con menos movimiento de muñeca.')
+        self._help(content, 'Mandos con giroscopio que funcionan sin instalar drivers: Pro Controller y Joy-Con de Switch, DualShock 4, DualSense y 8BitDo en modo Switch. '
+                   'En modo X-input (Xbox) los 8BitDo no envían el giroscopio: cambia el mando a modo Switch.')
+        self._heading(content, 'Ratón')
+        self._choice(content, 'Sensibilidad del ratón · 0 a 10', 'mouse_sens', None,
+                     help_text='Multiplicador de la cámara con ratón; 1 conserva la sensibilidad base y 0 la desactiva.')
 
     def export_diagnostics(self):
         if self.diagnostics_running:

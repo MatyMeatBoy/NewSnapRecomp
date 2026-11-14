@@ -48,7 +48,7 @@ BINDING_DEFAULTS = {
     'bind_right': 'key:3,pad:default', 'bind_down': 'key:4,pad:default',
     'bind_lstick_left': 'key:a', 'bind_lstick_up': 'key:w', 'bind_lstick_right': 'key:d', 'bind_lstick_down': 'key:s',
     'bind_rstick_left': 'key:left', 'bind_rstick_up': 'key:up', 'bind_rstick_right': 'key:right', 'bind_rstick_down': 'key:down'}
-CONTROL_DEFAULTS = {'mouse_sens': '1', 'motion': '1', 'pad_layout': 'auto', 'rumble_strength': '130',
+CONTROL_DEFAULTS = {'mouse_sens': '1', 'motion': '1', 'gyro_sens': '2.5', 'pad_layout': 'auto', 'rumble_strength': '130',
                     'rumble_curve': '0.6', 'rumble_triggers': '0', 'stick_deadzone': '8',
                     'lstick_deadzone': '', 'rstick_deadzone': '', **BINDING_DEFAULTS}
 DEFAULTS.update(CONTROL_DEFAULTS)
@@ -62,7 +62,7 @@ CHOICES.update(lang=LANGUAGES, pad_layout=('auto', 'nintendo', 'xbox', 'playstat
                upscaling=('off', 'auto', 'fsr3', 'fsr4', 'dlss'),
                upscaling_quality=('native', 'quality', 'balanced', 'performance'),
                perf_overlay=('off', 'fps', 'full'))
-RANGES.update(rumble_strength=(0, 300, True), rumble_curve=(0.2, 1.5, False),
+RANGES.update(gyro_sens=(0.1, 10, False), rumble_strength=(0, 300, True), rumble_curve=(0.2, 1.5, False),
               stick_deadzone=(0, 50, False), lstick_deadzone=(0, 50, False),
               rstick_deadzone=(0, 50, False), audio_prefill_ms=(0, 500, False))
 # Names and reserved keys mirror input_map.c/input_map.h, not OS virtual-key codes.

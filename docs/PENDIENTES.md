@@ -37,7 +37,21 @@ resuelta solo por cambiar un ajuste o por compilar.
   No cambiar de rama en el checkout compartido ni mezclar trabajo ajeno.
 
 Las tareas terminadas se conservan en [historial de trabajo completado](PENDIENTES-HECHOS.md).
-Última entrega: [0.6.0-alpha publicada](https://github.com/MatyMeatBoy/NewSnapRecomp/releases/tag/v0.6.0-alpha).
+Última entrega: [0.8.0-tester](https://github.com/MatyMeatBoy/NewSnapRecomp/releases/tag/v0.8.0-tester)
+(notas en `docs/releases/0.8.0-tester.md`).
+
+## Estado al día (2026-11-14, tras 0.8.0-tester): leer primero
+
+Para cualquier modelo que retome el trabajo:
+
+- `main` contiene 0.8.0-tester: FOTO-01, CRISTAL-01, GYRO-01/02, PIPE-MO-01, PRESENT-WIN-01 y
+  FPS-TXT-01. Todo probado solo en la RX 6900 XT del propietario.
+- **En curso, MatyMeatBoy: SS-02** (escala interna 125/150/200 %). Rama `feature/ss-02-*`. Reservados
+  los adaptadores de supersampling (`snap_supersample`), `docs/SUPERSAMPLING.md` y la opción de
+  escala en `launcher.py`.
+- **Asignado a otro modelo: FPS-01** (FPS altos 30–240, `docs/HIGH_FPS.md`). No tocar los
+  archivos de SS-02 sin coordinar aquí.
+- Receta de release en esta máquina: sección «Receta de release» al final de este archivo.
 La cola siguiente conserva únicamente investigación o aceptación pendientes.
 
 ## Tareas y reservas
@@ -72,6 +86,11 @@ fotos ni constituye una validación completa AMD/VRR/mando. Reporte histórico:
 | PAD-01 | P1 | REVISIÓN | RTX tester / agente de controles | Backend SDL de prueba de mandos implementado y probado con dispositivos virtuales/ABI real. Reservados `controller_probe.py`, `controller_ui.py`, `tests/test_controller_probe.py`. UI visual se integra con ART-01. |
 | VRR-01 | P1 | REVISIÓN | RTX tester / agente de render | Estado real de presentación por VK_EXT_present_timing, unknown/fixed/variable; nunca inferir VRR por FIFO/mailbox. Reservados `vrr_adapt.py`, overlays `snap_vrr*`, `display_status.py`, `display_ui.py`, tests y `docs/DISPLAY.md`. Prueba swapchain real integrada completada: API disponible, intervalo cero → unknown, sin inferir VRR. Validación FreeSync física pendiente. |
 | MENU-01 | P1 | REVISIÓN | RTX tester / agente de render | Menú dentro del juego: Original/Auto/DLSS/FSR 3.1/FSR 4, Native AA/DLAA y tres presets reducidos. Quitar FSR 3 genérico, XeSS/FSR espacial y opciones artísticas ignoradas. Reservados `menu_adapt.py`, `tests/test_snap_menu.py`. |
+| SS-02 | P1 | EN CURSO | MatyMeatBoy · 2026-11-14 | Escala interna 125/150/200 % rota en AMD con 0.8: a 200 % la imagen final ocupa la cuarta parte superior izquierda de la ventana (log: presentación 3840×2160, textura 1920×1080, escala 2), la escena otra cuarta parte dentro del HUD, y fotos/miniaturas incompletas. Capturas del propietario 2026-11-14 11:56–12:00; log `fs-ss200` (fuera del repo). Objetivo: escala interna correcta en TV con fotos y miniaturas a resolución lógica; después ×2 «como otros juegos» y fotos a mayor resolución opcionales. |
+| FPS-01 | P1 | LIBRE · para otro modelo | — · 2026-11-14 | FPS altos con presets 30/60/90/120/144/240 y libre, sin cambiar la lógica. Medir primero los canales del temporizador fijos a 1/60 (`docs/HIGH_FPS.md`). No tocar archivos de SS-02. |
+| GYRO-02 | P1 | REVISIÓN | MatyMeatBoy · 0.8.0-tester | Pestaña Mods, `gyro_sens` 2,5 por defecto (0,1–10, en vivo). Falta prueba con mando físico. |
+| PIPE-MO-01 | P2 | REVISIÓN | MatyMeatBoy · 0.8.0-tester | Prewarm de los pipelines del pase de movimiento por objeto (99 de 286 registros se descartaban). |
+| PRESENT-WIN-01 | P1 | REVISIÓN | MatyMeatBoy · 0.8.0-tester | Ventana compuesta sin `mailbox` → `immediate` (`AC_WINDOWED_IMMEDIATE=0` lo desactiva). Medido en RX 6900 XT. |
 | QA-AMD-01 | P0 | EN CURSO | RTX tester / propietario · RX 6900 XT | Prueba física0.6 en curso: propietario confirma primer nivel sin oscuridad y funcionamiento aparente a60FPS. Fotos/miniaturas siguen corruptas y dos cierres actuales registran escritura GPU inválida. MatyMeatBoy trabaja en esos fallos. Evidencia histórica ZIP0.5: Recuadro de foto confirmado correcto; fotos/miniaturas y color fallan; cabeza vibra en intro; launcher falla y cierre tras teclado Windows. Registrar launcher/version/hash del runtime por separado, ya que hubo lanzamiento forzado. No declarar toda AMD validada. |
 
 ## Evidencia ya disponible (local, no subir)
@@ -118,12 +137,12 @@ ART-01 tomada por RTX tester para integrar el original localizado; no duplicar e
 - Pruebas automáticas, nativas, integración, revisión independiente y evidencias
   de hardware pendientes explícitas. Una tarea en REVISIÓN no cumple esta puerta.
 
-## Futuras (pedidas por el propietario, después de 0.7.1)
+## Futuras (pedidas por el propietario, después de 0.7.1; estado a 0.8.0)
 
 Orden sugerido. Ninguna cambia la lógica del juego; cada una necesita medida antes de darla
 por buena.
 
-1. **Pestaña «Mods» en el launcher.**
+1. **HECHO en 0.8.0-tester (GYRO-02).** Pestaña «Mods» en el launcher.
    - Llevar a ella el giroscopio (`motion`, ya existe y está activo por defecto) y la
      sensibilidad del ratón.
    - Añadir `gyro_sens`: por defecto 2,5, rango 0,1–10, ajustable en vivo. El propietario siente
@@ -132,7 +151,7 @@ por buena.
    - Texto de ayuda sobre mandos compatibles sin drivers: Pro, Joy-Con, DS4, DualSense y 8BitDo
      en modo Switch (en modo X-input no envían giroscopio).
    - Proponer un layout de teclado para este modo.
-2. **FPS altos con presets 30/60/90/120/144/240 y libre**, solo si la lógica del juego no
+2. **(FPS-01, otro modelo)** **FPS altos con presets 30/60/90/120/144/240 y libre**, solo si la lógica del juego no
    cambia. Base: `docs/HIGH_FPS.md` (temporizador con canales fijos a 1/60 por medir).
    - Antes, medir la sensación de que algunas animaciones van a 30 fps. Puede ser judder de
      60 fps en 100 Hz con `fifo` (PACE-AMD-01) o animaciones a mitad de ritmo propias del juego.
@@ -140,7 +159,7 @@ por buena.
    - Tirones al girar la cámara rápido.
    - Pruebas: monitor a 120 Hz o FreeSync, y traza de presentación.
    - Ajustes del sistema a probar (no son del código): reloj mínimo en Adrenalin, MPO.
-4. **Renderizado interno y sombras.**
+4. **Renderizado interno y sombras (SS-02, MatyMeatBoy en curso).**
    - Escala ×2 «como otros juegos»: hoy existe 125/150/200 % experimental solo en TV
      (`docs/SUPERSAMPLING.md`); falta validar fotos y puntuación a esa escala.
    - Sombras de más resolución o calidad: existe `AC_SHADOW_RES`/`AC_SHADOW_SCALE`, sin medir en
@@ -171,3 +190,12 @@ cambio también le sirve: es aceptable siempre que no empeore lo que ya funciona
 
 Reglas que siguen vigentes: una prueba en AMD no valida NVIDIA ni al revés. Todo cambio por
 fabricante debe tener un ajuste para desactivarlo, y nada se marca HECHO sin una prueba física.
+
+## Receta de release (PC del propietario)
+
+Clon en `D:\Dev\NewSnapRecomp\repo` (`core.autocrlf=false`, `core.eol=lf`), `.venv` con
+Python 3.12 y `requirements-release`. SDK en `D:\Dev\NewSnapRecomp\sdkroot` (kit 0.7.0).
+Pasos: merge del PR → `python -m tools.package_build_kit --sdk-root <sdkroot>` →
+`tools/build_launcher.py` → `python -m tools.package_windows_release` → verificar kit y
+recompilación con PATH mínimo → `gh release create` → instalar con
+`updater.stage_update/apply_update` y `maintenance.rebuild_runtime`.
