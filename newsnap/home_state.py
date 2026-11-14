@@ -28,7 +28,8 @@ def state(root):
     result={'directory':str(directory),'loaded':False,'verified':False,'verified_at':None,
             'game_version':None,'runtime_version':None}
     try:
-        result['loaded']=(directory/'exefs/main').is_file() and (directory/'romfs/romfs.bin').is_file()
+        result['loaded']=all((directory/name).is_file()
+                             for name in ('exefs/main','exefs/sdk','romfs/romfs.bin'))
         marker=json.loads((directory/'newsnap-game.json').read_text(encoding='utf-8'))
         if isinstance(marker,dict):result['runtime_version']=marker.get('runtime_version')
     except (OSError,ValueError,TypeError):pass

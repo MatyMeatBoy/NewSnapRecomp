@@ -9,6 +9,7 @@ import threading
 import unittest
 from unittest.mock import patch
 from urllib.parse import quote
+from urllib.error import HTTPError
 import zipfile
 
 from newsnap import build_kit as kit
@@ -133,6 +134,63 @@ class BuildKitAcquisitionTests(unittest.TestCase):
         self.assertEqual(kit.ensure_build_kit(self.root), result)
         self.assertEqual(self.calls, [])
         self.assertEqual(list(self.cache.glob('.build-kit-*')), [])
+
+    def bundle(self):
+        archive = self.root / 'build-kits' / self.name
+        archive.parent.mkdir(exist_ok=True)
+        archive.write_bytes(self.payload)
+        metadata = json.loads((self.root / 'MANIFEST.json').read_text())
+        metadata['files'] = {archive.relative_to(self.root).as_posix(): {
+            'size': len(self.payload), 'sha256': hashlib.sha256(self.payload).hexdigest()}}
+        (self.root / 'MANIFEST.json').write_text(json.dumps(metadata))
+        return archive
+
+    def test_bundled_kit_installs_without_network_and_preserves_archive(self):
+        archive = self.bundle()
+        with patch.object(kit.updater, '_read_json', side_effect=AssertionError('network')):
+            result = kit.ensure_build_kit(self.root)
+        self.assertTrue((result / 'build-kit.json').is_file())
+        self.assertEqual(archive.read_bytes(), self.payload)
+        self.assertEqual(self.calls, [])
+
+    def test_damaged_or_unpinned_bundle_fails_without_network_or_activation(self):
+        archive = self.bundle()
+        for damage in ('size', 'hash', 'pin'):
+            with self.subTest(damage=damage):
+                archive.write_bytes(self.payload)
+                metadata = json.loads((self.root / 'MANIFEST.json').read_text())
+                metadata['files'] = {archive.relative_to(self.root).as_posix(): {
+                    'size': len(self.payload), 'sha256': hashlib.sha256(self.payload).hexdigest()}}
+                if damage == 'size': archive.write_bytes(b'bad')
+                elif damage == 'hash': archive.write_bytes(b'x' * len(self.payload))
+                else: metadata['files'] = {}
+                (self.root / 'MANIFEST.json').write_text(json.dumps(metadata))
+                with self.assertRaises(kit.updater.UpdateError):
+                    kit.ensure_build_kit(self.root)
+                self.assertEqual(self.calls, [])
+                self.assertEqual(list(self.cache.iterdir()), [])
+
+    def test_cancelled_bundled_extraction_preserves_bundle_and_no_activation(self):
+        archive = self.bundle()
+        event = threading.Event()
+        original = kit._extract
+        def extract(*args):
+            original(*args)
+            event.set()
+        with patch.object(kit, '_extract', side_effect=extract):
+            with self.assertRaises(MaintenanceCancelled):
+                kit.ensure_build_kit(self.root, cancel_event=event)
+        self.assertEqual(archive.read_bytes(), self.payload)
+        self.assertEqual(self.calls, [])
+        self.assertEqual(list(self.cache.iterdir()), [])
+
+    def test_private_release_404_explains_complete_package_without_changing_owner_data(self):
+        error = HTTPError('https://api.github.com/', 404, 'Not Found', None, None)
+        with patch.object(kit.updater, '_read_json', side_effect=error):
+            with self.assertRaisesRegex(kit.updater.UpdateError, 'paquete Windows completo'):
+                kit.ensure_build_kit(self.root)
+        self.assertFalse((self.root / 'GameData').exists())
+        self.assertEqual(list(self.cache.iterdir()), [])
 
     def test_source_revision_mismatch_never_publishes(self):
         self.manifest['source_revision'] = 'b' * 40

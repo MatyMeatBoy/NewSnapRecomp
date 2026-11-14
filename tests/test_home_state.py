@@ -10,6 +10,22 @@ from newsnap.paths import data_dir,select_data_dir
 
 
 class HomeStateTests(unittest.TestCase):
+    def test_complete_unmarked_inputs_are_loaded_but_not_verified(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root=Path(temporary);data,_=self.make_data(root)
+            result=home_state.state(root)
+            self.assertEqual(result['directory'],str(data))
+            self.assertTrue(result['loaded'])
+            self.assertFalse(result['verified'])
+            self.assertIsNone(result['runtime_version'])
+
+    def test_missing_sdk_is_not_loaded_even_with_marker(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root=Path(temporary);data,_=self.make_data(root)
+            (data/'newsnap-game.json').write_text('{}')
+            (data/'exefs/sdk').unlink()
+            self.assertFalse(home_state.state(root)['loaded'])
+
     def make_data(self,folder):
         data=folder/'GameData';(data/'exefs').mkdir(parents=True);(data/'romfs').mkdir()
         for name in ('main','sdk'):(data/'exefs'/name).write_bytes(name.encode())

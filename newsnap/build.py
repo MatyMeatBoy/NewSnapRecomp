@@ -51,6 +51,7 @@ def run_logged(command, logfile, env=None):
     logfile.parent.mkdir(parents=True, exist_ok=True)
     with logfile.open('w', encoding='utf-8') as log:
         process = subprocess.Popen([str(x) for x in command], cwd=ROOT, env=env,
+                                   creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0),
                                    stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                    text=True, encoding='utf-8', errors='replace')
         try:

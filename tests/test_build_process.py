@@ -1,15 +1,25 @@
 """Cancelled tooling must stop writing before callers restore previous outputs."""
 import subprocess
+import io
 import sys
 import tempfile
 from pathlib import Path
 from unittest import TestCase
-from unittest.mock import patch
+from unittest.mock import patch, Mock
 
 from newsnap.build import run_logged
 
 
 class ProcessCleanupTests(TestCase):
+    def test_redirected_builder_does_not_create_a_console(self):
+        process = Mock(stdout=io.StringIO('compile: fixture\n'))
+        process.wait.return_value = 0
+        with tempfile.TemporaryDirectory() as temporary, \
+                patch('newsnap.build.subprocess.CREATE_NO_WINDOW', 0x08000000, create=True), \
+                patch('newsnap.build.subprocess.Popen', return_value=process) as start:
+            run_logged(['builder'], Path(temporary) / 'run.log')
+        self.assertEqual(start.call_args.kwargs.get('creationflags', 0), 0x08000000)
+
     def test_stdout_failure_terminates_and_reaps_owned_writer(self):
         with tempfile.TemporaryDirectory() as temporary:
             folder = Path(temporary)
