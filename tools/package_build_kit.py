@@ -7,6 +7,7 @@ import argparse
 import json
 import shutil
 import subprocess
+import tempfile
 import zipfile
 from pathlib import Path
 
@@ -25,6 +26,8 @@ def verify_kit_tree(folder):
         if path.is_symlink() or (hasattr(path, 'is_junction') and path.is_junction()):
             raise ValueError('Build kits cannot contain links')
         relative = path.relative_to(folder)
+        if any(part.casefold() == '__pycache__' for part in relative.parts) or path.suffix.casefold() in ('.pyc', '.pyo'):
+            raise ValueError('Generated Python bytecode/cache cannot enter a build kit')
         if (any(part.lower() in ('gamedata', 'newsnapgamedata') for part in relative.parts) or
                 relative.parts[0] == 'source' and any(part.lower() in ('generated', 'extracted', 'profile')
                                                      for part in relative.parts)):
@@ -39,6 +42,24 @@ def _copy(source, destination):
     else:
         destination.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source, destination)
+
+
+def _copy_pinned_sdk(provisioner, source, destination):
+    """Copy only independently pinned public files, never cache extras/metadata."""
+    if not provisioner.verify(source):
+        raise ValueError(f'Public SDK {provisioner.VERSION} is missing or differs from its pins')
+    for name in provisioner.FILES:
+        _copy(source / name, destination / name)
+    if not provisioner.verify(destination):
+        raise ValueError(f'Public SDK {provisioner.VERSION} changed during packaging')
+    # Generate public provenance from the provisioner's constants, rather than
+    # copying arbitrary local additions (paths, credentials) from cache receipts.
+    if hasattr(provisioner, '_receipt'):
+        receipt = provisioner._receipt()
+    else:
+        receipt = (json.dumps({'version': provisioner.VERSION, 'commit': provisioner.COMMIT,
+                              'files': provisioner.FILES}, indent=2) + '\n').encode('utf-8')
+    (destination / 'sdk-receipt.json').write_bytes(receipt)
 
 
 def package(sdk_root, destination=None, shader_tools=None, allow_dirty=False):
@@ -57,9 +78,11 @@ def package(sdk_root, destination=None, shader_tools=None, allow_dirty=False):
         _copy(ROOT / 'tools' / name, target / 'source/tools' / name)
     # The pinned official SDK cache is public. It avoids network access during an
     # owner rebuild and supplies headers as well as redistributable DLLs/terms.
-    for name in ('fsr-sdk-2.4.0', 'dlss-sdk-310.9.16'):
+    from tools import fetch_upscaler_sdk, fetch_dlss
+    for prefix, provisioner in (('fsr-sdk-', fetch_upscaler_sdk), ('dlss-sdk-', fetch_dlss)):
+        name = prefix + provisioner.VERSION
         if (ROOT / 'toolchain' / name).is_dir():
-            _copy(ROOT / 'toolchain' / name, target / 'source/toolchain' / name)
+            _copy_pinned_sdk(provisioner, ROOT / 'toolchain' / name, target / 'source/toolchain' / name)
     for name in ('runtime', 'recomp', 'tools', 'LICENSE', 'THIRD_PARTY_NOTICES.md'):
         _copy(ROOT / 'third_party/astral' / name, target / 'source/third_party/astral' / name)
     _copy(sdk / 'python', target / 'python')
@@ -88,8 +111,16 @@ def package(sdk_root, destination=None, shader_tools=None, allow_dirty=False):
     if digest(shader_header) != pin['fsr3_spv_sha256']:
         raise ValueError('Rebuild the pinned public native shader header before packaging')
     _copy(shader_header, target / 'sdk/precompiled/fsr3_spv.h')
-    stage_runtime_shaders(target / 'sdk', target / 'source/third_party/astral', target / 'shader-check')
-    shutil.rmtree(target / 'shader-check')
+    # Import the exact copied helper in an owned, disposable workspace. Python
+    # may generate bytecode next to an imported file; never import from the tree
+    # being published or toggle process-global sys.dont_write_bytecode.
+    helper = target / 'source/third_party/astral/tools/ffx_sdk.py'
+    if digest(helper) != digest(ROOT / 'third_party/astral/tools/ffx_sdk.py'):
+        raise ValueError('Copied public shader helper differs from the pinned donor')
+    with tempfile.TemporaryDirectory(prefix='.public-shader-check-', dir=target.parent) as temporary:
+        check = Path(temporary)
+        _copy(helper, check / 'tools/ffx_sdk.py')
+        stage_runtime_shaders(target / 'sdk', check, check / 'output')
     license_path = ROOT / 'build/source/toolchain/ffx-sdk/c6efa6bf7f2027b3ec94f28578bb5965eabb9e55/LICENSE.txt'
     _copy(license_path, target / 'sdk/licenses/FidelityFX-SDK-1.1.4-LICENSE.txt')
     if shader_tools:
