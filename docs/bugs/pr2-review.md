@@ -2,7 +2,12 @@
 
 Revisión de `732671b35668b4ed0d275e3c6e6da217107e64bb`.
 PR: https://github.com/MatyMeatBoy/NewSnapRecomp/pull/2
-CI Source checks pasa. No integrar el overlay sin resolver estos contratos.
+CI Source checks pasa. Esta revisión describe la propuesta original y los
+contratos que bloquearon su integración. Se resolvieron antes del merge: bool
+canónico false, retirada de cuatro overrides especulativos de cuenta y lectura
+acotada de ErrorResultVariant. Estado y pruebas actuales en
+[contratos revisados](pr2-applet-contracts.md). Las observaciones siguientes se
+conservan como evidencia histórica, no como defectos presentes del overlay.
 
 ## Retorno booleano
 
@@ -40,4 +45,6 @@ ejecutable que pudo iniciar tras el 404 del launcher. No volver a pedirle
 que determine versiones manualmente ni cerrar fotos/color/AMD sin validación.
 
 El nuevo exportador del launcher incluye hash e identidad para futuras sesiones.
-La reproducción y corrección de teclado siguen reservadas a MatyMeatBoy.
+La integración posterior conserva el triaje más reciente de main. El recorrido
+integrado y la aceptación física AMD se registran por separado; integrar el PR
+no acredita por sí solo la causa del teclado ni el cierre del propietario.
