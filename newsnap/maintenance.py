@@ -384,16 +384,30 @@ def run_build_command(command, cwd, logfile, cancel_event=None, progress=None):
         if key.upper().startswith(('PYTHON', 'AC_', 'NEWSNAP_')):
             environment.pop(key)
     environment['PYTHONDONTWRITEBYTECODE'] = '1'
+    environment['PYTHONUNBUFFERED'] = '1'
     if cache_optout:
         environment['NEWSNAP_GENERATION_CACHE'] = '0'
-    with logfile.open('wb') as log:
-        process = subprocess.Popen([str(p) for p in command], cwd=cwd, env=environment,
+    from .progress import ProgressTail, unbuffered_command
+    tail=ProgressTail(progress or (lambda value:None))
+    with logfile.open('wb') as log, logfile.open('rb') as reader:
+        process = subprocess.Popen(unbuffered_command(command), cwd=cwd, env=environment,
                                    stdout=log, stderr=subprocess.STDOUT, **flags)
         try:
             while process.poll() is None:
                 _cancel(cancel_event)
+                # Bound work and memory per poll, without dropping raw output.
+                for _ in range(4):
+                    block=reader.read(64<<10)
+                    if not block:break
+                    tail.feed(block)
+                    _cancel(cancel_event)
                 time.sleep(0.1)
             _cancel(cancel_event)
+            # Include final buffered output, including a last line without LF.
+            while block:=reader.read(64<<10):
+                _cancel(cancel_event)
+                tail.feed(block)
+            tail.finish()
             if process.returncode:
                 raise ValueError(f'La reconstrucción falló ({process.returncode}). Registro: {logfile}')
         except BaseException:
@@ -409,14 +423,15 @@ def rebuild_runtime(root, kit_root, cancel_event=None, progress=None, force=Fals
         recover_runtime(root)
         if not force and not assess_runtime(root)['needs_rebuild']:
             return {'rebuilt': False}
-        progress('Verificando las herramientas de reconstrucción…')
+        from .progress import ProgressUpdate
+        progress(ProgressUpdate('verify-tools','Verificando las herramientas de reconstrucción…'))
         manifest = verify_build_kit(kit, root, cancel_event)
         directory = data_dir(root)
         work = Path(tempfile.mkdtemp(prefix='.runtime-build-', dir=directory))
         try:
             # Adaptation and all generated output go to work, never the kit.
             source = kit / 'source'
-            progress('Verificando tus datos y recompilando el juego localmente…')
+            progress(ProgressUpdate('verify-inputs','Verificando tus datos originales…'))
             command = [kit / 'python/python.exe', '-B', '-E', '-s', '-m', 'newsnap.maintenance',
                        '--worker', '--data', directory.resolve(), '--work', work.resolve(),
                        '--sdk', kit / 'sdk', '--source-revision', manifest['source_revision']]
@@ -432,7 +447,7 @@ def rebuild_runtime(root, kit_root, cancel_event=None, progress=None, force=Fals
             if cache_receipt.is_file():
                 cache_record = _json(cache_receipt)
                 shutil.copy2(cache_receipt, directory / 'logs/generation-cache.json')
-            progress('Activando el runtime verificado…')
+            progress(ProgressUpdate('activate','Activando el runtime verificado…'))
             install_candidate(root, work / 'candidate', cancel_event)
             return {'rebuilt': True, 'runtime_version': VERSION, 'logfile': str(logfile),
                     'generation_cache': cache_record}
@@ -467,6 +482,8 @@ def _worker():
     # Verify both the host artifact and loading the exact owner modules; no guest,
     # GPU or real profile is opened by these two probes.
     for mode in ('--selftest', '--probe-loader'):
+        print('Checking candidate host selftest' if mode=='--selftest' else
+              'Checking candidate owner-module loader',flush=True)
         probe_log = args.work / (mode[2:] + '.log')
         try:
             run_build_command([candidate / 'newsnap.exe', '--exefs', args.data / 'exefs',
