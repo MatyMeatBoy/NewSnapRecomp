@@ -37,7 +37,7 @@ resuelta solo por cambiar un ajuste o por compilar.
   No cambiar de rama en el checkout compartido ni mezclar trabajo ajeno.
 
 Las tareas terminadas se conservan en [historial de trabajo completado](PENDIENTES-HECHOS.md).
-Última entrega: [0.5.1-alpha publicada](https://github.com/MatyMeatBoy/NewSnapRecomp/releases/tag/v0.5.1-alpha).
+Última entrega: [0.6.0-alpha publicada](https://github.com/MatyMeatBoy/NewSnapRecomp/releases/tag/v0.6.0-alpha).
 La cola siguiente conserva únicamente investigación o aceptación pendientes.
 
 ## Tareas y reservas
@@ -51,10 +51,9 @@ del recuadro. Reporte completo: `docs/bugs/RX6900XT-REPORTES.md`.
 
 | ID | Prioridad | Estado | Responsable | Trabajo y archivos reservados |
 |---|---|---|---|---|
-| RELEASE-06 | P0 | EN CURSO | Codex · 2026-11-14 | Petición: integrar Claude, continuar jugando y salir con 0.6. Plan docs/superpowers/plans/2026-11-14-v06.md. Root reserva integración adapt.py/version/build/paquete y GPU serial. No cerrar AMD/cabeza por cambio de versión ni modificar lógica/color. |
 | POOL-BOUNDS-01 | P1 | REVISIÓN | Codex / investigación · 2026-11-14 | Condición de solapamiento reproducida en CPU. Logging limitado a 16 color + 4 DS y experimento AC_SNAP_POOL_BOUNDS=1 integrado, apagado por defecto. Cinco pruebas nativas/sintaxis/concurrencia pasan; no es fix AMD ni prueba de causa. Ver docs/bugs/pool-allocation-bounds.md. |
 | HEAD-INTRO | P1 | REVISIÓN | Claude / Codex · PR #3 | PR y correcciones de revisión integrados: medida RTX de una toma, sin causa identificada ni fix. Intervención de timer concreta no cambia esa trayectoria; no descarta universalmente GPU/pacing/CRC. Tool conserva segmentos/paridad al descartar pares; diez tests y cuatro mediciones guardadas verificadas. Pendiente referencia comparable y JSON auditable de 30 FPS. docs/bugs/head-intro-stutter.md. |
-| KEYBOARD-CRASH | P0 | REVISIÓN | Claude / integración Codex · PR #2 | PR integrado con bool exacto false, cuatro overrides de cuenta no fundamentados retirados y lectura de variante12bytes. Cuatro tests nativos/headerreal pasan. Se conserva triage nuevo de main y se acotan inferencias docs. Recorrido RTX540s por fotos/evaluaci�n/primera expedici�n y60s del binario final pasan; causa del teclado/cierre AMD no acreditada. docs/bugs/pr2-applet-contracts.md. |
+| KEYBOARD-CRASH | P0 | REVISIÓN | Claude / integración Codex · PR #2 | PR integrado con bool exacto false, cuatro overrides de cuenta no fundamentados retirados y lectura de variante12bytes. Cuatro tests nativos/headerreal pasan. Se conserva triage nuevo de main y se acotan inferencias docs. Recorrido RTX540s por fotos/evaluación/primera expedición y60s del binario final pasan; causa del teclado/cierre AMD no acreditada. docs/bugs/pr2-applet-contracts.md. |
 
 | FOTO-01 | P0 | EN CURSO | Codex / captura GPU | REABIERTO: el propietario confirma fotos y miniaturas con bandas negras en RX 6900 XT usando el ZIP público 0.5. En otra pantalla de evaluación se ve una foto de Pikachu correcta; comparar rutas/slots y bytes, sin dar el JPEG por válido aún. Reservados adaptadores de color/readback y sus tests; hallazgo y capturas en `docs/bugs/RX6900XT-REPORTES.md`. |
 | FOTO-02 | P0 | REVISIÓN | Claude · 2026-11-13 | **PR #1 revisado e integrado: los tres hallazgos están corregidos, 25 pruebas OK y límites de inferencia corregidos.** Validación con bytes AMD pendiente; ver `docs/bugs/photo-audit-review.md`. Resultado local: dos fotos NVIDIA únicas en bancos duplicados; sin bytes AMD que auditar aún. Auditoría CPU independiente de fotos guardadas: comprobar JPEG/bancos/CRC/dimensiones, determinar si las bandas están en bytes guardados o solo en preview. Archivos nuevos `tools/audit_saved_photos.py`, `tests/test_photo_audit.py`, informe `docs/bugs/photo-bands-cpu.md`. No modificar `saves.py`/`photos.py` sin coordinar. |
