@@ -1,75 +1,75 @@
-# NaN en shaders traducidos en AMD: guía para recomps de Switch
+# NaN in translated shaders on AMD: a guide for Switch recomps
 
-2026-11-14 · Claude. Caso real: CRISTAL-01 (Cristalflor negra en RX 6900 XT). Esta guía sirve
-para cualquier port que traduzca shaders de Maxwell a SPIR-V (traductor de Ryujinx, yuzu y
-derivados) y vea objetos negros, halos o manchas solo en AMD.
+2026-11-14 · Claude. Real case: CRISTAL-01 (black Crystabloom on the RX 6900 XT). This guide
+applies to any port that translates Maxwell shaders to SPIR-V (the Ryujinx translator, yuzu
+and derivatives) and sees black objects, halos or blotches only on AMD.
 
-## Síntoma
+## Symptom
 
-- Un objeto, o una parte de él, sale **negro sólido** en AMD y bien en NVIDIA.
-- Con antialiasing temporal (FSR, DLAA, TAA) aparece además un **halo** o "ghosting" negro
-  alrededor, porque el historial arrastra el NaN a los fotogramas siguientes.
-- En casos graves, un NaN que llega a un pase de desenfoque o de reducción se extiende por toda
-  la pantalla.
+- An object, or part of it, comes out **solid black** on AMD and fine on NVIDIA.
+- With temporal antialiasing (FSR, DLAA, TAA) a black **halo** or ghosting also appears around
+  it, because the history drags the NaN into later frames.
+- In severe cases, a NaN that reaches a blur or reduction pass spreads over the whole screen.
 
-## Causa
+## Cause
 
-La GPU de la Switch (Maxwell) y Vulkan no tratan igual los valores especiales:
+The Switch GPU (Maxwell) and Vulkan treat special values differently:
 
-| Operación | Maxwell (Switch) | SPIR-V que emite el traductor | AMD | NVIDIA |
+| Operation | Maxwell (Switch) | SPIR-V the translator emits | AMD | NVIDIA |
 |---|---|---|---|---|
-| `min/max` con un NaN | devuelve el otro operando (FMNMX) | `FMin/FMax`: **indefinido** | puede devolver NaN | devuelve el otro |
-| `saturate(NaN)` | 0 (`.SAT`) | `FClamp(x,0,1)`: **indefinido** | puede dar NaN | 0 |
-| `sqrt`/`log2` de un casi-cero | el cálculo da ≥ 0 | `Sqrt/Log2` | a veces da −ε, y sqrt/log2 de −ε es NaN | suele dar 0 |
+| `min/max` with a NaN | returns the other operand (FMNMX) | `FMin/FMax`: **undefined** | may return NaN | returns the other |
+| `saturate(NaN)` | 0 (`.SAT`) | `FClamp(x,0,1)`: **undefined** | may give NaN | 0 |
+| `sqrt`/`log2` of a near-zero | the math gives ≥ 0 | `Sqrt/Log2` | sometimes −ε, and sqrt/log2 of −ε is NaN | usually 0 |
 
-El último caso viene de la precisión: un `fma(dot(n, l), 0.5, 0.5)` con vectores normalizados
-puede salir ligeramente negativo en AMD y exactamente 0 en NVIDIA.
+The last case comes from precision: an `fma(dot(n, l), 0.5, 0.5)` with normalised vectors can
+come out slightly negative on AMD and exactly 0 on NVIDIA.
 
-## Cómo diagnosticarlo (sin adivinar)
+## How to diagnose it (without guessing)
 
-1. Volcado del fotograma con el defecto en pantalla (`AC_DUMP_KEY=1`, F12).
-2. En `images.txt`, buscar el **primer pase con `nan N`** mayor que 0. El pase anterior limpio y
-   el siguiente con NaN acotan el dibujo culpable.
-3. En `passes.txt`, ese pase da los ids de los shaders (`vs`/`fs`). Los binarios están como
-   `sh_<id>.spv` en algún volcado de la sesión.
-4. Decompilar con `spirv-cross --vulkan-semantics` y contar
+1. Dump the frame with the defect on screen (`AC_DUMP_KEY=1`, F12).
+2. In `images.txt`, find the **first pass with `nan N`** above 0. The clean pass before and
+   the next one with NaN bound the guilty draw.
+3. In `passes.txt`, that pass gives the shader ids (`vs`/`fs`). The binaries are
+   `sh_<id>.spv` in one of the session's dumps.
+4. Decompile with `spirv-cross --vulkan-semantics` and count
    `FClamp/FMin/FMax/Sqrt/InverseSqrt/Log2` (`spirv-dis`).
-5. `AC_DUMP_UBO=48` añade los buffers de constantes, por si el NaN viene de datos y no de
-   la matemática.
+5. `AC_DUMP_UBO=48` adds the constant buffers, in case the NaN comes from data and not from
+   the math.
 
-## Arreglo aplicado en NewSnap (`newsnap/spirv_nminmax_adapt.py`)
+## Fix applied in NewSnap (`newsnap/spirv_nminmax_adapt.py`)
 
-Se reescribe cada módulo justo antes de `vkCreateShaderModule` (`make_module` en
-`vk_pipeline.c`). No toca el traductor ni su caché:
+Each module is rewritten right before `vkCreateShaderModule` (`make_module` in
+`vk_pipeline.c`). It does not touch the translator or its cache:
 
-- `AC_SPIRV_NMINMAX`: GLSL.std.450 `FMin`(37)/`FMax`(40)/`FClamp`(43) pasan a
-  `NMin`(79)/`NMax`(80)/`NClamp`(81). Es la semántica exacta de Maxwell.
-- `AC_SPIRV_DOMAIN_CLAMP`: antes de `Sqrt`(31)/`InverseSqrt`(32)/`Log2`(30) se inserta
-  `NMax(x, 0)`, con una constante nula por tipo.
-- Ambos activos por defecto en AMD y apagados en el resto, para que NVIDIA siga dando
-  exactamente lo mismo. Coste: el primer arranque recompila los pipelines en el driver.
-- Validación: `spirv-val --target-env vulkan1.3` sobre los 89 shaders distintos de los
-  volcados del propietario, sin ningún error. En el juego: 0 pases con NaN y el cristal correcto.
+- `AC_SPIRV_NMINMAX`: GLSL.std.450 `FMin`(37)/`FMax`(40)/`FClamp`(43) become
+  `NMin`(79)/`NMax`(80)/`NClamp`(81). This is Maxwell's exact semantics.
+- `AC_SPIRV_DOMAIN_CLAMP`: `NMax(x, 0)` is inserted before `Sqrt`(31)/`InverseSqrt`(32)/
+  `Log2`(30), with one null constant per type.
+- Both on by default on AMD and off elsewhere, so NVIDIA keeps giving exactly the same
+  result. Cost: the first start recompiles the pipelines in the driver.
+- Validation: `spirv-val --target-env vulkan1.3` over the 89 distinct shaders from the owner's
+  dumps, with no errors. In game: 0 passes with NaN and the crystal correct.
 
-## Errores a evitar
+## Mistakes to avoid
 
-- No "arreglar" el NaN al final del shader ni en el pase de salida: esconde la causa y deja
-  mal la iluminación.
-- No ordenar −0 por debajo de +0 en `NMin/NMax`: ocarina-recomp lo probó y la imagen salió
-  blanca entera.
-- No cambiar la matemática en NVIDIA sin necesidad: allí el resultado ya coincide con la Switch.
-- Una sola sesión buena no atribuye la causa. Para saber cuál de los dos ajustes la arregla,
-  apagar uno cada vez (`AC_SPIRV_NMINMAX=0` / `AC_SPIRV_DOMAIN_CLAMP=0`).
+- Do not "fix" the NaN at the end of the shader or in the output pass: it hides the cause and
+  leaves the lighting wrong.
+- Do not order −0 below +0 in `NMin/NMax`: ocarina-recomp tried it and the image came out
+  entirely white.
+- Do not change the math on NVIDIA without need: there the result already matches the
+  Switch.
+- One good session does not attribute the cause. To know which of the two settings fixes it,
+  turn one off at a time (`AC_SPIRV_NMINMAX=0` / `AC_SPIRV_DOMAIN_CLAMP=0`).
 
-## Fuentes (casos equivalentes en otros proyectos)
+## Sources (equivalent cases in other projects)
 
-- Lichii, issue #325 (AMD, Ocarina of Time: neblina y agua brillante por NaN en FMin/FMax/FClamp):
-  <https://github.com/zortos293/Lichii/issues/325>
-- Lichii, PR #432 (min/max/clamp con NaN definido):
-  <https://github.com/zortos293/Lichii/pull/432>
-- Savage Wind Recomp, PR #153 (NMin/NMax/NClamp; medido en AMD con RADV; no integrado por coste
-  de caché y ganancia no medible en NVIDIA): <https://github.com/Revivedx/SavageWindRecomp/pull/153>
-- ocarina-recomp, issue #49 (RX 9070 XT: siluetas negras arregladas con `Sqrt(NMax(x, 0))`;
-  orden −0/+0 revertido): <https://github.com/sostenesfreitas/ocarina-recomp/issues/49>
-- Reglas de coma flotante de Direct3D (min/max devuelven el operando que no es NaN):
+- Lichii, issue #325 (AMD, Ocarina of Time: haze and bright water from NaN in
+  FMin/FMax/FClamp): <https://github.com/zortos293/Lichii/issues/325>
+- Lichii, PR #432 (min/max/clamp with defined NaN): <https://github.com/zortos293/Lichii/pull/432>
+- Savage Wind Recomp, PR #153 (NMin/NMax/NClamp; measured on AMD with RADV; not integrated
+  because of cache cost and no measurable gain on NVIDIA):
+  <https://github.com/Revivedx/SavageWindRecomp/pull/153>
+- ocarina-recomp, issue #49 (RX 9070 XT: black silhouettes fixed with `Sqrt(NMax(x, 0))`;
+  −0/+0 ordering reverted): <https://github.com/sostenesfreitas/ocarina-recomp/issues/49>
+- Direct3D floating-point rules (min/max return the non-NaN operand):
   <https://learn.microsoft.com/windows/uwp/graphics-concepts/floating-point-rules>
