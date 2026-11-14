@@ -7,10 +7,9 @@ proven contract fix does not establish the cause of the owner's AMD photo bands.
 Every photo-sized texture-to-buffer copy logs, without any setting, whether the
 source image and the bytes that reached the destination buffer agree and where
 either is black (16-pixel tiles). PNG files are still written only when
-NEWSNAP_PHOTO_TRACE_DIR is set. On AMD's Windows driver CPU-visible pools default
-to the donor's shadow storage (its Linux/Wine default) instead of host-pointer
-imports: a candidate fix for the RX 6900 XT bands and GPU write faults that has
-not been run on that hardware. AC_SHADOW=0 restores imports.
+NEWSNAP_PHOTO_TRACE_DIR is set. Managed shadow storage remains an explicit
+AC_SHADOW=1 experiment on native Windows; no vendor-specific default is changed.
+Diagnostic staging is best-effort and limited to 64 MiB pending per session.
 """
 
 IMPORT_SUPPORT = r'''
@@ -37,8 +36,8 @@ static void snap_import_report(const VkCtx *c, int type, uint32_t compatible, ui
 '''
 
 COMMON = r'''
-// FOTO-01: explicitly enabled, local diagnostic images only. At most eight
-// captures per path; staging owned by diagnostics survives until its fence.
+// FOTO-01: bounded statistics; local images only when explicitly enabled.
+// Diagnostic staging is owned until completion, independently of guest memory.
 static int snap_photo_format(VkFormat format) {
     return format == VK_FORMAT_R8G8B8A8_UNORM || format == VK_FORMAT_R8G8B8A8_SRGB ? 1 :
            format == VK_FORMAT_B8G8R8A8_UNORM || format == VK_FORMAT_B8G8R8A8_SRGB ? 2 : 0;
@@ -151,7 +150,37 @@ typedef struct {
     uint64_t frame;
     unsigned number;
     char directory[1024];
+    uint64_t reserved_bytes;
 } SnapPhotoTransfer;
+#define SNAP_PHOTO_PENDING_MAX (64ull << 20)
+static uint64_t snap_photo_pending_bytes;
+static int snap_photo_reserve(uint64_t bytes) {
+    uint64_t old = __atomic_load_n(&snap_photo_pending_bytes, __ATOMIC_RELAXED);
+    do {
+        if (bytes > SNAP_PHOTO_PENDING_MAX || old > SNAP_PHOTO_PENDING_MAX - bytes) return 0;
+    } while (!__atomic_compare_exchange_n(&snap_photo_pending_bytes, &old, old + bytes, 1,
+                                          __ATOMIC_RELAXED, __ATOMIC_RELAXED));
+    return 1;
+}
+static int snap_photo_staging(VkDeviceSize size, VkBuffer *buffer, VmaAllocation *allocation, uint8_t **mapping) {
+    VkBufferCreateInfo bi = {.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO, .size = size,
+        .usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT};
+    VmaAllocationCreateInfo ai = {.usage = VMA_MEMORY_USAGE_AUTO_PREFER_HOST,
+        .flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT};
+    VmaAllocationInfo info;
+    VkCtx *c = vk_ctx();
+    if (vmaCreateBuffer(c->vma, &bi, &ai, buffer, allocation, &info) != VK_SUCCESS) return 0;
+    if (!info.pMappedData) {
+        vmaDestroyBuffer(c->vma, *buffer, *allocation);
+        return 0;
+    }
+    *mapping = info.pMappedData;
+    return 1;
+}
+static void snap_photo_release(SnapPhotoTransfer *trace) {
+    __atomic_fetch_sub(&snap_photo_pending_bytes, trace->reserved_bytes, __ATOMIC_RELAXED);
+    free(trace);
+}
 static void snap_photo_transfer_done(void *argument) {
     SnapPhotoTransfer *trace = argument;
     VkCtx *c = vk_ctx();
@@ -161,7 +190,7 @@ static void snap_photo_transfer_done(void *argument) {
                     trace->source, (size_t)trace->w * 4, trace->copy, trace->pitch);
     vmaDestroyBuffer(c->vma, trace->source_buffer, trace->source_alloc);
     vmaDestroyBuffer(c->vma, trace->copy_buffer, trace->copy_alloc);
-    free(trace);
+    snap_photo_release(trace);
 }
 static void snap_photo_trace_t2b(VkExec *ex, const Sub *s, uint64_t size,
                                 const VkBufferImageCopy *original, const VkMemSpan *destination) {
@@ -174,15 +203,29 @@ static void snap_photo_trace_t2b(VkExec *ex, const Sub *s, uint64_t size,
     size_t row = (size_t)s->w * 4;
     size_t pitch = original->bufferRowLength ? (size_t)original->bufferRowLength * 4 : row;
     if (pitch < row || (uint64_t)pitch * (s->h - 1) + row > size) return;
+    uint64_t reserved = (uint64_t)row * s->h + size;
+    if (!snap_photo_reserve(reserved)) return;
     SnapPhotoTransfer *trace = calloc(1, sizeof *trace);
-    if (!trace) return;
+    if (!trace) {
+        __atomic_fetch_sub(&snap_photo_pending_bytes, reserved, __ATOMIC_RELAXED);
+        return;
+    }
+    trace->reserved_bytes = reserved;
     trace->w = s->w, trace->h = s->h, trace->pitch = pitch, trace->format = s->img->format;
     trace->frame = __atomic_load_n(&gfx_counters.frames, __ATOMIC_RELAXED);
-    trace->number = captures++;
+    trace->number = captures;
     int length = snprintf(trace->directory, sizeof trace->directory, "%s", directory ? directory : "");
-    if (length < 0 || (size_t)length >= sizeof trace->directory) { free(trace); return; }
-    trace->source = vk_staging(row * s->h, &trace->source_buffer, &trace->source_alloc);
-    trace->copy = vk_staging(size, &trace->copy_buffer, &trace->copy_alloc);
+    if (length < 0 || (size_t)length >= sizeof trace->directory) { snap_photo_release(trace); return; }
+    if (!snap_photo_staging(row * s->h, &trace->source_buffer, &trace->source_alloc, &trace->source)) {
+        snap_photo_release(trace);
+        return;
+    }
+    if (!snap_photo_staging(size, &trace->copy_buffer, &trace->copy_alloc, &trace->copy)) {
+        vmaDestroyBuffer(vk_ctx()->vma, trace->source_buffer, trace->source_alloc);
+        snap_photo_release(trace);
+        return;
+    }
+    captures++;
     VkBufferImageCopy tight = *original;
     tight.bufferOffset = 0, tight.bufferRowLength = 0, tight.bufferImageHeight = 0;
     vkCmdCopyImageToBuffer(ex->cb, s->img->image, VK_IMAGE_LAYOUT_GENERAL, trace->source_buffer, 1, &tight);
@@ -267,18 +310,6 @@ def edits():
          '    if (req.size > n) {'),
         ('        if (shadow_on && h->pool && !((PoolRec *)h->pool)->stouched) shadow_touch(h->pool);',
          '        if (h->pool && ((PoolRec *)h->pool)->smap && !((PoolRec *)h->pool)->stouched) shadow_touch(h->pool);'),
-        ('static void mirror_mode(int discrete) {',
-         '// Snap: vendor of the device the memory mode is chosen for (vk_mem_class_log).\n'
-         'static uint32_t snap_memory_vendor;\nstatic void mirror_mode(int discrete) {'),
-        ('    mirror_mode(discrete);\n}', '    snap_memory_vendor = p->vendorID;\n    mirror_mode(discrete);\n}'),
-        ('    shadow_on = sh && *sh ? strcmp(sh, "0") != 0 : plat_is_wine();',
-         '    // FOTO-01: two RX 6900 XT sessions ended in "write invalid" device faults and saved photos with black\n'
-         '    // bands; the photo copy writes host-pointer imports of freshly allocated guest pages. The donor already\n'
-         '    // avoids those imports on Linux and Wine. Candidate fix, not verified on that hardware; AC_SHADOW=0 undoes it.\n'
-         '    int snap_amd_shadow = snap_memory_vendor == 0x1002 && !(sh && *sh);\n'
-         '    shadow_on = sh && *sh ? strcmp(sh, "0") != 0 : plat_is_wine() || snap_amd_shadow;\n'
-         '    if (snap_amd_shadow) rt_log("mem: AMD GPU on Windows: shadow storage instead of host-pointer imports "\n'
-         '                                "(FOTO-01 candidate; AC_SHADOW=0 restores imports)");'),
         ('void vk_mem_shadow_sync(void) {\n    if (!shadow_on) return;',
          'void vk_mem_shadow_sync(void) {\n    if (!snap_shadow_active()) return;'),
         ('void vk_mem_gpu_pending(uint64_t addr, uint64_t size) {\n    if (!shadow_on || !size) return;',
