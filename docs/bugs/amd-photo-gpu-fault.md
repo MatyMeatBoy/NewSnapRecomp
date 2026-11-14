@@ -1,9 +1,9 @@
 # FOTO-01 · Fotos con bandas y cierres «write invalid» en RX 6900 XT (0.6)
 
 Estado: **EN CURSO** · Responsable: MatyMeatBoy · 2026-11-14
-**Causa no acreditada.** Este informe deja una corrección candidata sin probar
-en AMD y un diagnóstico siempre activo en el log para que la próxima sesión en
-la RX 6900 XT lo decida.
+**Causa no acreditada.** Este informe deja un experimento opt-in sin probar en AMD y un diagnóstico
+siempre activo en el log para acotar la próxima sesión en la RX 6900 XT.
+No cambia el modo de memoria predeterminado de ninguna GPU.
 
 ## Evidencia del propietario (RX 6900 XT, runtime 0.6 real)
 
@@ -16,8 +16,9 @@ Copias locales en `build/user-reports/rx6900xt-0.6/` (no se suben):
   controlador AMD 26.10.1 de la rama RDNA 1/2. Ya no es el runtime 0.1.x del
   informe `keyboard-after-photo.md`.
 - Ambos terminan igual: `vk: device fault: "GPU fault"` con
-  `write invalid at 0x…, precision 0x1000`. Es la GPU escribiendo en una página
-  sin respaldo, no una excepción de CPU ni un fatal del runtime.
+  `write invalid at 0x…, precision 0x1000`. El controlador reporta una dirección de escritura GPU inválida con esa
+  precisión; el mensaje no identifica por sí solo el recurso ni demuestra
+  páginas host sin respaldo. No es una excepción de CPU.
 - Sesión 1: el propietario cambió ajustes gráficos (FSR 3.1 → FSR 4, modo de
   presentación) y el fallo llegó después, siguiendo el tutorial. Sesión 2: sin
   cambiar ajustes, FSR 4 activo desde el inicio; el fallo llegó al hacer la
@@ -91,35 +92,57 @@ activas.
    - `photo_trace: gpu-t2b …`: bytes distintos entre la imagen origen y lo que
      llegó al buffer, filas negras, **teselas negras de 16 px** en origen/buffer
      y los primeros tramos negros del buffer (`y<fila>:x<ini>-<fin>`).
-   Coste: dos copias a staging por foto. Los PNG siguen saliendo solo con
-   `NEWSNAP_PHOTO_TRACE_DIR`.
-2. **Candidata de corrección:** en GPU AMD sobre Windows, los pools visibles por
-   CPU usan el almacenamiento shadow del donor en lugar de importar punteros de
-   host. `AC_SHADOW=0` vuelve a las importaciones; `AC_SHADOW=1` lo fuerza en
-   cualquier GPU. El log lo anuncia con `mem: AMD GPU on Windows: shadow
-   storage…`.
+   Coste: dos copias a staging por captura aceptada y estadísticas CPU tras el
+   fence. Los PNG siguen saliendo solo con `NEWSNAP_PHOTO_TRACE_DIR`.
+2. **Experimento de memoria opt-in:** `AC_SHADOW=1` (o `shadow = 1` en
+   `newsnap.ini`) activa el almacenamiento shadow existente del donor;
+   `AC_SHADOW=0` permite comparar las importaciones. Se retira la propuesta
+   de activarlo automáticamente por vendor: no hay validación AMD ni medida
+   controlada de coste que justifique cambiar todos sus pools.
+3. El staging diagnóstico usa `vmaCreateBuffer` best-effort: si falla cualquiera
+   de las dos asignaciones se libera lo ya reservado y se conserva la operación
+   original. No llama a `vk_staging`, que termina el proceso ante un fallo.
+   Un presupuesto atómico limita a **64 MiB de bytes solicitados de buffers
+   diagnósticos pendientes**; se devuelve después de destruir los buffers en
+   completion. No incluye overhead del allocator ni el buffer CPU temporal de
+   estadísticas. Si se alcanza el presupuesto se omite esa captura sin consumir
+   el límite de sesión. No se cambia la copia del juego.
 
 ## Pruebas ejecutadas
 
 - `python -m unittest tests.test_photo_readback`: 3 OK. El fixture nativo cubre
   el modo solo-log, una banda parcial (`black_tiles16=0/7`, un tramo
   `y32:x16-127`) y el tope de capturas.
-- Runtime privado compilado desde este árbol con el kit 0.6
+- Antes de las correcciones de revisión: runtime privado compilado con el kit 0.6
   (`build/foto01-build`): selftest y cargador del candidato OK.
 - Ruta de fotos de 400 s en RTX 4060 con ese binario y sin ajustes
   (`build/foto01-newbin`): salida 0, cuatro pares de líneas, 0 bytes distintos,
   0 teselas negras.
 - Ruta de fotos de 400 s en RTX 4060 con el 0.6 publicado y `AC_SHADOW=1`
   (`build/foto01-shadow1`): salida 0, fotos sin diferencias. Es el camino que
-  la candidata activa en AMD.
+  el propietario puede probar explícitamente en AMD; no se activa por defecto.
+
+### Correcciones de revisión CPU (sin nueva prueba GPU)
+
+Se aplicó TDD sobre el código C generado real. La regresión falló inicialmente
+con salida 21 al inyectar fallo en la primera asignación: se seguía usando la
+ruta fatal. Después pasan los tres tests focalizados, incluyendo procesos nativos
+separados que cubren fallo de primera/segunda asignación, cleanup parcial,
+24 capturas sin archivos (la 25 no asigna ni graba comandos), límite de 64 MiB con
+varias capturas sin completar y recuperación del presupuesto al terminar una. Ocho hilos ejercitan además 16.000 reservas/liberaciones del
+presupuesto atómico sin sobrepasarlo ni dejar saldo pendiente.
+Los fixtures anteriores de filas acolchadas, canales BGRA y bandas parciales
+siguen pasando. Esto prueba propiedad y límites CPU; no ejecuta barreras GPU ni
+valida el controlador AMD. El binario con estas últimas correcciones aún requiere
+compilación e integración por el coordinador.
 
 ## Cómo leer el próximo log de la RX 6900 XT
 
 | Línea `photo_trace: gpu-t2b` | Lectura |
 |---|---|
-| `mismatch_bytes=0` y `black_tiles16=0/0` | La copia llegó completa; si el álbum sigue con bandas, el daño es posterior (codificación o carga) |
-| `mismatch_bytes>0`, teselas negras solo en el buffer | La textura estaba bien y la copia al buffer perdió datos: confirma la hipótesis de la importación |
-| Teselas negras ya en el origen | La textura de la foto se dibujó mal antes de copiarla: otra causa (render), no la importación |
+| `mismatch_bytes=0` y `black_tiles16=0/0` | Las dos lecturas GPU coinciden; queda por verificar visibilidad CPU, writeback shadow, bytes que lee el juego y codificación/carga |
+| `mismatch_bytes>0`, teselas negras solo en el buffer | Las lecturas de origen y destino GPU difieren; acota la ruta, pero no identifica importación, driver ni causa concreta |
+| Teselas negras ya en el origen | El origen leído ya contiene negro; investigar producción/sincronización y comprobar que ese negro sea anómalo |
 
 Prueba inmediata en la 0.6 ya instalada, sin binario nuevo: añadir `shadow = 1`
 a `newsnap.ini` (o la variable de entorno `AC_SHADOW=1`) y repetir la foto del
@@ -127,7 +150,7 @@ primer nivel. Para separar FSR 4: repetir además con el escalador en FSR 3.1.
 
 ## Límites
 
-- Nada de esto se ha ejecutado en AMD. La candidata puede no cambiar nada.
+- Nada de esto se ha ejecutado en AMD. El experimento shadow puede no cambiar nada.
 - El modo shadow copia memoria por CPU en cada envío. En RTX la ruta mantuvo
   ≈60 fps de media; no se hizo comparación de rendimiento controlada y no hay
   medida en AMD.

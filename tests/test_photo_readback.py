@@ -212,7 +212,7 @@ int main(void) {
                 fixture.write_text(prelude + functions(text) + main, encoding='utf-8')
                 executable = folder / (label + ('.exe' if os.name == 'nt' else ''))
                 result = subprocess.run([compiler, '-DBASELINE=' + str(baseline), '-I', str(sdk / 'runtime/deps/include'),
-                                         str(fixture), '-o', str(executable)], capture_output=True)
+                                         str(fixture), '-o', str(executable)] + ([] if os.name == 'nt' else ['-pthread']), capture_output=True)
                 self.assertEqual(result.returncode, 0, result.stderr.decode(errors='replace'))
                 result = subprocess.run([str(executable)], capture_output=True)
                 self.assertEqual(result.returncode, 0, label + ' native import fixture exit ' + str(result.returncode))
@@ -245,7 +245,28 @@ typedef struct { VkCommandBuffer cb;uint64_t fence;unsigned recorded; } VkExec;
 typedef struct { VkBuffer buffer;uint64_t offset; } VkMemSpan;
 static struct { uint64_t frames; } gfx_counters={123};
 static VkCtx context;
-static int enabled,allocations,destroyed,files,copies;
+#ifdef _WIN32
+#include <windows.h>
+#else
+#include <pthread.h>
+#endif
+static int enabled,allocations,destroyed,files,copies,attempts,fail_at,noop_copies;
+static size_t live_bytes,peak_bytes;
+static struct {void *ptr;size_t size;} owned[256];
+static void(*queued_fn[64])(void*);static void *queued_arg[64];static int queued;
+typedef struct { unsigned flags;int usage; } VmaAllocationCreateInfo;
+typedef struct { void *pMappedData; } VmaAllocationInfo;
+#define VMA_MEMORY_USAGE_AUTO_PREFER_HOST 1
+#define VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT 2
+#define VMA_ALLOCATION_CREATE_MAPPED_BIT 4
+static VkResult vmaCreateBuffer(void *vma,const VkBufferCreateInfo *bi,const VmaAllocationCreateInfo *ai,
+ VkBuffer *buffer,VmaAllocation *alloc,VmaAllocationInfo *info){
+ attempts++;if(attempts==fail_at)return VK_ERROR_OUT_OF_HOST_MEMORY;
+ void *data=calloc(1,(size_t)bi->size);if(!data)return VK_ERROR_OUT_OF_HOST_MEMORY;
+ owned[allocations].ptr=data;owned[allocations].size=(size_t)bi->size;
+ allocations++;live_bytes+=(size_t)bi->size;if(live_bytes>peak_bytes)peak_bytes=live_bytes;
+ *buffer=(VkBuffer)(uintptr_t)data;*alloc=data;info->pMappedData=data;return VK_SUCCESS;
+}
 static uint8_t first_pixel[4];
 static char logline[2048];
 static void (*pending_fn)(void*);static void *pending_arg;
@@ -259,25 +280,41 @@ static void rt_log(const char *format,...) {
 static void rt_write_png(const char *path,const uint8_t *rgba,uint32_t w,uint32_t h) {
  files++;if(strstr(path,"source"))memcpy(first_pixel,rgba,4);
 }
-static void *vk_staging(VkDeviceSize size,VkBuffer *buffer,VmaAllocation *alloc) {
- void *data=calloc(1,(size_t)size);*buffer=(VkBuffer)(uintptr_t)data;*alloc=data;allocations++;return data;
-}
 static void vmaInvalidateAllocation(void *vma,void *alloc,uint64_t a,uint64_t n){}
-static void vmaDestroyBuffer(void *vma,VkBuffer buffer,void *alloc){destroyed++;free(alloc);}
+static void vmaDestroyBuffer(void *vma,VkBuffer buffer,void *alloc){
+ for(int i=0;i<allocations;i++)if(owned[i].ptr==alloc){live_bytes-=owned[i].size;owned[i].ptr=NULL;break;}
+ destroyed++;free(alloc);
+}
 static void vkCmdCopyImageToBuffer(VkCommandBuffer cb,VkImage image,VkImageLayout layout,VkBuffer buffer,
  uint32_t count,const VkBufferImageCopy *copy) {
- copies++;memcpy((void*)(uintptr_t)buffer,(void*)(uintptr_t)image,
+ copies++;if(noop_copies)return;memcpy((void*)(uintptr_t)buffer,(void*)(uintptr_t)image,
   (size_t)copy->imageExtent.width*copy->imageExtent.height*4);
 }
 static void vkCmdPipelineBarrier2(VkCommandBuffer cb,const VkDependencyInfo *info){}
 static void vkCmdCopyBuffer(VkCommandBuffer cb,VkBuffer source,VkBuffer destination,uint32_t n,const VkBufferCopy *copy) {
- copies++;memcpy((uint8_t*)(uintptr_t)destination+copy->dstOffset,
+ copies++;if(noop_copies)return;memcpy((uint8_t*)(uintptr_t)destination+copy->dstOffset,
   (uint8_t*)(uintptr_t)source+copy->srcOffset,(size_t)copy->size);
 }
-static void vk_completion_add(uint64_t fence,void(*function)(void*),void *argument){pending_fn=function;pending_arg=argument;}
+static void vk_completion_add(uint64_t fence,void(*function)(void*),void *argument){pending_fn=function;pending_arg=argument;queued_fn[queued]=function;queued_arg[queued++]=argument;}
 '''
         main = r'''
-int main(void) {
+static int budget_errors;
+#ifdef _WIN32
+static DWORD WINAPI budget_worker(void *unused) {
+#else
+static void *budget_worker(void *unused) {
+#endif
+ for(int i=0;i<2000;i++){
+  SnapPhotoTransfer *t=calloc(1,sizeof *t);t->reserved_bytes=32ull<<20;
+  if(snap_photo_reserve(t->reserved_bytes)){
+   if(__atomic_load_n(&snap_photo_pending_bytes,__ATOMIC_RELAXED)>(64ull<<20))
+    __atomic_fetch_add(&budget_errors,1,__ATOMIC_RELAXED);
+   snap_photo_release(t);
+  }else free(t);
+ }
+ return 0;
+}
+int main(int argc,char **argv) {
  enum {W=128,H=96,PITCH=W*4+8};
  uint8_t source[W*H*4],buffer[PITCH*H+16];
  memset(buffer,0xa5,sizeof buffer);
@@ -290,6 +327,43 @@ int main(void) {
  VkMemSpan destination={.buffer=(VkBuffer)(uintptr_t)buffer,.offset=16};
  VkBufferImageCopy region={.bufferOffset=16,.bufferRowLength=PITCH/4,.imageExtent={W,H,1}};
  uint64_t size=PITCH*(H-1)+W*4;
+ if(argc>1 && !strcmp(argv[1],"concurrent")){
+#ifdef _WIN32
+  HANDLE threads[8];
+  for(int i=0;i<8;i++){threads[i]=CreateThread(NULL,0,budget_worker,NULL,0,NULL);if(!threads[i])return 30;}
+  for(int i=0;i<8;i++){WaitForSingleObject(threads[i],INFINITE);CloseHandle(threads[i]);}
+#else
+  pthread_t threads[8];
+  for(int i=0;i<8;i++)if(pthread_create(&threads[i],NULL,budget_worker,NULL))return 30;
+  for(int i=0;i<8;i++)pthread_join(threads[i],NULL);
+#endif
+  return budget_errors||snap_photo_pending_bytes?31:0;
+ }
+ if(argc>1 && !strcmp(argv[1],"fail")){
+  for(int which=1;which<=2;which++){
+   fail_at=attempts+which;int a=allocations,d=destroyed,c=copies;
+   snap_photo_trace_t2b(&ex,&s,size,&region,&destination);
+   if(copies!=c||queued||live_bytes||allocations-a!=which-1||destroyed-d!=which-1)return 20+which;
+  }
+  fail_at=0;snap_photo_trace_t2b(&ex,&s,size,&region,&destination);
+  if(queued!=1)return 23;queued_fn[0](queued_arg[0]);return live_bytes?24:0;
+ }
+ if(argc>1 && !strcmp(argv[1],"cap")){
+  for(int i=0;i<30;i++){
+   int q=queued;snap_photo_trace_t2b(&ex,&s,size,&region,&destination);
+   if(queued>q)queued_fn[q](queued_arg[q]);
+  }
+  return queued==24 && allocations==48 && destroyed==48 && !files && !live_bytes?0:25;
+ }
+ if(argc>1 && !strcmp(argv[1],"budget")){
+  noop_copies=1;uint64_t large=16ull<<20;
+  for(int i=0;i<10;i++)snap_photo_trace_t2b(&ex,&s,large,&region,&destination);
+  if(queued!=3||live_bytes>(64ull<<20)||peak_bytes>(64ull<<20))return 26;
+  int before=queued;queued_fn[0](queued_arg[0]);
+  snap_photo_trace_t2b(&ex,&s,large,&region,&destination);
+  if(queued!=before+1||peak_bytes>(64ull<<20))return 27;
+  for(int i=1;i<queued;i++)queued_fn[i](queued_arg[i]);return live_bytes?28:0;
+ }
  // No setting: the copy statistics still reach the log, without any file.
  snap_photo_trace_t2b(&ex,&s,size,&region,&destination);
  if(files||copies!=2||allocations!=2||ex.recorded!=2||!pending_fn)return 1;
@@ -323,17 +397,18 @@ int main(void) {
             fixture = folder / 'photo.c'
             fixture.write_text(prelude + GPU + main, encoding='utf-8')
             executable = folder / ('photo.exe' if os.name == 'nt' else 'photo')
-            result = subprocess.run([compiler, '-I', str(sdk / 'runtime/deps/include'), str(fixture), '-o', str(executable)], capture_output=True)
+            result = subprocess.run([compiler, '-I', str(sdk / 'runtime/deps/include'), str(fixture), '-o', str(executable)] + ([] if os.name == 'nt' else ['-pthread']), capture_output=True)
             self.assertEqual(result.returncode, 0, result.stderr.decode(errors='replace'))
-            result = subprocess.run([str(executable)], capture_output=True)
-            self.assertEqual(result.returncode, 0, 'native readback fixture exit ' + str(result.returncode))
+            for case in ('fail','cap','budget','concurrent',''):
+                result = subprocess.run([str(executable)] + ([case] if case else []), capture_output=True)
+                self.assertEqual(result.returncode, 0, 'native readback fixture '+case+' exit ' + str(result.returncode))
             cpu_types = r'''
 typedef struct { VkTexImage pub; } Tex;
 typedef struct { int nz,bw,bh,bpb;size_t wb,row; } Region;
 typedef struct { int width,height; } NVNcopyRegion;
 '''
             cpu_main = r'''
-int main(void) {
+int main(int argc,char **argv) {
  enum {W=128,H=96,PITCH=W*4+8};uint8_t source[W*H*4],output[PITCH*H];
  for(int y=0;y<H;y++)for(int x=0;x<W;x++){
   uint8_t *p=source+((size_t)y*W+x)*4;p[0]=17;p[1]=(uint8_t)(y+1);p[2]=88;p[3]=255;
@@ -353,7 +428,7 @@ int main(void) {
 }
 '''
             fixture.write_text(prelude + cpu_types + CPU + cpu_main, encoding='utf-8')
-            result = subprocess.run([compiler, '-I', str(sdk / 'runtime/deps/include'), str(fixture), '-o', str(executable)], capture_output=True)
+            result = subprocess.run([compiler, '-I', str(sdk / 'runtime/deps/include'), str(fixture), '-o', str(executable)] + ([] if os.name == 'nt' else ['-pthread']), capture_output=True)
             self.assertEqual(result.returncode, 0, result.stderr.decode(errors='replace'))
             result = subprocess.run([str(executable)], capture_output=True)
             self.assertEqual(result.returncode, 0, 'native CPU readback fixture exit ' + str(result.returncode))
