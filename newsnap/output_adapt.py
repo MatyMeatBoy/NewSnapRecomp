@@ -16,6 +16,12 @@ def edits():
             ('"vk: shadow map %ux%u fmt %#x made %ux%u (AC_SHADOW_SCALE): %.1f MiB of its own"',
              '"vk: enlarged render image %ux%u fmt %#x made %ux%u: %.1f MiB of its own"'),
             ('#include "vk_exec.h"', '#include "vk_exec.h"\n#include "snap_output_scale.h"'),
+            # Snap's sun shadow maps: DEPTH32F 2D 1024x1024, one level (SS-02 trace,
+            # RX 6900 XT). AC_SHADOW_SCALE enlarges them like the donor's maps.
+            ('    if (!sun && !cascades) return 1;',
+             '    int snap_sun = d->format == NVN_FORMAT_DEPTH32F && d->target == NVN_TEXTURE_TARGET_2D && d->width == 1024 &&\n'
+             '                   d->height == 1024 && d->levels <= 1;\n'
+             '    if (!sun && !cascades && !snap_sun) return 1;'),
             ('    float scale = (float)shadow;', '''    float scale = (float)shadow;
     float output_scale = snap_output_image_scale_ex(d, samples,
         (f.depth || f.stencil) ? 1 : (f.vk == f.ideal && !f.expand_rgb && !f.astc_bw),
