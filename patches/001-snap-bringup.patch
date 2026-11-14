@@ -354,7 +354,7 @@
      "DUMP_KEY", "DUMP_LOG", "DUMP_N", "DUMP_SKIP_RUNS", "DUMP_TEX", "DUMP_UBO", "EXEFS", "FEEDBACK", "FIX_C0", "FIX_ZERO", "FLIGHT", "FLIGHT_AT", "FLIGHT_DIR", "FLIGHT_FRAMES",
 -    "FLIGHT_SPIKE_MS", "FLIGHT_THUMBS", "FOV", "FOV_PATCH", "FPS", "FREEZE_IDLE", "FREE_CORES",
 -    "FULLSCREEN", "FXAA", "GPL", "GPL_DRAW_BUILD", "GPU", "GPU_INDEX", "GPU_NAME", "GPU_PASSES", "HDR", "HDR_GAME_NITS",
-+    "FLIGHT_SPIKE_MS", "FLIGHT_THUMBS", "FOV", "FOV_PATCH", "FPS", "FRAME_GEN", "FREEZE_IDLE", "FREE_CORES",
++    "FLIGHT_SPIKE_MS", "FLIGHT_THUMBS", "FOV", "FOV_PATCH", "FPS", "FRAME_GEN", "FREEZE_IDLE", "HD_PHOTOS", "FREE_CORES",
 +    "FULLSCREEN", "FXAA", "GPL", "GPL_DRAW_BUILD", "GPU", "GPU_INDEX", "GPU_NAME", "GPU_PASSES", "GYRO_SENS", "HDR", "HDR_GAME_NITS",
      "HDR_HUE", "HDR_PEAK_NITS", "HDR_UI_NITS", "HIGHFPS_FIX", "HUD", "INPUT", "INPUT_RECORD", "INPUT_SCRIPT", "LANG", "LIB_PREBUILD",
      "LIB_PREBUILD_KEEP", "LIB_PREBUILD_THREADS", "LOCALE", "LOD_GUARD", "LSTICK_DEADZONE", "MEMORY", "MENU_LANG", "MENU_TEST",
@@ -378,7 +378,7 @@
  // The astralchain.ini section a key cfg_set may write goes to when the file lacks it (astralchain.ini.example's sections).
  static const struct { const char *key, *section; } sections[] = {
 -    {"FPS", "frame rate"},
-+    {"FPS", "frame rate"}, {"FRAME_GEN", "display"},
++    {"FPS", "frame rate"}, {"FRAME_GEN", "display"}, {"HD_PHOTOS", "display"},
      {"REALTIME", "frame rate"}, {"CLOTH_REALTIME", "frame rate"}, {"HIGHFPS_FIX", "frame rate"},
      {"HUD", "display"},
      {"FULLSCREEN", "display"}, {"WINDOW_SIZE", "display"}, {"PERF_OVERLAY", "display"}, {"VK_PRESENT", "display"},
@@ -413,7 +413,7 @@
      {"ANTI_ALIASING", "smaa", "off|smaa", LIVE},
 -    {"ASPECT", "wide", "fit|stretch|wide", LIVE}, {"FOV", "100", "70..140", LIVE},
 -    {"ANISO", "auto", "auto|game|2|4|8|16", RESTART},   // vk_texture.c sampler_features
-+    {"ASPECT", "fit", "fit|stretch", LIVE}, {"FOV", "100", "70..140", LIVE}, {"FRAME_GEN", "off", "off|fsr", RESTART},
++    {"ASPECT", "fit", "fit|stretch", LIVE}, {"FOV", "100", "70..140", LIVE}, {"FRAME_GEN", "off", "off|fsr", RESTART}, {"HD_PHOTOS", "1", "0|1", RESTART},
 +    {"ANISO", "game", "game|2|4|8|16", RESTART},   // vk_texture.c sampler_features
      // colour adjustment (vk_color.c); the preset is the menu's, the four values are what the present uses
      {"COLOR_PRESET", "default", "default|vivid|clarity|custom", LIVE}, {"COLOR_BRIGHTNESS", "0", "-30..30", LIVE},
@@ -423,7 +423,7 @@
      {"DEVICE_PROFILE", "auto", "auto|desktop|deck", RESTART},
      {"SHADOW_RES", "game", "game|512|768|1024|1536|2048", RESTART},
 -    {"SHADOW_SCALE", "2", "1..4", RESTART},   // vk_texture.c shadow_scale_of; 1 in the Steam Deck profile
-+    {"SHADOW_SCALE", "1", "1..4", RESTART},   // vk_texture.c shadow_scale_of; 1 in the Steam Deck profile
++    {"SHADOW_SCALE", "1", "1|2|3|4|auto", RESTART},   // vk_texture.c shadow_scale_of; 1 in the Steam Deck profile
      {"SHADOW_RANGE", "100", "50..400", RESTART}, {"CONTACT_SHADOWS", "0", "0..100", RESTART},
      {"PCSS", "0", "0..200", RESTART},
      // ambient occlusion (vk_ao.c): read again at the next present after a change
@@ -1629,18 +1629,26 @@
  }
  
  // agl's BC4 encoder draws a BC texture's blocks through an RGBA16UI view, one texel per 8-byte block (refs/nxnative
-@@ -348,7 +401,9 @@
+@@ -326,7 +379,7 @@
+ static int shadow_scale(void) {
+     static int scale = -1;
+     if (scale < 0) {
+-        int s = cfg_int("AC_SHADOW_SCALE");
++        int s = snap_shadow_scale_parse(cfg_value("AC_SHADOW_SCALE"));
+         s = s < 1 ? 1 : s > 4 ? 4 : s;
+         rt_log("vk: shadow map scale %d", s);
+         scale = s;
+@@ -348,7 +401,8 @@
                d->height == 2048 && d->levels <= 1;
      int cascades = d->format == NVN_FORMAT_DEPTH16 && d->target == NVN_TEXTURE_TARGET_2D_ARRAY && d->width == d->height &&
                     d->width >= 256 && d->depth >= 2 && d->depth <= 4;
 -    if (!sun && !cascades) return 1;
-+    int snap_sun = d->format == NVN_FORMAT_DEPTH32F && d->target == NVN_TEXTURE_TARGET_2D && d->width == 1024 &&
-+                   d->height == 1024 && d->levels <= 1;
++    int snap_sun = snap_shadow_map_class(d);
 +    if (!sun && !cascades && !snap_sun) return 1;
      uint32_t most = vk_ctx()->props.limits.maxImageDimension2D;
      return d->width * (uint32_t)scale <= most ? scale : 1;
  }
-@@ -686,6 +741,10 @@
+@@ -686,6 +740,10 @@
      }
      int shadow = shadow_scale_of(d, &f, samples, tex_mirrored(t));
      float scale = (float)shadow;
@@ -1651,7 +1659,7 @@
      w =(uint32_t)lroundf((float)w * scale), h = (uint32_t)lroundf((float)h * scale);
      uint32_t levels = umax(d->levels, 1), most = 1;
      for (uint32_t s = umax(umax(w, h), depth); s > 1; s >>= 1) most++;
-@@ -730,8 +789,20 @@
+@@ -730,8 +788,20 @@
          rt_log("vk: 3D BC textures %s (AC_BLOCK_VIEWS_3D=%d)", bv3d ? "get block views (renderable)" : "have no block views",
                 bv3d);
      }
@@ -1673,7 +1681,7 @@
          VkImageCreateInfo bc = ci;   // BC formats: renderable through views of their blocks (block_views_ok)
          bc.usage |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
          bc.flags |= VK_IMAGE_CREATE_BLOCK_TEXEL_VIEW_COMPATIBLE_BIT | VK_IMAGE_CREATE_EXTENDED_USAGE_BIT;
-@@ -775,6 +846,7 @@
+@@ -775,6 +845,7 @@
          VmaAllocationCreateInfo ai = {.usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE};
          VkResult r = vmaCreateImage(c->vma, &ci, &ai, &img, &e->alloc, NULL);
          if (r != VK_SUCCESS) {
@@ -1681,7 +1689,7 @@
              log_limited(&n_failed, "image creation failed (%d): nvn fmt %#x %ux%ux%u target %d levels %u layers %u", (int)r,
                          d->format, w, h, depth, d->target, levels, layers);
              free(e);
-@@ -788,7 +860,7 @@
+@@ -788,7 +859,7 @@
          own_bytes += e->bytes;
          static int scaled_logs;
          if (scale > 1.0f && scaled_logs < 8)   // what an enlarged shadow map costs, beside the pool storage it leaves
@@ -1690,7 +1698,7 @@
                                    d->width, d->height, d->format, w, h, (double)mi.size / 1048576.0);
      }
      // The recompression accounting of the perf line (vk_texture_new_submit): the scan's cost, the format
-@@ -1278,6 +1350,92 @@
+@@ -1278,6 +1349,92 @@
  }
  
  // Copies the whole storage into the image (every level and layer the image has).
@@ -1783,7 +1791,7 @@
  static void upload(Tex *e) {
      static volatile int32_t n_bad, n_undecoded, n_split;
      const tex_t *t = &e->t;
-@@ -1343,6 +1501,7 @@
+@@ -1343,6 +1500,7 @@
              size_t raw = (size_t)rb * rows * sl;
              rg[k].bufferOffset -= base;
              uint8_t *dst = stg + rg[k].bufferOffset, *tmp = (astc && !agpu) || rgb ? malloc(raw) : NULL;
@@ -1791,6 +1799,14 @@
              if (nvn_deswizzle(d, lv + skip, ly, t->mem, tmp ? tmp : dst, rb)) {
                  log_limited(&n_bad, "texture %#llx fmt %#x target %d: level %u layer %u has no CPU layout; uploaded as zeros",
                              (unsigned long long)e->pub.addr, d->format, d->target, lv + skip, ly);
+@@ -1432,6 +1590,7 @@
+         if (astc && !pre_in_step) pre_n_draw++, pre_tx_draw += decoded / 4;
+     }
+     e->wt_n = 0;
++    { void snap_hd_photo_gone(VkImage bc); snap_hd_photo_gone(e->pub.image); }   // SS-03: CPU content replaces a thumbnail's copy
+     // Neither video memory, after what this submit could free, nor system memory had room for the decoder's scratch:
+     // the image did not get the content, and an entry counted as uploaded is only uploaded again when its storage
+     // changes. Not counted, the next use (make_fresh) tries again.
 @@ -1716,7 +1875,29 @@
  
  void vk_texture_range_gone(uint64_t lo, uint64_t size, VmaAllocation alloc) {
@@ -1953,15 +1969,16 @@
      }
 --- a/runtime/vk_exec.c
 +++ b/runtime/vk_exec.c
-@@ -27,6 +27,7 @@
+@@ -27,6 +27,8 @@
  #include "tex.h"
  #include "vk.h"
  #include "vk_exec.h"
 +#include "snap_output_scale.h"
++#include "snap_hd_photo.h"
  #include "vk_dlaa.h"
  
  #define WEAK __attribute__((weak))
-@@ -154,8 +155,12 @@
+@@ -154,8 +156,12 @@
  // levels at the logo) go to a stand-in: a 2D array of the blocks of one level in the view's format, one layer per
  // depth plane. It starts with the level's content, so a pass that writes part of a plane keeps the rest, and each pass
  // end copies the planes it drew into the level (a copy between a compressed and a size-compatible uncompressed format).
@@ -1976,7 +1993,7 @@
  static BcStandIn bcs[BC_STANDINS];
  static int nbcs;
  static PlatMutex bcs_lock = PLAT_MUTEX_INIT;   // the replay adds and reads; destroy_tex (any thread) removes
-@@ -197,8 +202,9 @@
+@@ -197,8 +203,9 @@
          return 0;
      }
      uint32_t lw = level_extent(img->width, level), lh = level_extent(img->height, level);
@@ -1987,7 +2004,7 @@
      VkImageCreateInfo ci = {.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO, .imageType = VK_IMAGE_TYPE_2D, .format = fmt,
                              .extent = {s.w, s.h, 1}, .mipLevels = 1, .arrayLayers = s.d, .samples = VK_SAMPLE_COUNT_1_BIT,
                              .tiling = VK_IMAGE_TILING_OPTIMAL,
-@@ -215,9 +221,9 @@
+@@ -215,9 +222,9 @@
      image_barrier(cb, s.img, VK_IMAGE_LAYOUT_UNDEFINED, s.d);
      memory_barrier(cb, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, VK_ACCESS_2_MEMORY_WRITE_BIT, VK_PIPELINE_STAGE_2_COPY_BIT,
                     VK_ACCESS_2_TRANSFER_READ_BIT | VK_ACCESS_2_TRANSFER_WRITE_BIT);
@@ -1999,7 +2016,7 @@
      vkCmdCopyImage(cb, img->image, VK_IMAGE_LAYOUT_GENERAL, s.img, VK_IMAGE_LAYOUT_GENERAL, 1, &rg);
      memory_barrier(cb, VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
                     VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT);
-@@ -225,8 +231,13 @@
+@@ -225,8 +232,13 @@
      plat_mutex_lock(&bcs_lock);
      bcs[nbcs++] = s;
      plat_mutex_unlock(&bcs_lock);
@@ -2015,7 +2032,7 @@
      *out = s;
      return 1;
  }
-@@ -249,10 +260,12 @@
+@@ -249,10 +261,12 @@
          if (bcs[i].img != t->image) continue;
          memory_barrier(ex->cb, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, VK_ACCESS_2_MEMORY_WRITE_BIT, VK_PIPELINE_STAGE_2_COPY_BIT,
                         VK_ACCESS_2_TRANSFER_READ_BIT | VK_ACCESS_2_TRANSFER_WRITE_BIT);
@@ -2031,7 +2048,7 @@
          vkCmdCopyImage(ex->cb, t->image, VK_IMAGE_LAYOUT_GENERAL, bcs[i].bc, VK_IMAGE_LAYOUT_GENERAL, 1, &rg);
          memory_barrier(ex->cb, VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT,
                         VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT);
-@@ -262,11 +275,34 @@
+@@ -262,11 +276,34 @@
      plat_mutex_unlock(&bcs_lock);
  }
  
@@ -2069,7 +2086,7 @@
          return 0;
      VkFormat fmt;
      BcStandIn s;
-@@ -303,7 +339,7 @@
+@@ -303,7 +340,7 @@
      o->tex = t;
      if (!t) return;
      const VkTexImage *img = vk_texture_get(t);
@@ -2078,7 +2095,7 @@
      VkImageUsageFlags need = depth_slot ? VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT : VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
      int is3d = img && img->type == VK_IMAGE_TYPE_3D && !depth_slot;   // slices drawn through 2D views (2D_ARRAY_COMPATIBLE)
      if (!img || !(img->usage & need) || (img->type != VK_IMAGE_TYPE_2D && !is3d)) {
-@@ -350,7 +386,7 @@
+@@ -350,7 +387,7 @@
      }
      o->image = img->image;
      o->img = img;
@@ -2087,7 +2104,7 @@
      o->format = fmt;
      o->view_type = layers > 1 ? VK_IMAGE_VIEW_TYPE_2D_ARRAY : VK_IMAGE_VIEW_TYPE_2D;
      o->aspect = depth_slot ? img->aspect & (VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT)
-@@ -612,6 +648,9 @@
+@@ -612,6 +649,9 @@
          want[nwant] = t->image, wasp[nwant++] = i < 8 ? VK_IMAGE_ASPECT_COLOR_BIT : t->img->aspect;
      }
      barrier_to(ex, want, wasp, nwant);   // passes, clears, copies and dispatches see each other's results
@@ -2097,7 +2114,15 @@
      if (vk_gpuprof_on()) vk_gpuprof_mark(ex, 1, 0);
      ex->fbl_mask = fbl;
      ex->fb_dirty = 0;
-@@ -715,7 +754,10 @@
+@@ -639,6 +679,7 @@
+                           .pColorAttachments = ca,
+                           .pDepthAttachment = ex->pass_depth ? &da : NULL,
+                           .pStencilAttachment = ex->pass_stencil ? &sa : NULL};
++    if (ex->pass_ncolor && ex->color[0].image) snap_hd_photo_pass(ex->cb, ex->color[0].img);   // SS-03
+     vkCmdBeginRendering(ex->cb, &ri);
+     vk_exec_frame.passes++;
+     ex->recorded++;
+@@ -715,7 +756,10 @@
  static int whole_target(const VkExec *ex, const VkExecTarget *t) {
      // vkCmdClear*Image addresses a 3D level whole, not one depth plane: slices of a 3D target clear in a pass; it
      // cannot clear a compressed image: views of BC blocks clear in a pass too
@@ -2111,24 +2136,50 @@
      return s->x <= 0 && s->y <= 0 && (int64_t)s->x + s->w >= t->width && (int64_t)s->y + s->h >= t->height;
 --- a/runtime/vk_exec_draw.c
 +++ b/runtime/vk_exec_draw.c
-@@ -27,6 +27,7 @@
+@@ -27,6 +27,8 @@
  #include "nvn_hmap.h"
  #include "vk.h"
  #include "vk_exec.h"
 +#include "snap_output_scale.h"
++#include "snap_hd_photo.h"
  #include "platform/platform.h"
  #include "vk_dlaa.h"
  
-@@ -1625,7 +1626,7 @@
+@@ -595,6 +597,7 @@
+ 
+ void vk_exec_image_gone(VkImage image) {
+     vk_exec_bc_gone(image);
++    snap_hd_photo_gone(image);
+     vk_hdr_image_gone(image);
+     if (!views_by_image.klen) return;
+     for (ViewNode *n = nvn_hm_del(&views_by_image, &image), *next; n; n = next) {
+@@ -1277,7 +1280,7 @@
+     int td_on = td_mode();
+     VkImage image;
+     if (!h || storage || !td_on) return tex_info_full(ex, r, h, storage, separate, out, image_out);
+-    uint32_t gen = vk_texture_slots_gen(), ep = vk_texture_epoch(), sg = vk_sampler_gen();   // before any lookup
++    uint32_t gen = vk_texture_slots_gen(), ep = vk_texture_epoch(), sg = vk_sampler_gen() + snap_hd_photo_gen();   // before any lookup
+     typeof(TD[0]) *m = &TD[(h * 0x9E3779B97F4A7C15ull ^ (uint64_t)r->type << 7 ^ (uint64_t)separate) >> 51];
+     if (m->valid && m->h == h && m->type == r->type && m->separate == separate && m->sgen == sg &&
+         slot_still(&m->gen, m->tok, h, gen)) {
+@@ -1317,6 +1320,7 @@
+         int hv;
+         const VkTexImage *img = vk_texture_by_id_locked((int)(h & 0xfffff), &v, &hv);
+         if (img) view = get_view(ex, img, &v, hv, r->type, storage), *image = img->image;
++        if (img && !storage) view = snap_hd_photo_view(img->image, view);   // SS-03: a thumbnail's 1080x720 copy
+         if (img && storage) vk_texture_storage_bound_locked(img);
+         if (img && !storage && ex->nfbl && in_fbl(ex, img->image)) layout = VK_IMAGE_LAYOUT_ATTACHMENT_FEEDBACK_LOOP_OPTIMAL_EXT;
+         if (!storage && !separate) {
+@@ -1625,7 +1629,7 @@
      for (int i = 0; i < SCALES; i++) o->s[i] = 1.0f;
      o->nfs = 0;
      int skip = vk_tex_mip_skip() > 0;
 -    if (!skip) return;
-+    if (!skip && snap_host_scale_factor() <= 1.0f) return;
++    if (!skip && snap_host_scale_factor() <= 1.0f && !snap_hd_photo_scale_on()) return;
      int gfx = info->bind_point == VK_PIPELINE_BIND_POINT_GRAPHICS;
      o->s[0] = gfx && ex->pass_scale > 1.0f ? ex->pass_scale : 1.0f;
      int want = gfx ? GFX_STAGE_FS : GFX_STAGE_CS;
-@@ -2299,6 +2300,31 @@
+@@ -2299,6 +2303,31 @@
      return 0;
  }
  
@@ -2160,7 +2211,7 @@
  // Pass, shaders, pipeline, fixed state and resources for a draw. 0: the draw is skipped.
  static int prepare_draw(VkExec *ex, int prim, int32_t count, int restart) {
      if (ex->render_disabled) return drop_draw(ex, VK_DROP_DISABLED, "rendering disabled");
-@@ -2351,14 +2377,16 @@
+@@ -2351,14 +2380,16 @@
      // one-shot draws (volumes and LUTs generated once, later only sampled) would leave their target empty for the
      // session. A draw into per-frame targets is skipped until they are ready and comes back next frame.
      int oneshot = -1, skip = pipe_skip_mode();   // -1: not looked up
@@ -2179,7 +2230,7 @@
      uint32_t fbl = feedback_prepare(ex, fs);
      VkPipeState s = ex->pipe;
      // AC_FORCE_BLEND=<prog>: debug switch, the enemy-death effect (prog 268) is opaque at 1x and 2x; force
-@@ -2394,7 +2422,7 @@
+@@ -2394,7 +2425,7 @@
      static uint64_t wait_left_ns;
      uint32_t wait_ms = 0;
      uint64_t t0 = 0;
@@ -2188,7 +2239,7 @@
          wait_ms = ONESHOT_WAIT_MS;
      } else if (skip < 2 && count <= 6 && (uint64_t)sc.extent.width * sc.extent.height * 2 >= (uint64_t)ex->pass_w * ex->pass_h) {
          uint64_t f = __atomic_load_n(&gfx_counters.frames, __ATOMIC_RELAXED);
-@@ -2413,12 +2441,13 @@
+@@ -2413,12 +2444,13 @@
          p = __atomic_load_n(&info->pipeline, __ATOMIC_ACQUIRE);
      } else {
          w0 = t0 ? t0 : wait_ms ? kern_now_ns() : 0;   // the clock is read only for draws that may wait
@@ -2204,7 +2255,7 @@
          if (pending && oneshot < 0 && !vk_exec_targets_recent(ex, skip >= 1)) {
              perf_count(PERF_CNT_ONESHOT_WAIT);
              why = "one-shot";
-@@ -2562,6 +2591,16 @@
+@@ -2562,6 +2594,16 @@
      }
      return MO.fs[loc];
  }
