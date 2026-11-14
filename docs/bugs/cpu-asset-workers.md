@@ -1,7 +1,9 @@
 # CPU resource workers and intro frame spikes
 
-Status: implementation awaiting independent review, integration and application
-validation. Version 0.5 remains blocked. No AMD performance conclusion.
+Status: verified resource bridge integrated and shipped in the limited 0.5 alpha;
+local A/B and final public-kit/photo acceptance are recorded below and in
+`v05-alpha-acceptance.md`. Residual core waits remain under investigation after
+publication. No AMD performance conclusion; old-profile recovery is out of scope.
 
 ## Observed cause and limits
 

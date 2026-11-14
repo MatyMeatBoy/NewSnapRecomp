@@ -22,6 +22,7 @@ from .camera_input_adapt import edits as camera_input_edits
 from .graphics_effects_adapt import edits as graphics_effects_edits
 from .random_range_adapt import edits as random_range_edits
 from .console_adapt import edits as console_edits
+from .branding_adapt import edits as branding_edits
 from .version import VERSION
 
 
@@ -219,7 +220,7 @@ def adapt_sources(destination, *, patch_output=None):
         edits.setdefault(name, []).extend(changes)
     for adapter in (temporal_edits, upscaler_edits, neutral_edits, vrr_edits,
                     menu_edits, color_transfer_edits, photo_readback_edits, camera_input_edits,
-                    graphics_effects_edits, random_range_edits, console_edits):
+                    graphics_effects_edits, random_range_edits, console_edits, branding_edits):
         for name, changes in adapter().items():
             edits.setdefault(name, []).extend(changes)
     for folder in ('runtime', 'recomp', 'tools'):

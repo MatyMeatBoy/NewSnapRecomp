@@ -17,8 +17,14 @@ from .version import VERSION
 
 GREEN, CREAM, AMBER, INK = '#163d32', '#f5f1e5', '#dfa648', '#203c34'
 PAGE_SIZE = 12
-PRESENTATION_LABELS = {'Sincronizado': 'fifo', 'Fluido': 'mailbox', 'Sin sincronizar': 'immediate',
-                       'Sincronizado adaptable': 'fifo_relaxed'}
+PRESENTATION_LABELS = {'VSync · FIFO': 'fifo', 'Mailbox': 'mailbox', 'Sin VSync · Immediate': 'immediate',
+                       'VSync adaptable · FIFO Relaxed': 'fifo_relaxed'}
+PRESENTATION_HELP = ('FIFO: presenta la cola en orden durante el refresco vertical; evita tearing y puede añadir latencia. '
+                     'Mailbox: sincroniza con el refresco y reemplaza el fotograma pendiente por el más reciente. '
+                     'Immediate: presenta sin esperar al refresco; puede producir tearing. '
+                     'FIFO Relaxed: permite tearing si el fotograma llega tarde. '
+                     'Si el modo solicitado no está disponible, Vulkan usa FIFO. '
+                     'Ningún modo garantiza por sí solo que FreeSync/G-SYNC esté activo.')
 
 
 class Launcher:
@@ -26,10 +32,12 @@ class Launcher:
         from PIL import Image, ImageTk
         self.Image, self.ImageTk = Image, ImageTk
         self.root, self.project = root, Path(project)
-        self.ini = runtime_dir(self.project) / 'astralchain.ini'
+        self.ini = runtime_dir(self.project) / 'newsnap.ini'
         self.profile = settings.load_profile(self.project)
+        self.profile_text = tk.StringVar(master=root, value=str(self.profile))
         self.events = queue.Queue()
         self.busy = False
+        self.diagnostics_running = False
         self._album_loaded = False
         self.controller_test = None
         self.process = None
@@ -129,7 +137,7 @@ class Launcher:
         text.configure(yscrollcommand=bar.set)
         bar.pack(side='right',fill='y');text.pack(fill='both',expand=True)
         text.insert('end','NewSnapRecomp · MatyMeatBoy y colaboradores\n\n'
-            'Infraestructura de Astral Chain Recomp y contribuciones originales bajo MIT.\n'
+            'Infraestructura y contribuciones bajo MIT; atribuciones completas en las licencias incluidas.\n'
             'AMD FidelityFX Super Resolution, utilizado conforme a las licencias incluidas.\n'
             'NVIDIA DLSS, utilizado bajo la licencia NVIDIA RTX SDKs. NVIDIA y DLSS son marcas de NVIDIA Corporation.\n\n')
         for label,path in (('Licencia NVIDIA DLSS',runtime_dir(self.project)/'licenses/NVIDIA-DLSS.txt'),
@@ -169,7 +177,7 @@ class Launcher:
         self.syncing_options = False
         self.labeled_choices = {}
         self.variables = {key: tk.StringVar(value=value) for key, value in values.items()}
-        ttk.Label(self.video_tab, text='Prepara tu pantalla', style='Title.TLabel').pack(anchor='w', pady=(0, 5))
+        ttk.Label(self.video_tab, text='Vídeo y presentación', style='Title.TLabel').pack(anchor='w', pady=(0, 5))
         ttk.Label(self.video_tab, text='Todos los cambios se aplican al próximo inicio del juego.', style='Muted.TLabel').pack(anchor='w', pady=(0, 10))
         self.save_buttons = []
         actions = ttk.Frame(self.video_tab, padding=(0, 10, 0, 0))
@@ -183,26 +191,43 @@ class Launcher:
         sections.add(basic_tab, text='Básico')
         sections.add(advanced_tab, text='Avanzado')
         basic, advanced = self._scrolling_options(basic_tab), self._scrolling_options(advanced_tab)
-        ttk.Checkbutton(basic, text='Pantalla completa', variable=self.variables['fullscreen'], onvalue='1', offvalue='0').pack(anchor='w', pady=(5, 10))
+        from .graphics_presets import PRESETS, DESCRIPTION, matching_preset
+        from .tooltip import Tooltip
+        self.quality_preset = tk.StringVar(value=matching_preset(values))
+        preset_row = ttk.Frame(basic); preset_row.pack(fill='x', pady=9)
+        preset_label = ttk.Label(preset_row, text='Preset de calidad gráfica', width=29)
+        preset_label.pack(side='left')
+        preset = ttk.Combobox(preset_row, textvariable=self.quality_preset,
+                             values=(*PRESETS, 'Personalizado'), state='readonly', width=31)
+        preset.pack(side='left')
+        preset.bind('<<ComboboxSelected>>', self._apply_quality_preset)
+        Tooltip(preset_label, DESCRIPTION); Tooltip(preset, DESCRIPTION)
+        self._help(basic, 'Original · Bajo · Medio · Alto · Ultra. Pasa el ratón para ver los ajustes exactos.')
+        fullscreen = ttk.Checkbutton(basic, text='Pantalla completa', variable=self.variables['fullscreen'], onvalue='1', offvalue='0')
+        fullscreen.pack(anchor='w', pady=(5, 10))
+        Tooltip(fullscreen, 'Solicita pantalla completa al runtime. No cambia la resolución interna ni garantiza VRR o modo exclusivo del controlador.')
         self._choice(basic, 'Tamaño de ventana', 'window_size', ('1280x720', '1600x900', '1920x1080', '2560x1440', '3440x1440', '3840x2160'), editable=True,
                      help_text='Admite un tamaño propio como 2560x1080. Cambia la ventana, no la resolución interna ni la salida nativa.')
         self._choice(basic, 'Salida nativa del juego', 'operation_mode', {'TV · 1920 × 1080': 'docked', 'Portátil · 1280 × 720': 'handheld'},
                      help_text='El modo TV produce una salida de 1080p; el modo portátil, 720p. Una ventana 4K no convierte la salida nativa en 4K.')
-        self._choice(basic, 'Límite de fotogramas', 'fps', {'30 FPS': '30', '60 FPS': '60'},
+        self._choice(basic, 'Límite de FPS · Frame cap', 'fps', {'30 FPS': '30', '60 FPS': '60'},
                      help_text='30 y 60 FPS son los límites disponibles. Más de 60 FPS sigue en investigación.')
         self.presentation = tk.StringVar(value=next(label for label, value in PRESENTATION_LABELS.items() if value == values['vk_present']))
         row = ttk.Frame(basic)
         row.pack(fill='x', pady=9)
-        ttk.Label(row, text='Sincronización de imagen', width=29).pack(side='left')
-        ttk.Combobox(row, textvariable=self.presentation, values=tuple(PRESENTATION_LABELS), state='readonly', width=25).pack(side='left')
-        self._help(basic, 'Sincronizado evita cortes; Fluido prioriza respuesta. Sin sincronizar puede mostrar cortes. Adaptable permite cortes al caer por debajo del refresco; si no está disponible, el juego usa sincronización normal.')
+        present_label = ttk.Label(row, text='Modo de presentación Vulkan', width=29)
+        present_label.pack(side='left')
+        present_choice = ttk.Combobox(row, textvariable=self.presentation, values=tuple(PRESENTATION_LABELS), state='readonly', width=31)
+        present_choice.pack(side='left')
+        Tooltip(present_label, PRESENTATION_HELP); Tooltip(present_choice, PRESENTATION_HELP)
+        self._help(basic, 'FIFO / Mailbox / Immediate / FIFO Relaxed. El modo efectivo y VRR se comprueban durante el juego.')
         self._help(basic, 'La frecuencia variable depende de la pantalla y el controlador. Su presentación se comprueba durante la expedición.')
         from .display_ui import DisplayPanel
         self.display=DisplayPanel(self,basic)
-        self._choice(basic, 'Información de rendimiento', 'perf_overlay', {'Oculta': 'off', 'Solo FPS': 'fps', 'Completa': 'full'},
+        self._choice(basic, 'Overlay de rendimiento', 'perf_overlay', {'Oculta': 'off', 'Solo FPS': 'fps', 'Completa': 'full'},
                      help_text='Muestra datos del runtime. La vista completa incluye tiempos de CPU/GPU y actividad de compilación cuando están disponibles.')
         self._heading(advanced, 'Resolución y reconstrucción')
-        self._choice(advanced, 'Reconstrucción de la escena', 'upscaling', {
+        self._choice(advanced, 'Reconstrucción temporal · FSR/DLSS', 'upscaling', {
             'Original': 'off', 'Automática': 'auto', 'AMD FSR 3.1': 'fsr3',
             'AMD FSR 4 · GPU compatible': 'fsr4', 'NVIDIA DLSS · RTX': 'dlss'},
             help_text='Reconstruye la escena antes del HUD. La disponibilidad depende del proveedor y del controlador; una opción no disponible conserva una alternativa compatible. FSR 4 selecciona automáticamente el modelo compatible, incluido INT8 en RX 6000/7000.')
@@ -214,9 +239,9 @@ class Launcher:
                      '1,25× (125 %) · experimental': '125', '1,5× (150 %) · experimental': '150', '2× (200 %) · experimental': '200'},
                      choice_width=31,
                      help_text='Hasta el 100 %, una escala menor favorece el rendimiento y pierde detalle; el HUD conserva su resolución de salida. 125 %, 150 % y 200 % son supersampling experimental exclusivo del modo TV: aumentan el detalle y el coste de GPU. Para modo portátil elige 100 % o menos; guardar una combinación incompatible muestra un error sin cambiar tu elección.')
-        self._choice(advanced, 'Filtrado de texturas', 'aniso', {'Según el juego': 'game', **{f'{n}×': str(n) for n in (2, 4, 8, 16)}, 'Automático heredado': 'auto'},
+        self._choice(advanced, 'Filtrado anisotrópico · AF', 'aniso', {'Según el juego': 'game', **{f'{n}×': str(n) for n in (2, 4, 8, 16)}, 'Automático heredado': 'auto'},
                      help_text='Mejora las texturas vistas en ángulo. El controlador y la GPU pueden limitar el nivel efectivo. Automático heredado conserva la heurística de la base, aún sin validar para Snap; elige un nivel explícito para personalizarlo.')
-        self._choice(advanced, 'Encaje en la ventana', 'aspect', {'Conservar proporciones': 'fit', 'Estirar a la ventana': 'stretch'},
+        self._choice(advanced, 'Relación de aspecto · Aspect ratio', 'aspect', {'Conservar proporciones': 'fit', 'Estirar a la ventana': 'stretch'},
                      help_text='Solo cambia la presentación: conservar proporciones puede dejar bandas; estirar llena la ventana y deforma la imagen. No amplía el campo de visión.')
         self._heading(advanced, 'Color original del juego')
         self._help(advanced, 'Salida neutra: conserva los colores y el posprocesado propios de Snap. '
@@ -224,6 +249,19 @@ class Launcher:
         self._audio_options()
         self._game_options()
         self._control_options()
+        for key in ('render_scale', 'aniso', 'upscaling'):
+            self.variables[key].trace_add('write', self._quality_preset_changed)
+
+    def _apply_quality_preset(self, event=None):
+        from .graphics_presets import PRESETS, apply_preset
+        name = self.quality_preset.get()
+        if name in PRESETS:
+            self._set_option_values(apply_preset(self._option_values(), name))
+
+    def _quality_preset_changed(self, *args):
+        if not self.syncing_options:
+            from .graphics_presets import matching_preset
+            self.quality_preset.set(matching_preset({key: value.get() for key, value in self.variables.items()}))
 
     def _settings_footer(self, frame, *, controls=False):
         footer = ttk.Frame(frame, padding=(0, 10, 0, 0))
@@ -242,13 +280,24 @@ class Launcher:
         self._choice(content, 'Volumen general · 0 a 100', 'volume', None,
                      help_text='0 silencia la salida. No se ofrecen controles separados de música y efectos porque el runtime no los separa.')
         self._heading(content, 'Avanzado · Estabilidad del audio')
-        self._choice(content, 'Cola inicial de audio · ms', 'audio_prefill_ms', None,
+        self._choice(content, 'Prebuffer de audio · ms', 'audio_prefill_ms', None,
                      help_text='De 0 a 500 ms; valor inicial 20. El audio espera esta cantidad al iniciar o recuperarse de un corte, redondeada a bloques de 5 ms. Un valor mayor puede ayudar con cortes y también añade latencia.')
 
     def _game_options(self):
         ttk.Label(self.game_tab, text='Tu expedición', style='Title.TLabel').pack(anchor='w')
         self._settings_footer(self.game_tab)
         content = self._scrolling_options(self.game_tab)
+        profile = ttk.LabelFrame(content, text='Perfil y guardados', padding=12)
+        profile.pack(fill='x', pady=(0, 12))
+        self.profile_label = ttk.Label(profile, textvariable=self.profile_text,
+                                      wraplength=700, style='Muted.TLabel')
+        self.profile_label.pack(anchor='w', pady=4)
+        self.profile_button = ttk.Button(profile, text='Elegir perfil…', command=self.choose_profile)
+        self.profile_button.pack(anchor='w', pady=4)
+        from .tooltip import Tooltip
+        self.diagnostics_button = ttk.Button(content, text='Exportar diagnóstico…', command=self.export_diagnostics)
+        self.diagnostics_button.pack(anchor='w', pady=(0, 12))
+        Tooltip(self.diagnostics_button, 'Crea un ZIP local con identidad del launcher/runtime, ajustes conocidos, logs recientes y observaciones de pantalla. No incluye fotos, partidas, claves ni archivos del juego; no envía nada por Internet.')
         self._help(content, 'Los cambios se aplican al próximo inicio. Estos ajustes conservan tu perfil y sus guardados.')
         languages = {'Según el sistema': '', 'Español · España': 'es', 'Español · Latinoamérica': 'es-419',
                      'English · US': 'en-US', 'English · UK': 'en-GB', 'Français': 'fr', 'Français · Canada': 'fr-CA',
@@ -274,7 +323,10 @@ class Launcher:
         self._choice(general, 'Sensibilidad del ratón · 0 a 10', 'mouse_sens', None)
         self._choice(general, 'Distribución del mando', 'pad_layout', {'Automática': 'auto', 'Nintendo': 'nintendo', 'Xbox': 'xbox', 'PlayStation': 'playstation'},
                      help_text='Cambia cómo se interpretan los botones físicos. Los dibujos de botones del juego conservan su aspecto original.')
-        ttk.Checkbutton(general, text='Activar controles de movimiento', variable=self.variables['motion'], onvalue='1', offvalue='0').pack(anchor='w', pady=10)
+        motion = ttk.Checkbutton(general, text='Giroscopio · controles de movimiento', variable=self.variables['motion'], onvalue='1', offvalue='0')
+        motion.pack(anchor='w', pady=10)
+        from .tooltip import Tooltip
+        Tooltip(motion, 'Habilita la entrada de movimiento/giroscopio cuando el mando y su controlador la proporcionan. Desactívalo si prefieres apuntar solo con ratón o sticks.')
         self._help(general, 'Utiliza los sensores de movimiento si el mando, su conexión y el controlador los proporcionan.')
         self._heading(general, 'Zona muerta de los sticks')
         self._choice(general, 'Zona muerta común · 0 a 50 %', 'stick_deadzone', None)
@@ -286,13 +338,35 @@ class Launcher:
                      help_text='0 desactiva la vibración. La respuesta depende del mando y de los efectos enviados por el juego.')
         self._choice(general, 'Curva de vibración · 0.2 a 1.5', 'rumble_curve', None,
                      help_text='Ajusta cómo se amplifican los efectos débiles respecto de los fuertes. El valor inicial de la base es 0.6.')
-        ttk.Checkbutton(general, text='Vibración en los gatillos compatibles', variable=self.variables['rumble_triggers'], onvalue='1', offvalue='0').pack(anchor='w', pady=10)
+        triggers = ttk.Checkbutton(general, text='Vibración de gatillos · Trigger Rumble', variable=self.variables['rumble_triggers'], onvalue='1', offvalue='0')
+        triggers.pack(anchor='w', pady=10)
+        Tooltip(triggers, self._control_tooltip('rumble_triggers'))
         self._help(bindings, 'Edita listas separadas por comas: key:mouse_l, key:e, pad:south. Las teclas y los nombres físicos del mando se distinguen con key: y pad:. La edición se valida al guardar; el texto previo se conserva hasta que lo cambies.')
         self._help(bindings, 'key:default y pad:default conservan las asignaciones originales de esa acción. Vacío restaura ambos; none por sí solo deja la acción sin entradas. Las direcciones de los sticks aceptan únicamente teclas.')
         ttk.Button(bindings, text='Ver teclas y botones admitidos', command=self.show_binding_names).pack(anchor='w', pady=(0, 12))
         for key in settings.BINDING_DEFAULTS:
             name = key.removeprefix('bind_').upper().replace('LSTICK_', 'Stick izq. · ').replace('RSTICK_', 'Stick der. · ')
             self._choice(bindings, 'A · Foto / confirmar' if key == 'bind_a' else name, key, None)
+
+    def export_diagnostics(self):
+        if self.diagnostics_running:
+            return
+        destination = filedialog.asksaveasfilename(parent=self.root, title='Exportar diagnóstico de NewSnap',
+            defaultextension='.zip', filetypes=[('Diagnóstico ZIP', '*.zip')],
+            initialfile=f'NewSnap-diagnostico-{datetime.now():%Y%m%d-%H%M%S}-{uuid.uuid4().hex[:6]}.zip')
+        if not destination:
+            return
+        self.diagnostics_running = True
+        self.diagnostics_button.configure(state='disabled')
+        self.status.set('Recopilando diagnóstico local…')
+        def work():
+            try:
+                from .diagnostics import export_diagnostics
+                output = export_diagnostics(self.project, destination)
+                self.events.put(('diagnostics_done', str(output), None))
+            except Exception as error:
+                self.events.put(('diagnostics_done', None, str(error)))
+        threading.Thread(target=work, daemon=True).start()
 
     def reset_controls(self):
         values = self._option_values()
@@ -334,7 +408,8 @@ class Launcher:
     def _choice(self, frame, label, key, choices, *, editable=False, help_text=None, changed=None, choice_width=25):
         row = ttk.Frame(frame)
         row.pack(fill='x', pady=(7, 9))
-        ttk.Label(row, text=label, width=29).pack(side='left')
+        caption = ttk.Label(row, text=label, width=29, wraplength=250)
+        caption.pack(side='left')
         variable = self.variables[key]
         if isinstance(choices, dict):
             variable = tk.StringVar(value=next(label for label, value in choices.items() if value == variable.get()))
@@ -342,6 +417,9 @@ class Launcher:
         widget = (ttk.Combobox(row, textvariable=variable, values=tuple(choices), state='normal' if editable else 'readonly', width=choice_width)
                   if choices else ttk.Entry(row, textvariable=variable, width=28))
         widget.pack(side='left')
+        from .tooltip import Tooltip
+        tooltip = help_text or self._control_tooltip(key)
+        Tooltip(caption, tooltip); Tooltip(widget, tooltip)
         if isinstance(choices, dict):
             def selected(event):
                 self.variables[key].set(choices[variable.get()])
@@ -350,6 +428,25 @@ class Launcher:
             widget.bind('<<ComboboxSelected>>', selected)
         if help_text:
             self._help(frame, help_text)
+
+    @staticmethod
+    def _control_tooltip(key):
+        if key in settings.BINDING_DEFAULTS:
+            if key.startswith(('bind_lstick_', 'bind_rstick_')):
+                return ('Asigna una tecla a esta dirección del stick de Switch: key:<tecla>. '
+                        'key:default conserva la asignación original; none la desactiva. '
+                        'Estas direcciones solo aceptan teclas, no pad:<botón>.')
+            return ('Asigna la entrada a este botón/eje de Switch. Usa key:<tecla> o pad:<botón>, separados por comas. '
+                    'pad:default conserva el mando original; none desactiva la asignación. Vacío restaura los valores originales.')
+        return {
+            'mouse_sens': 'Multiplicador de sensibilidad de la cámara con ratón, de 0 a 10; 1 conserva la sensibilidad base.',
+            'stick_deadzone': 'Porcentaje de recorrido ignorado alrededor del centro de ambos sticks. 0–50 %. Un valor mayor reduce drift y pierde respuesta cerca del centro.',
+            'lstick_deadzone': 'Zona muerta del stick izquierdo, 0–50 %. Vacío hereda la zona muerta común.',
+            'rstick_deadzone': 'Zona muerta del stick derecho, 0–50 %. Vacío hereda la zona muerta común.',
+            'rumble_strength': 'Ganancia de vibración del mando, 0–300 %. 0 la desactiva. La intensidad efectiva depende del dispositivo.',
+            'rumble_curve': 'Exponente de respuesta de vibración, de 0,2 a 1,5. Cambia la relación entre intensidades débiles y fuertes.',
+            'rumble_triggers': 'Permite vibración de gatillos si el dispositivo y el controlador la soportan.',
+        }.get(key, 'Se aplica al próximo inicio del juego; guarda los ajustes para conservar el cambio.')
 
     def _select_color_preset(self):
         preset = self.variables['color_preset'].get()
@@ -397,6 +494,8 @@ class Launcher:
                                        if value == values['vk_present']))
         finally:
             self.syncing_options = False
+        if hasattr(self, 'quality_preset'):
+            self._quality_preset_changed()
 
     def reload_options(self):
         try:
@@ -629,6 +728,10 @@ class Launcher:
                 kind = event[0]
                 if kind == 'status':
                     self.status.set(event[1])
+                elif kind == 'diagnostics_done':
+                    self.diagnostics_running = False
+                    self.diagnostics_button.configure(state='normal')
+                    self.status.set('Diagnóstico exportado: '+event[1] if event[1] else 'No se pudo exportar el diagnóstico: '+event[2])
                 elif kind == 'settings_saved':
                     self.baseline=dict(event[1]);self._set_option_values(event[1])
                 elif kind == 'maintenance_needed':
@@ -675,6 +778,9 @@ class Launcher:
         self.root.after(100, self._poll)
 
     def close(self):
+        if self.diagnostics_running:
+            messagebox.showinfo('Diagnóstico en curso', 'Espera a que termine la exportación del diagnóstico.', parent=self.root)
+            return
         if self.busy:
             messagebox.showinfo('Operación en curso', 'Espera a que termine la preparación o actualización, o cierra la ventana del juego antes de cerrar el launcher.', parent=self.root)
             return

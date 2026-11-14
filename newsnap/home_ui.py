@@ -30,15 +30,11 @@ class HomePanel:
         self.verify_button.pack(side='left',padx=8)
         self.cancel_button=ttk.Button(actions,text='Cancelar',command=self.cancel.set,state='disabled')
         self.cancel_button.pack(side='left')
-        profile=ttk.Frame(parent);profile.pack(fill='x',pady=(0,10))
-        ttk.Label(profile,text='Perfil activo',font=('Segoe UI',11,'bold')).pack(anchor='w')
-        launcher.profile_text=tk.StringVar(value=str(launcher.profile))
-        launcher.profile_label=ttk.Label(profile,textvariable=launcher.profile_text,wraplength=760,style='Muted.TLabel')
-        launcher.profile_label.pack(anchor='w',pady=4)
-        launcher.profile_button=ttk.Button(profile,text='Elegir perfil…',command=launcher.choose_profile)
-        launcher.profile_button.pack(anchor='w',pady=4)
         launcher.prepare=tk.BooleanVar(value=True)
-        ttk.Checkbutton(parent,text='Preparar gráficos antes de jugar',variable=launcher.prepare).pack(anchor='w',pady=(6,4))
+        prepare = ttk.Checkbutton(parent,text='Precompilar shaders antes de jugar',variable=launcher.prepare)
+        prepare.pack(anchor='w',pady=(6,4))
+        from .tooltip import Tooltip
+        Tooltip(prepare, 'Prepara pipelines/shaders para esta GPU antes de abrir el juego. Puede tardar; ayuda a reducir pausas de compilación durante la expedición. Un cambio de GPU/controlador/runtime puede requerir regenerar la caché.')
         ttk.Label(parent,text='La verificación y la preparación necesarias se muestran aquí, antes de abrir el juego.',
                   wraplength=760,style='Muted.TLabel').pack(anchor='w')
         launcher.play_button=ttk.Button(footer,text='Iniciar expedición  →',style='Accent.TButton',command=launcher.launch)
@@ -73,7 +69,7 @@ class HomePanel:
         if not chosen:return
         try:
             selected=select_data_dir(self.launcher.project,chosen)
-            self.launcher.ini=runtime_dir(self.launcher.project)/'astralchain.ini'
+            self.launcher.ini=runtime_dir(self.launcher.project)/'newsnap.ini'
             self.launcher.profile=settings.load_profile(self.launcher.project)
             self.launcher.profile_text.set(str(self.launcher.profile))
             self.launcher.baseline=settings.load_settings(self.launcher.ini)

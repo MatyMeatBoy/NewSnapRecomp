@@ -142,9 +142,18 @@ def validate_video_combination(values):
         raise ValueError('La escala experimental superior al 100 % requiere salida TV. Elige «TV · 1920 × 1080» o reduce la escala al 100 % o menos para usar el modo portátil.')
 
 
+def _settings_source(path):
+    path = Path(path)
+    if path.name == 'newsnap.ini' and not path.exists():
+        legacy = path.with_name('astralchain.ini')
+        if legacy.is_file():
+            return legacy
+    return path
+
+
 def load_settings(path):
     result = dict(DEFAULTS)
-    path = Path(path)
+    path = _settings_source(path)
     if path.is_file():
         for line in path.read_text(encoding='utf-8-sig').splitlines():
             match = ENTRY.match(line)
@@ -183,7 +192,8 @@ def save_settings(path, values):
         return
     path = Path(path)
     validate_video_combination({**load_settings(path), **values})
-    raw = path.read_bytes() if path.is_file() else b''
+    source = _settings_source(path)
+    raw = source.read_bytes() if source.is_file() else b''
     bom = b'\xef\xbb\xbf' if raw.startswith(b'\xef\xbb\xbf') else b''
     text = raw[len(bom):].decode('utf-8')
     ending = '\r\n' if '\r\n' in text else '\n'
