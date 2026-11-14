@@ -1,25 +1,28 @@
-# OptiPort · propuestas verificables desde NewSnapRecomp
+# OptiPort · verifiable proposals from NewSnapRecomp
 
-**PROMOVIDO tras revisión:** commit OptiPort `9673006504bf6712b320da70965bc3f65f2dd41a` (2026-11-13). Las siete referencias revisadas se publicaron en el repositorio canónico y se instalaron en Codex; `SKILL.md` permanece idéntico. El checkout activo conservó su rama/HEAD y su índice; la copia de Claude, con cambios locales ajenos, se conservó sin sobrescribir. Recibo local: `build/optiport-lessons-candidate/promotion.json`. Las observaciones de revisión sobre el alcance del fixture de memoria y el roundtrip sin artefacto se corrigieron antes de promover.
+**PROMOTED after review:** OptiPort commit `9673006504bf6712b320da70965bc3f65f2dd41a`
+(2026-11-13). The seven reviewed references were published in the canonical repository and
+installed in Codex; `SKILL.md` stays identical. The active checkout kept its branch/HEAD and its
+index; Claude's copy, with unrelated local changes, was kept without being overwritten. Local
+receipt: `build/optiport-lessons-candidate/promotion.json`. The review remarks about the scope of
+the memory fixture and the round trip without an artifact were fixed before promoting.
 
-**CANDIDATO AISLADO, pendiente de revisión de su diff.** Codex aprobó los siete
-temas y sus límites. Los párrafos se materializaron en una copia bajo
-`build/optiport-lessons-candidate/`, sin instalar ni publicar. No se
-editó la skill instalada ni el checkout canónico. Mantener
-las rutas y pruebas del proyecto aquí; promover únicamente los contratos
-generalizables, sin contenido ni identificadores privados del propietario.
+**ISOLATED CANDIDATE, pending review of its diff.** Codex approved the seven topics and their
+limits. The paragraphs were materialised in a copy under `build/optiport-lessons-candidate/`,
+without installing or publishing. Neither the installed skill nor the canonical checkout was
+edited. Keep this project's paths and tests here; promote only the generalisable contracts,
+without the owner's private content or identifiers.
 
-## Fuente y freshness
+## Source and freshness
 
-El 2026-11-13 se leyó la skill instalada y se ejecutó `git fetch origin main`
-sobre el clon existente de [MatyMeatBoy/OptiPort](https://github.com/MatyMeatBoy/OptiPort).
-`origin/HEAD` apunta a `origin/main`, cuya revisión comprobada es
-`a948b71af2ead649b56f3cdc6e4190f77afda492`. El checkout permaneció en
-`384fb79c132de3a4612ffd46d3c0a25a58adc561`: no hubo switch/reset, cambios de
-archivos, nueva rama ni nuevo checkout. Fetch solo actualizó referencias remotas.
+On 2026-11-13 the installed skill was read and `git fetch origin main` was run on the existing
+clone of [MatyMeatBoy/OptiPort](https://github.com/MatyMeatBoy/OptiPort). `origin/HEAD` points to
+`origin/main`, whose checked revision is `a948b71af2ead649b56f3cdc6e4190f77afda492`. The checkout
+stayed at `384fb79c132de3a4612ffd46d3c0a25a58adc561`: no switch/reset, file changes, new branch or
+new checkout. The fetch only updated remote references.
 
-Se comparó la copia instalada con `git show origin/main:<ruta>`, normalizando
-CRLF/LF. Coincidieron `SKILL.md` y estos siete módulos pertinentes:
+The installed copy was compared with `git show origin/main:<path>`, normalising CRLF/LF.
+`SKILL.md` and these seven relevant modules matched:
 
 - `references/graphics-memory.md`
 - `references/runtime-adaptation.md`
@@ -29,263 +32,244 @@ CRLF/LF. Coincidieron `SKILL.md` y estos siete módulos pertinentes:
 - `references/verified-lessons.md`
 - `references/software-general.md`
 
-No hay diferencia de contenido que sincronizar en esos archivos. No se afirma
-que todos los módulos no utilizados de una instalación estén actualizados.
+There is no content difference to synchronise in those files. It is not claimed that every unused
+module of an installation is up to date.
 
-## Base de evidencia y límites
+## Evidence base and limits
 
-La [matriz local](GPU_MATRIX.md) conserva los dispositivos, binarios, ensayos y
-resultados. Los contratos de color/import/storage/input tienen negativos y
-positivos nativos; algunos cuentan además con observación NVIDIA. No existe
-validación física AMD de las correcciones ni causa demostrada de sus franjas.
+The [local matrix](GPU_MATRIX.md) keeps the devices, binaries, runs and results. The
+colour/import/storage/input contracts have native negatives and positives; some also have an
+NVIDIA observation. There is no physical AMD validation of the fixes or a shown cause for its
+bands.
 
-Los controles fotográficos normales de 540 s superados usan `f6d92250…` y
-`06a8d9df…`, cada uno con su propia evidencia de proceso, transferencias y JPEG.
-El segundo no se acredita por herencia del primero. Ni un rechazo de sujeto simultáneo ni
-la apariencia periódica de una captura demuestran qué consumidor o copia falló.
-No convertir 150 bancos duplicados en 150 fotos o recorridos independientes.
+The passed normal 540 s photo controls use `f6d92250…` and `06a8d9df…`, each with its own
+process, transfer and JPEG evidence. The second is not credited by inheritance from the first.
+Neither a simultaneous subject rejection nor the periodic look of a screenshot shows which
+consumer or copy failed. Do not turn 150 duplicated banks into 150 independent photos or runs.
 
-Las propuestas siguientes amplían secciones existentes; no duplicar todo el
-método en `SKILL.md`. El orden recomendado es revisar contratos gráficos,
-harness, entrada y procedencia, y finalmente añadir enlaces breves al catálogo.
+The proposals below extend existing sections; do not duplicate the whole method in `SKILL.md`.
+The recommended order is to review the graphics contracts, harness, input and provenance, and
+finally add short links to the catalogue.
 
-## 1. Transferencia digital de color
+## 1. Digital colour transfer
 
-**Destino:** `references/graphics-memory.md`, después de la tabla de
-«Cerrar la cadena de recursos y coordenadas».
+**Target:** `references/graphics-memory.md`, after the «Close the chain of resources and
+coordinates» table.
 
-**Párrafos propuestos:**
+**Proposed paragraphs:**
 
-> Separar los valores codificados de los píxeles, el formato base del recurso,
-> la vista usada por su productor y la transferencia del destino. Un recurso
-> con formato base sRGB puede haber sido escrito mediante un alias UNORM; una
-> copia/blit que consulta el formato base puede decodificar otra vez bytes ya
-> preparados para la pantalla. Corregir la frontera de transferencia demostrada,
-> sin compensarla con saturación, contraste o gamma artística.
+> Separate the pixels' encoded values, the resource's base format, the view its producer used and
+> the target's transfer. A resource with an sRGB base format may have been written through a
+> UNORM alias; a copy/blit that consults the base format may decode bytes already prepared for
+> the screen a second time. Fix the shown transfer boundary, without compensating with
+> saturation, contrast or artistic gamma.
 >
-> La corrección depende también del destino: un swapchain sRGB aplica su propia
-> codificación y puede convertir en doble encode una corrección válida para
-> UNORM. Probar las clases fuente/destino realmente admitidas, swizzle, mips,
-> capas, uso, barreras y vida útil de vistas compatibles; mantener separadas las
-> rutas float/HDR y formatos cuyo contrato no se ha establecido. Comparar bytes
-> digitales del mismo cuadro, tamaño y crop antes de atribuir diferencias a la
-> pantalla. Una coincidencia exacta en una GPU no certifica las demás.
+> The fix also depends on the target: an sRGB swapchain applies its own encoding and can turn a
+> fix valid for UNORM into a double encode. Test the source/target classes actually supported,
+> swizzle, mips, layers, usage, barriers and the lifetime of compatible views; keep float/HDR
+> paths and formats whose contract is not established separate. Compare the digital bytes of the
+> same frame, size and crop before attributing differences to the screen. An exact match on one
+> GPU does not certify the others.
 
-Referencia primaria añadida al candidato: [blit y conversión sRGB en Vulkan](https://docs.vulkan.org/refpages/latest/refpages/source/vkCmdBlitImage.html).
+Primary reference added to the candidate:
+[blit and sRGB conversion in Vulkan](https://docs.vulkan.org/refpages/latest/refpages/source/vkCmdBlitImage.html).
 
-**Qué decide:** evita modificar el grade original y evita arreglar solo el caso
-UNORM. El fallback sRGB-only fallaba en la primera propuesta y se corrigió tras
-revisión. La matriz de formatos es CPU; la igualdad digital 1920×1080 es NVIDIA.
+**What it decides:** it avoids modifying the original grade and avoids fixing only the UNORM case.
+The sRGB-only fallback failed in the first proposal and was fixed after review. The format matrix
+is CPU; the 1920×1080 digital equality is NVIDIA.
 
-## 2. Memoria host importada y coherencia
+## 2. Imported host memory and coherence
 
-**Destino:** `references/graphics-memory.md`, en «Presupuestar la memoria que
-realmente se usa», después del párrafo sobre requisitos y ownership.
+**Target:** `references/graphics-memory.md`, in «Budget the memory actually used», after the
+paragraph on requirements and ownership.
 
-**Párrafos propuestos:**
+**Proposed paragraphs:**
 
-> Cuando una API devuelve tipos compatibles o un selector tiene fallback,
-> comprobar las propiedades del tipo finalmente elegido: compatibilidad de
-> binding no garantiza visibilidad/coherencia para el acceso que hace el host.
-> Documentar quién posee map/flush/invalidate, alineación, rangos y finalización
-> GPU. La memoria importada por un puntero externo no hereda automáticamente el
-> protocolo de una asignación gestionada por el runtime.
+> When an API returns compatible types or a selector has a fallback, check the properties of the
+> type finally chosen: binding compatibility does not guarantee visibility/coherence for the
+> host's access. Document who owns map/flush/invalidate, alignment, ranges and GPU completion.
+> Memory imported through an external pointer does not automatically inherit the protocol of an
+> allocation managed by the runtime.
 >
-> Si el acceso directo exige coherencia que el tipo no ofrece, conservarlo solo
-> donde el contrato se cumple y elegir almacenamiento gestionado con flush,
-> invalidate y sincronización explícitos donde falte. Activar el fallback por
-> capacidad real del recurso, no por vendor, ni desactivar globalmente una ruta
-> válida. Inyectar tipos compatibles no coherentes, fallos de importación y un
-> control coherente. El fixture demuestra esa política; atribuirle el fallo de
-> una GPU exige observar su selección y sus transferencias reales.
+> If direct access requires coherence the type does not offer, keep it only where the contract
+> holds and pick managed storage with explicit flush, invalidate and synchronisation where it is
+> missing. Trigger the fallback by the resource's real capability, not by vendor, and do not
+> globally disable a valid path. Inject compatible non-coherent types, import failures and a
+> coherent control. The fixture shows that policy; attributing a GPU's failure to it requires
+> observing its real selection and transfers.
 
-Referencia primaria añadida al candidato: [importación de punteros host en Vulkan](https://docs.vulkan.org/refpages/latest/refpages/source/VkImportMemoryHostPointerInfoEXT.html).
+Primary reference added to the candidate:
+[host pointer import in Vulkan](https://docs.vulkan.org/refpages/latest/refpages/source/VkImportMemoryHostPointerInfoEXT.html).
 
-**Qué decide:** el selector original devolvía un candidato no coherente pese a
-la petición de propiedades. El fixture verifica flags, fallback por pool,
-tracking y llamada invalidate controlada; `shadow_sync_pool` es un stub contador
-y no valida flush, visibilidad GPU ni finalización. Las rutas existentes de
-flush/barreras/fences se auditaron en fuente. El fallback no es un parche «si AMD»;
-NVIDIA conserva su import coherente y el fallback físico sigue sin probarse.
+**What it decides:** the original selector returned a non-coherent candidate despite the property
+request. The fixture checks flags, fallback by pool, tracking and a controlled invalidate call;
+`shadow_sync_pool` is a counting stub and does not validate flush, GPU visibility or completion.
+The existing flush/barrier/fence paths were audited in source. The fallback is not an «if AMD»
+patch; NVIDIA keeps its coherent import and the physical fallback is still untested.
 
-## 3. Efectos funcionales de dibujos asíncronos
+## 3. Functional effects of asynchronous draws
 
-**Destino:** `references/runtime-adaptation.md`, al final de «Precarga gráfica:
-cuatro unidades distintas», antes de «Procedencia transitiva…».
+**Target:** `references/runtime-adaptation.md`, at the end of «Graphics preloading: four distinct
+units», before «Transitive provenance…».
 
-**Párrafos propuestos:**
+**Proposed paragraphs:**
 
-> Antes de permitir omitir trabajo gráfico mientras se compila un pipeline,
-> establecer sus efectos observables. Un draw puede escribir SSBO o imágenes
-> storage que leen captura, evaluación, simulación o exportación; un render
-> target reciente no convierte esas escrituras en opcionales. Si la reflexión
-> requiere terminar una traducción todavía pendiente, no clasificar la etapa
-> desconocida como pura. Distinguir escritura real de lectura sola y de flags
-> de coherencia que no implican store.
+> Before allowing graphics work to be skipped while a pipeline compiles, establish its observable
+> effects. A draw can write SSBOs or storage images that capture, evaluation, simulation or export
+> read; a recent render target does not make those writes optional. If reflection requires
+> finishing a still-pending translation, do not classify the unknown stage as pure. Tell a real
+> write from a read-only access and from coherence flags that do not imply a store.
 >
-> Para operaciones obligatorias, usar el contrato real de espera/publicación
-> del pipeline, incluidos trabajos ya encolados y timeouts parciales. Un wrapper
-> llamado síncrono puede retornar pending si no se solicita esperar. Conservar
-> el error terminal y distinguirlo de «aún pendiente»; agotar un tramo de espera
-> no autoriza descartar la operación requerida. Una cancelación o un error
-> controlado deben abortar la operación o sesión según su contrato, con limpieza
-> acotada; no simular éxito parcial ni continuar consumiendo datos ausentes.
-> Mantener async y sus políticas
-> válidas para trabajo que sí sea opcional. Auditar por separado dispatch compute:
-> no trasladar automáticamente a él una hipótesis sobre draws gráficos.
+> For mandatory operations, use the pipeline's real wait/publication contract, including jobs
+> already queued and partial timeouts. A wrapper called synchronous can return pending if no wait
+> is requested. Keep the terminal error and tell it apart from «still pending»; running out of a
+> wait slice does not allow discarding the required operation. A cancellation or a controlled
+> error must abort the operation or session according to its contract, with bounded cleanup; do
+> not simulate partial success or keep consuming missing data. Keep async and its policies valid
+> for work that really is optional. Audit compute dispatch separately: do not automatically carry
+> a hypothesis about graphics draws over to it.
 
-**Qué decide:** conserva efectos sin apagar async globalmente. El fixture falla
-antes y pasa después en preflight/reflection/wait; el uso real de la clase SSBO
-no identifica todavía una foto o mira concreta del reporte.
+**What it decides:** it keeps effects without turning async off globally. The fixture fails before
+and passes after on preflight/reflection/wait; the real use of the SSBO class does not yet
+identify a specific photo or reticle from the report.
 
-## 4. El observador puede cambiar la ejecución
+## 4. The observer can change execution
 
-**Destino:** `references/reproduction-harnesses.md`, después del control
-negativo/positivo; enlace desde «Vista profunda de tirones» en `profiling.md`.
+**Target:** `references/reproduction-harnesses.md`, after the negative/positive control; link
+from «Deep view of hitches» in `profiling.md`.
 
-**Párrafos propuestos:**
+**Proposed paragraphs:**
 
-> Comprobar si screenshot, headless, trazas o modo determinista cambian async,
-> esperas, temporización, cachés o capturas del producto. Registrar la política
-> efectiva desde el código y el proceso ejecutado; una inicialización llamada
-> no prueba que su consulta de estado siga habilitada. Una imagen diagnóstica
-> correcta no valida una ruta normal que omite trabajo por compilación pendiente.
-> Separar equivalencia visual, aceptación funcional y medición de rendimiento.
+> Check whether screenshot, headless, trace or deterministic modes change the product's async,
+> waits, timing, caches or captures. Record the effective policy from the code and the process
+> that ran; a called initialisation does not prove its state query is still enabled. A correct
+> diagnostic image does not validate a normal path that skips work because of a pending build.
+> Separate visual equivalence, functional acceptance and performance measurement.
 >
-> Restaurar para cada control una copia identificada del mismo estado inicial,
-> incluidas variantes transaccionales/backups cuando el producto puede recuperar
-> de ellas. Registrar hashes y generación; no editar progreso para forzar el
-> checkpoint. Para una cadena imagen → buffer → codificador → miniatura →
-> selección/evaluación, observar cada frontera y repetir el consumidor original.
-> Un JPEG limpio no prueba identificación; un thumbnail corrupto y un rechazo
-> simultáneos no prueban causalidad. Contar contenido único, no copias del banco.
+> For each control, restore an identified copy of the same initial state, including
+> transactional/backup variants when the product can recover from them. Record hashes and
+> generation; do not edit progress to force the checkpoint. For an image → buffer → encoder →
+> thumbnail → selection/evaluation chain, observe each boundary and repeat the original consumer.
+> A clean JPEG does not prove identification; a corrupt thumbnail and a simultaneous rejection do
+> not prove causality. Count unique content, not copies of the bank.
 
-**Qué decide:** `--shot` cambia la política efectiva de async en este runtime.
-Los controles normales restauraron el mismo backup y completaron el flujo sin
-flags/puntuaciones falsos. La auditoría de JPEG no debe usarse como sustituto de
-la aceptación original ni de una prueba del binario final.
+**What it decides:** `--shot` changes the effective async policy in this runtime. The normal
+controls restored the same backup and completed the flow without fake flags/scores. The JPEG
+audit must not be used as a substitute for the original acceptance or a test of the final binary.
 
-## 5. Continuidad de entrada y configuración concurrente
+## 5. Input continuity and concurrent configuration
 
-**Destino:** `references/control-layouts.md`, nueva subsección después de
-«Cambio de dispositivo y presentación», antes de «Validación pertinente».
+**Target:** `references/control-layouts.md`, a new subsection after «Device change and
+presentation», before «Relevant validation».
 
-**Párrafos propuestos:**
+**Proposed paragraphs:**
 
-> Una muestra relativa retenida por cuadro debe pertenecer también a la
-> generación de captura/dispositivo que la produjo. Liberar y recapturar entre
-> dos polls puede ocurrir sin cambiar el frame: un booleano observado al final
-> no revela la discontinuidad. Propagar un epoch desde el dueño de la captura
-> e invalidar muestras anteriores. Probar reposo, delta conocido, mismo frame,
-> foco perdido/recuperado y cuadro detenido, conservando sensibilidad y binding.
+> A relative sample held per frame must also belong to the capture/device generation that
+> produced it. Release and recapture between two polls can happen without a frame change: a
+> boolean observed at the end does not reveal the discontinuity. Propagate an epoch from the
+> capture's owner and invalidate earlier samples. Test rest, a known delta, the same frame, lost/
+> regained focus and a stopped frame, keeping sensitivity and binding.
 >
-> Reiniciar muestras/orientación fusionadas al cambiar o perder fuente, apagar
-> sensores o interrumpirse su lectura según el contrato. Comprobar el ajuste
-> antes de habilitar hardware y revertir habilitaciones parciales; una prueba
-> mock no debe encender sensores físicos. No duplicar con estáticos no atómicos
-> una configuración live que ya se publica de forma segura: una lectura antigua
-> puede terminar después de la nueva y dejar un valor viejo bajo una versión
-> nueva. Reproducir esa intercalación con hilos coordinados y comprobar el estado
-> posterior, no solo el valor devuelto por cada lector.
+> Reset fused samples/orientation when the source changes or is lost, sensors are turned off or
+> their read is interrupted, according to the contract. Check the setting before enabling hardware
+> and revert partial enables; a mock test must not turn on physical sensors. Do not duplicate a
+> live configuration that is already published safely with non-atomic statics: an old read can
+> finish after the new one and leave an old value under a new version. Reproduce that interleaving
+> with coordinated threads and check the later state, not only the value each reader returns.
 
-**Qué decide:** se demostraron muestras retenidas, fusión heredada y una carrera
-real del caché `on/seen`. El mecanismo no autoriza recentrar el HUD ni aumentar
-deadzone para ocultar drift físico no medido. Una vista de mando por posiciones
-físicas tampoco debe prometer el binding efectivo del juego.
+**What it decides:** held samples, inherited fusion and a real race in the `on/seen` cache were
+shown. The mechanism does not allow re-centring the HUD or enlarging the dead zone to hide
+unmeasured physical drift. A controller view by physical positions must not promise the game's
+effective binding either.
 
-## 6. Procedencia del productor y reutilización segura
+## 6. Producer provenance and safe reuse
 
-**Destino:** `references/runtime-adaptation.md`, «Procedencia transitiva de
-importaciones y código generado», después del primer párrafo; referencia desde
-«Memoria y caché» en `references/software-general.md`.
+**Target:** `references/runtime-adaptation.md`, «Transitive provenance of imports and generated
+code», after the first paragraph; reference from «Memory and cache» in
+`references/software-general.md`.
 
-**Párrafos propuestos:**
+**Proposed paragraphs:**
 
-> Identificar también el entorno y las dependencias que ejecuta el productor,
-> no las que se recuerdan por nombre. Si un loader usa un descompresor externo,
-> su identidad pertinente debe formar parte de la receta reutilizable junto a
-> intérprete, generador y flags. Un módulo adicional en disco puede cambiar el
-> layout aunque no esté en el manifiesto: rechazar entradas inesperadas que
-> consume el generador o verificarlas e incluirlas en la identidad antes del hit.
+> Also identify the environment and dependencies the producer actually runs, not those remembered
+> by name. If a loader uses an external decompressor, its relevant identity must be part of the
+> reusable recipe along with the interpreter, generator and flags. An extra module on disk can
+> change the layout even if it is not in the manifest: reject unexpected inputs the generator
+> consumes, or verify them and include them in the identity before the hit.
 >
-> Una copia de caché debe ser independiente y verificarse después de copiar;
-> comprobar solo el origen no detecta una copia alterada. Limitar entradas y
-> bytes, validar ownership y rutas resueltas, y rechazar symlinks/reparse points
-> antes de limpieza recursiva. No convertir un objeto desconocido en propiedad
-> del caché para cumplir el presupuesto. Corrupto/no disponible implica miss y
-> generación fresca; no reutilizar ejecutables/objetos nativos solo porque sus
-> fuentes generadas pasaron. Verificar originales también en la ruta caliente.
+> A cache copy must be independent and verified after copying; checking only the source does not
+> detect an altered copy. Limit entries and bytes, validate ownership and resolved paths, and
+> reject symlinks/reparse points before recursive cleanup. Do not turn an unknown object into cache
+> property to meet the budget. Corrupt/unavailable means a miss and fresh generation; do not reuse
+> native executables/objects just because their generated sources passed. Verify originals on the
+> warm path too.
 
-**Qué decide:** la revisión detectó LZ4 omitido y módulos ExeFS extra que cambiaban
-layout sin cambiar clave; ambos se corrigieron con regresiones. El ensayo real
-midió 86,820 s de generación frente a 3,044 s de restore + 0,265 s de verificación,
-con salidas idénticas. Es tiempo de preparación; no es una medición de FPS.
+**What it decides:** the review found LZ4 left out and extra ExeFS modules that changed the layout
+without changing the key; both were fixed with regressions. The real run measured 86.820 s of
+generation against 3.044 s of restore + 0.265 s of verification, with identical outputs. It is
+preparation time; not an FPS measurement.
 
-## 7. Resumen medido sin ocultar resultados adversos
+## 7. A measured summary without hiding adverse results
 
-**Destino:** `references/profiling.md`, al final del párrafo de percentiles.
+**Target:** `references/profiling.md`, at the end of the percentiles paragraph.
 
-**Párrafo propuesto:**
+**Proposed paragraph:**
 
-> Mantener el recorrido completo como resultado principal si fue la ventana
-> acordada. Un segmento posterior puede diagnosticar calentamiento, pero no
-> reemplaza una cola completa peor ni convierte resultados mixtos en ganancia
-> global. Conservar denominadores, repeticiones y actividad concurrente; separar
-> generación, compilación/prewarm, tiempo de entrada, intervalos de juego,
-> presentación y GPU busy. Una mejora de caché de build no acredita más FPS, y
-> un contador de espera cero no identifica por exclusión todos los picos restantes.
+> Keep the complete route as the main result if it was the agreed window. A later segment can
+> diagnose warm-up, but it does not replace a worse complete tail or turn mixed results into a
+> global gain. Keep denominators, repetitions and concurrent activity; separate generation,
+> compilation/prewarm, input time, game intervals, presentation and GPU busy. A build-cache
+> improvement does not vouch for more FPS, and a zero wait counter does not identify all remaining
+> spikes by exclusion.
 
-**Qué decide:** el A/B completo tiene media equivalente y p99 nuevo peor; no se
-promociona como optimización global. Una corrida por binario tampoco permite
-atribuir una diferencia de inicio a una causa confirmada.
+**What it decides:** the complete A/B has an equivalent mean and a worse new p99; it is not
+promoted as a global optimisation. One run per binary does not allow attributing a start-up
+difference to a confirmed cause either.
 
-## Catálogo de lecciones propuesto
+## Proposed lesson catalogue
 
-**Destino:** `references/verified-lessons.md`, filas nuevas con enlaces internos
-a los módulos anteriores; evitar incorporar rutas/builds/fotos privadas.
+**Target:** `references/verified-lessons.md`, new rows with internal links to the modules above;
+avoid including private paths/builds/photos.
 
-| Disparador | Mecanismo y comprobación útil | Límite que debe acompañarlo |
+| Trigger | Mechanism and useful check | Limit that must go with it |
 | --- | --- | --- |
-| SDR cambia contraste al presentar | Fuente base/vista y transferencia del destino no coinciden; matriz de clases y comparación de bytes del mismo cuadro. | No valida monitor/HDR/otra GPU. |
-| Import host acepta memoria no coherente | Un selector compatible relajó propiedades necesarias; verificar flags reales y fallback gestionado por capacidad. | No atribuir a un vendor sin traza del recurso. |
-| Draw omitido pierde datos funcionales | Storage escrito hace obligatorio el draw aunque su color pueda descartarse; reflection y espera real de pipeline. | Fixture de preflight no identifica el draw del reporte. |
-| Captura de diagnóstico pasa y modo normal falla | El observador cambia async o estado inicial; control normal y backup equivalente. | No editar progreso ni confundir foto visible con evaluación aceptada. |
-| Cámara conserva movimiento tras recaptura | Muestra por frame sin identidad de captura; epoch e invalidación de fuente/fusión. | Drift físico y puntería libre requieren medición distinta. |
-| Ajuste live queda viejo tras cambio | Caché redundante compartida mezcla valor viejo/versión nueva; prueba de dos lectores intercalados. | Revisar la seguridad del proveedor de configuración antes de eliminar la caché. |
-| Caché reutiliza receta incompleta | Dependencia ejecutada o módulo adicional fuera de clave; verificar consumidor, entorno e inventario real. | Ahorro de generación no mide gameplay ni certifica SDK. |
+| SDR changes contrast when presented | Base source/view and target transfer do not match; class matrix and byte comparison of the same frame. | Does not validate monitor/HDR/another GPU. |
+| Host import accepts non-coherent memory | A compatible selector relaxed required properties; check the real flags and a managed fallback by capability. | Do not attribute to a vendor without a trace of the resource. |
+| A skipped draw loses functional data | Written storage makes the draw mandatory even if its colour can be discarded; reflection and a real pipeline wait. | A preflight fixture does not identify the report's draw. |
+| A diagnostic capture passes and normal mode fails | The observer changes async or the initial state; a normal control and an equivalent backup. | Do not edit progress or confuse a visible photo with an accepted evaluation. |
+| The camera keeps moving after recapture | A per-frame sample without capture identity; an epoch and source/fusion invalidation. | Physical drift and free aiming need a different measurement. |
+| A live setting stays stale after a change | A redundant shared cache mixes an old value/new version; a test with two interleaved readers. | Review the configuration provider's safety before removing the cache. |
+| The cache reuses an incomplete recipe | A dependency that runs, or an extra module outside the key; verify the real consumer, environment and inventory. | Generation savings do not measure gameplay or certify the SDK. |
 
-## Revisión antes de promover
+## Review before promoting
 
-El coordinador debe comprobar que cada párrafo cambia una decisión ya cubierta
-por evidencia, resolver duplicados con upstream y revisar la matriz de límites.
-La promoción posterior necesita revisión de su diff concreto; este borrador no
-sincroniza ni publica la skill. No transportar cifras, umbrales, formatos o
-políticas específicas del juego como defaults universales.
+The coordinator must check that each paragraph changes a decision already covered by evidence,
+resolve duplicates with upstream and review the limits matrix. The later promotion needs a review
+of its concrete diff; this draft neither synchronises nor publishes the skill. Do not carry
+game-specific figures, thresholds, formats or policies over as universal defaults.
 
-## Aplicación aislada de los párrafos aprobados
+## Isolated application of the approved paragraphs
 
-La copia conserva `baseline.json` de los ocho archivos leídos en `a948b71`.
-`SKILL.md` y su frontmatter son idénticos al upstream; el candidato cambia solo
-las siete referencias existentes. Se añadieron copias de contexto Markdown y
-LICENSE del mismo commit para validar los enlaces; no son cambios propuestos.
+The copy keeps `baseline.json` of the eight files read at `a948b71`. `SKILL.md` and its
+frontmatter are identical to upstream; the candidate changes only the seven existing references.
+Context copies of Markdown and LICENSE from the same commit were added to validate the links; they
+are not proposed changes.
 
-Artefactos locales de revisión:
+Local review artifacts:
 
-- [Diff unificado](../../build/optiport-lessons-candidate/lessons.diff).
-- [Archivos y hashes](../../build/optiport-lessons-candidate/changed-files.json).
-- [Validación](../../build/optiport-lessons-candidate/validation.json).
-- [Oráculos y límites](../../build/optiport-lessons-candidate/VALIDATION.md).
+- [Unified diff](../../build/optiport-lessons-candidate/lessons.diff).
+- [Files and hashes](../../build/optiport-lessons-candidate/changed-files.json).
+- [Validation](../../build/optiport-lessons-candidate/validation.json).
+- [Oracles and limits](../../build/optiport-lessons-candidate/VALIDATION.md).
 
-Reejecución CPU pertinente: 40 pruebas de color/readback/storage/input/cache
-pasaron. RED→GREEN se vincula a los oráculos nativos y controles ya observados,
-incluidos los once fallos baseline de entrada y el preflight gráfico que cambia
-de exit 1 a exit 0. Esto acredita los mecanismos que motivan el texto; no se
-afirma una prueba conductual de cumplimiento de agentes con la redacción nueva.
-La revisión independiente del candidato y su eventual instalación/promoción
-permanecen a cargo del coordinador. No hubo nueva prueba GPU ni edición global.
+Relevant CPU re-run: 40 colour/readback/storage/input/cache tests passed. RED→GREEN is tied to the
+native oracles and controls already observed, including the eleven input baseline failures and the
+graphics preflight that goes from exit 1 to exit 0. This vouches for the mechanisms behind the
+text; no behavioural test of agents complying with the new wording is claimed. The independent
+review of the candidate and its eventual installation/promotion stay with the coordinator. There
+was no new GPU test or global edit.
 
-La revisión posterior acotó la evidencia de importación: el fixture de la sombra
-no acredita flush/finalización GPU. También se retiró de la matriz la afirmación
-de roundtrip de 256 códigos, al no acompañarla un artefacto guardado. La revisión
-añade las referencias primarias Khronos y el contrato de cancelación/error sin
-éxito parcial; conserva el log CPU previo, sin repetir tests por cambios de texto.
+The later review narrowed the import evidence: the shadow fixture does not vouch for GPU
+flush/completion. The claim of a 256-code round trip was also removed from the matrix, since no
+saved artifact backed it. The review adds the primary Khronos references and the
+cancellation/error contract without partial success; it keeps the earlier CPU log, without
+repeating tests for text changes.
