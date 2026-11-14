@@ -50,10 +50,21 @@ Use the selected upstream's patched hactool (see its `tools/build_hactool.py`). 
 
 ## Experimental build
 
-Unpack the selected upstream's Windows setup release locally. Its `llvm/`, `runtime/deps/` and `bin/` directories provide the compiler, headers, libraries and translator. Install `glslc` and `spirv-val` for the host-side FSR shader build, then run:
+This development source requires the **pinned fourteen-patch NativeAOT translator**;
+the unmodified donor setup and published 0.6 build kit contain the older translator
+and are intentionally rejected before generation. A matching new public kit has
+not been published yet. Maintainers currently use a separately staged SDK whose
+`ac_xlate.exe` and `.id` match `profiles/translator-windows.json`; the original SDK
+and released 0.6 assets remain unchanged. See [translator provenance and
+verification](docs/bugs/xlate-semantics.md). A manually changed `.id` cannot make an
+old executable compatible.
+
+The verified SDK's `llvm/`, `runtime/deps/` and `bin/` directories supply the
+compiler, headers, libraries and translator. Install `glslc` and `spirv-val` for
+the host-side FSR shader build, then run:
 
 ```powershell
-.venv\Scripts\python -m newsnap build --sdk-root "path\Astral Chain-Setup" --shader-tools "path\shader-tools" --jobs 8
+.venv\Scripts\python -m newsnap build --sdk-root "path\verified-sdk" --shader-tools "path\shader-tools" --jobs 8
 build\updated\newsnap.exe --selftest
 build\updated\newsnap.exe --probe-loader
 build\updated\newsnap.exe --boot

@@ -14,6 +14,7 @@ from .upstream import ROOT
 from .provenance import verify_import, generation_recipe, record_generation, verify_generation
 from .importer import source_digest
 from .random_range_adapt import verify_original as verify_random_range_original
+from .translator import verify_translator, stage_translator
 
 
 def python_script_command(script, *arguments):
@@ -105,6 +106,7 @@ def run_logged(command, logfile, env=None):
 def build(sdk_root, shader_tools=None, jobs=0, generate=True, cpu='v3', *, owner_data=None, work_dir=None,
           generation_cache_root=None):
     sdk_root = Path(sdk_root).resolve()
+    verify_translator(sdk_root / 'bin')
     work = Path(work_dir).resolve() if work_dir else ROOT / 'build'
     profile = json.loads((ROOT / 'profiles/snap-2.0.1.json').read_text(encoding='utf-8'))
     if owner_data is None:
@@ -207,8 +209,9 @@ def build(sdk_root, shader_tools=None, jobs=0, generate=True, cpu='v3', *, owner
     if shader_tools:
         env['NEWSNAP_SHADER_TOOLS'] = str(Path(shader_tools).resolve())
     run_logged(command, work / 'logs/compile.log', env)
-    for name in ('SDL3.dll', 'libopus-0.dll', 'ac_xlate.exe', 'ac_xlate.id'):
+    for name in ('SDL3.dll', 'libopus-0.dll'):
         shutil.copy2(sdk_root / 'bin' / name, out / name)
+    stage_translator(sdk_root / 'bin', out)
     stage_sdk(fsr_sdk, out)
     from tools.fetch_dlss import DEFAULT_OUT as DLSS_DEFAULT, verify as verify_dlss, install as install_dlss
     if verify_dlss(DLSS_DEFAULT):
