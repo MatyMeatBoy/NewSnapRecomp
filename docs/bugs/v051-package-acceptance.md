@@ -1,69 +1,66 @@
-# Verificación de los artefactos 0.5.1-alpha
+# Verification of the 0.5.1-alpha artifacts
 
-Productor: e77393f4808ce558787a7381454ccbfe2dab345d. API 3, ocho capacidades,
-versión 0.5.1-alpha. Los commits posteriores de documentación/herramientas de
-análisis no cambian esa identidad ni atribuyen estos binarios a otro HEAD.
+Producer: e77393f4808ce558787a7381454ccbfe2dab345d. API 3, eight capabilities, version
+0.5.1-alpha. Later documentation/analysis-tool commits do not change that identity or
+attribute these binaries to another HEAD.
 
-| Artefacto cerrado | Tamaño | SHA256 |
+| Closed artifact | Size | SHA256 |
 |---|---:|---|
 | NewSnapRecomp-0.5.1-alpha-windows-e77393f4.zip | 285947743 | b812819005fc0eb67fff1a292d3b8b93d08c076b110ae3c47a3c96a1b30ea3e8 |
 | NewSnapBuildKit-0.5.1-alpha-e77393f4.zip | 253117747 | 88845de14818b53519f22859e8b9f9cf6c2b93da80ebef9d33125bfef818b965 |
 
-Checksums ASCII respectivos incluidos. Revisión independiente: todos los
-1.105 archivos del manifiesto Windows y 7.308 del kit, inventario exacto, hashes,
-raíces, límites, exclusiones de datos del propietario y ausencia de enlaces.
-El ZIP del kit y sidecar anidados coinciden con los independientes; 109
-fingerprints comunes coinciden entre freeze y kit. El parser del updater acepta
-el paquete y el selector heredado identifica un único asset Windows.
+Their ASCII checksums are included. Independent review: all 1,105 files of the Windows
+manifest and 7,308 of the kit, exact inventory, hashes, roots, limits, exclusion of owner
+data and no links. The nested kit ZIP and sidecar match the standalone ones; 109 common
+fingerprints match between the freeze and the kit. The updater's parser accepts the package
+and the inherited selector identifies a single Windows asset.
 
-## Consumidores reales
+## Real consumers
 
-- Stage e instalación con los ZIP cerrados; reparación de la misma versión y
-  comprobación de todos los hashes. Dos sentinelas sintéticos conservados.
-- Adquisición y reutilización del kit incluido con llamadas de red prohibidas
-  por la prueba. Recompilación mediante Python 3.14.9 portable de ese kit:
-  143 chunks nuevos, 280 objetos compilados, probes CPU/loader y activación
-  correctos. La evaluación posterior no requiere reconstruir otra vez.
-- Runtime resultante: SHA256
+- Stage and install with the closed ZIPs; repair of the same version and a check of every
+  hash. Two synthetic sentinels kept.
+- Acquisition and reuse of the bundled kit with network calls forbidden by the test.
+  Rebuild with that kit's portable Python 3.14.9: 143 new chunks, 280 objects compiled, CPU/
+  loader probes and activation correct. The later evaluation needs no second rebuild.
+- Resulting runtime: SHA256
   7af250585180f2beac30053c1d463c4ae269232b8532ff96b6045c307ba20e70.
-- Autotest del launcher instalado con PATH del sistema y sin Python externo.
-  GUI congelada revisada: Inicio sin selector, perfiles en Juego, presets y
-  tooltips. Exportación real desde copia aislada con log sintético produce ZIP
-  válido, resumen, texto y análisis JSON; no modifica el staging público.
-- Dos sesiones Vulkan de 20 s en RTX 4060, FIFO y Mailbox: salida 0/boot passed,
-  modo solicitado/efectivo y cuatro categorías observadas; 32 líneas de traza
-  por sesión, INI legado intacto. Son aceptación de telemetría; no un A/B de
-  rendimiento ni prueba de FreeSync/AMD. Sin candidatos de pool excesivo en
-  esas dos sesiones; no permite descartar la hipótesis en la ruta de fotos.
+- Self-test of the installed launcher with the system PATH and no external Python. Frozen
+  GUI reviewed: Home without selector, profiles in Game, presets and tooltips. A real export
+  from an isolated copy with a synthetic log produces a valid ZIP, summary, text and JSON
+  analysis; it does not modify the public staging.
+- Two 20 s Vulkan sessions on an RTX 4060, FIFO and Mailbox: exit 0/boot passed,
+  requested/effective mode and four observed categories; 32 trace lines per session, legacy
+  INI intact. They are telemetry acceptance, not a performance A/B or a FreeSync/AMD test.
+  No excessive-pool candidates in those two sessions; this does not rule out the hypothesis
+  on the photo route.
 
-Evidencia privada: build/v051-independent-artifacts.json,
+Private evidence: build/v051-independent-artifacts.json,
 build/v051-offline-package/verification.json, clean-path-launcher.json,
-build/v051-frozen-ui-verification.json y build/v051-final-trace-smoke/verification.json.
-ExeFS se copió a la instalación sintética; RomFS es un hardlink a una copia
-privada independiente anterior, usada solo en lectura. Instalación original
-newsnapGameData y assets publicados de 0.4/0.5 no se cambian.
+build/v051-frozen-ui-verification.json and build/v051-final-trace-smoke/verification.json.
+ExeFS was copied to the synthetic installation; RomFS is a hardlink to an earlier
+independent private copy, used read-only. The original newsnapGameData installation and the
+published 0.4/0.5 assets are not changed.
 
-387 pruebas previas al cambio de identidad y 80 focalizadas posteriores pasan,
-una omitida por privilegios symlink. CI del productor e77393f también pasa.
+387 tests before the identity change and 80 focused ones after it pass, one skipped for
+symlink privileges. The producer e77393f's CI also passes.
 
-## Límites y estado
+## Limits and status
 
-Falta aceptación física RX 6900 XT/FreeSync/mando, fotos/miniaturas/color
-reportados y cabeza de la intro. El overlay de applets del PR #2 continúa en
-revisión por contratos ABI/resultados y no forma parte de esta entrega.
-La investigación del PR #3 es tooling/documentación, no corrección de animación.
-No se publica juego, ejecutable derivado, fotos, partidas ni claves.
+Missing: physical RX 6900 XT/FreeSync/controller acceptance, the reported
+photos/thumbnails/colour and the intro head. PR #2's applet overlay is still in review over
+ABI/result contracts and is not part of this delivery. PR #3's investigation is
+tooling/documentation, not an animation fix. No game, derived executable, photos, saves or
+keys are published.
 
-## Cierre remoto posterior
+## Later remote close
 
-Publicada https://github.com/MatyMeatBoy/NewSnapRecomp/releases/tag/v0.5.1-alpha.
-Tag remoto resuelve exactamente e77393f4, draft=false y prerelease=true; se
-publicó con Latest=false. Los cuatro assets remotos coinciden por tamaño/digest,
-incluidos ambos sidecars. El consumidor real del updater descargó el asset
-Windows publicado y validó stage/manifiesto de 1.105 archivos. El catálogo manual
-elige 0.5.1-alpha; el filtro automático stable lo excluye (no hay stable disponible).
-Evidencia privada build/v051-published-smoke/verification.json.
+Published https://github.com/MatyMeatBoy/NewSnapRecomp/releases/tag/v0.5.1-alpha. The remote
+tag resolves exactly to e77393f4, draft=false and prerelease=true; published with
+Latest=false. The four remote assets match by size/digest, both sidecars included. The real
+updater consumer downloaded the published Windows asset and validated the stage/manifest of
+1,105 files. The manual catalogue picks 0.5.1-alpha; the automatic stable filter excludes it
+(no stable available). Private evidence build/v051-published-smoke/verification.json.
 
-El PR #3 se integró después en main junto con correcciones de segmentos/paridad
-y conclusiones: solo tooling, tests y documentación; no cambia el productor
-cerrado e77393f4 ni se reescriben paquetes. El PR #2 sigue abierto para el overlay.
+PR #3 was later integrated into main together with segment/parity fixes and conclusions:
+tooling, tests and documentation only; it does not change the closed producer e77393f4 and
+no packages are rewritten. PR #2 stays open for the overlay.
