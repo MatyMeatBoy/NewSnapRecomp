@@ -136,7 +136,7 @@ def package():
         'Conserva tus datos propios, perfiles y partidas. El kit no incluye el juego.\n'
         'Para otro PC: lleva toda la carpeta del launcher y tu GameData; controles en modo Automatico.\n\n'
         'Windows x64, CPU x86-64-v3 (AVX2/FMA/BMI) y GPU/controlador Vulkan 1.3 compatible.\n'
-        'Probado fisicamente en RTX 4060; AMD sigue pendiente de hardware real.\n'
+        'Probado fisicamente en RTX 4060 y en RX 6900 XT (fotos, interfaz y tutorial; recorridos largos pendientes).\n'
         'Modo TV por defecto; modo portatil disponible. Escalas 125/150/200% experimentales solo TV.\n'
         'Mas de 60 FPS, recorridos completos y fotografia en todas las escalas siguen sin verificar.\n'
         'Preparar shaders antes de jugar reconstruye la cache para tu GPU; puede tardar.\n', encoding='utf-8')
