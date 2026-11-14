@@ -1,213 +1,54 @@
-# Cola compartida: RTX tester + MatyMeatBoy
+# Work board: RTX tester + MatyMeatBoy
 
-**Integración en `main`; entregas por PR temático.** Las ramas auxiliares
-0.4/0.5 ya se integraron y eliminaron; no recrearlas. Preparar PR de MatyMeatBoy en
-un worktree aislado, conservando el checkout compartido en `main`.
-La release/tag `v0.4.0-alpha` permanece inmutable. Por petición posterior del
-propietario se publicó **`v0.5.0-alpha` limitada**, sin declararla estable ni dar
-por verificados los casos AMD/mando/FreeSync o los picos de pacing pendientes.
-Las filas de aceptación física conservan su estado hasta disponer de evidencia.
+Read this before taking work. History and the previous Spanish board:
+[PENDIENTES-HECHOS.md](PENDIENTES-HECHOS.md). Rules: [CONTRIBUTING.md](../CONTRIBUTING.md).
 
-Leer este archivo antes de tomar trabajo. Los responsables de la tabla tienen
-reservados sus archivos; confirmar aquí un cambio de responsable antes de editar.
-Para tomar una tarea libre, cambiar su estado a `EN CURSO`, escribir responsable,
-fecha/hora y archivos reservados. Una tarea pasa a `REVISIÓN` con evidencia y
-comandos, y a `HECHA` después de revisión independiente. No declarar una tarea
-resuelta solo por cambiar un ajuste o por compilar.
+## Current state (2026-11-14, after 0.8.2-tester): read first
 
-## Reglas comunes
+- `main` = 0.8.2-tester: AMD RDNA 1/2 fixes (FOTO-01, CRISTAL-01), gyro (GYRO-01/02), windowed
+  present (PRESENT-WIN-01), internal resolution by host scaling (SS-02), high FPS 90/120/144
+  (FPS-01, RTX tester), FSR frame generation off by default with refresh fallback (FG-01/02).
+- Owner hardware: RX 6900 XT, 100 Hz monitor, FreeSync. RTX tester: RTX 4060.
+- Owner's queue for **0.8.3** (MatyMeatBoy, in this order, no questions needed): high-resolution
+  photos mod (SS-03), pacing/loading in extended modes, ultrawide (if feasible), VRR,
+  launcher import of NSP/NSZ/XCI/XCZ and extracted `exefs`/`romfs` folders, remaining docs in
+  English.
+- Release recipe: bottom of this file.
 
-- Preservar partidas, fotos, imports y configuración del usuario. Pruebas solo
-  sobre copias; `newsnapGameData` original queda en 0.4 para su prueba externa.
-- Conservar la lógica del juego: no omitir evaluación de sujetos, saltar el
-  tutorial, editar flags de progreso ni fabricar puntuaciones para ocultar bugs.
-- Mantener color/posprocesado de Snap. Corregir transferencias de color erróneas;
-  no compensarlas bajando saturación/contraste arbitrariamente.
-- Evidencia del propietario: **RX 6900 XT**, modo **Original**, monitor FreeSync.
-  Evidencia local de RTX tester: **RTX 4060**. Una prueba en una GPU no valida la otra.
-- Las capturas del usuario y datos derivados quedan en `build/`, sin subir fotos,
-  claves, NSO/RomFS, guardados ni ejecutables recompilados a GitHub.
-- Coordinar una sola prueba GPU a la vez. Repetir mismo recorrido/resolución y
-  estado de caché para comparar frametimes. Separar CPU/GPU/compilación/esperas.
-- No sobrescribir trabajo de otro responsable. Evitar reformateos globales.
-  Avisar a RTX tester antes de editar `launcher.py`, `adapt.py`, `build.py`,
-  `maintenance.py`, `version.py` o el empaquetado: son puntos de integración.
-- Cada autor puede commitear solo su reserva en su rama temática de PR. RTX tester
-  revisa, prueba e integra en `main`, y coordina publicación/cambio de versión.
-  No cambiar de rama en el checkout compartido ni mezclar trabajo ajeno.
+## Tasks
 
-Las tareas terminadas se conservan en [historial de trabajo completado](PENDIENTES-HECHOS.md).
-Última entrega: [0.8.1-tester](https://github.com/MatyMeatBoy/NewSnapRecomp/releases/tag/v0.8.1-tester)
-(notas en `docs/releases/0.8.1-tester.md`).
+States: FREE, IN PROGRESS, REVIEW (evidence given, awaiting independent review/physical
+acceptance), DONE (moved to the history file).
 
-## Estado al día (2026-11-14, tras 0.8.1-tester): leer primero
-
-Para cualquier modelo que retome el trabajo:
-
-- `main` contiene 0.8.1-tester: lo de 0.8.0 más SS-02 (resolución interna por escalado en el host,
-  sombras), FPS-01 (90/120/144, RTX tester) y FG-01 (generación de fotogramas FSR, apagada por defecto).
-- **En curso, MatyMeatBoy: SS-02** (escala interna 125/150/200 %). Rama `feature/ss-02-*`. Reservados
-  los adaptadores de supersampling (`snap_supersample`), `docs/SUPERSAMPLING.md` y la opción de
-  escala en `launcher.py`.
-- **En revisión, RTX tester / PR #20: FPS-01** (modos opcionales 90/120/144 FPS, `docs/HIGH_FPS.md`). No tocar los
-  archivos de SS-02 sin coordinar aquí.
-- **Cola de MatyMeatBoy después de SS-02** (pedido del propietario, 2026-11-14): pasar todo el repo a
-  inglés (docs, textos de commit/PR futuros; la interfaz del launcher mantiene sus idiomas) y
-  añadir imágenes del juego corriendo al README.
-- También pedido (2026-11-14), después de SS-02: limpiar `tools/pruebas-amd` (hecho en la rama de
-  SS-02); sombras de vegetación de más resolución (las de personajes ya se ven finas, las de plantas
-  siguen al tamaño del juego); ultrawide si es posible (el donor trae `resolution.c` wide con sitios
-  de Astral: hay que encontrar los de Snap y mantener las fotos en 16:9); frame pacing y cargas en
-  los modos extendidos; launcher con la mayor compatibilidad de volcados (NSP, NSZ, XCI, XCZ y
-  carpetas `exefs`/`romfs` ya extraídas).
-- Regla del propietario: antes de cada solución, buscar cómo lo resolvieron otros recomps y
-  emuladores (Astral, TotK, Witch Time, LAS, Lichii, Savage Wind, yuzu/Ryujinx) y citarlo.
-- Receta de release en esta máquina: sección «Receta de release» al final de este archivo.
-La cola siguiente conserva únicamente investigación o aceptación pendientes.
-
-## Tareas y reservas
-
-**Coordinación inmediata: FOCO-01 está HECHA por confirmación del propietario
-en RX 6900 XT; no duplicar ese fix.** MatyMeatBoy lleva FOTO-01 (bandas, cierres y
-diagnóstico GPU); su PR6 ya está integrado con correcciones de revisión. FOTO-02, la herramienta de auditoría,
-ya está en el historial. RTX tester integró PR4/5/6/7/8/9/10 y conserva pendiente el turno GPU
-para su aceptación interactiva final. El propietario confirma que el primer nivel
-0.6 ya no se ve oscuro y parece funcionar a60FPS; esa confirmación no cierra las
-fotos ni constituye una validación completa AMD/VRR/mando. Reporte histórico:
-`docs/bugs/RX6900XT-REPORTES.md`.
-
-| ID | Prioridad | Estado | Responsable | Trabajo y archivos reservados |
+| ID | P | State | Owner | Summary |
 |---|---|---|---|---|
-| CPU-WORKER-07 | P2 | REVISIÓN | RTX tester / CPU · 2026-11-14 | Analizar operación de recursos main+5ec890 y latencias de virtual core ya medidas. Buscar coste de lifting reducible manteniendo Cpu/memoria/yields; sin cambiar prioridades/simulación ni pruebas GPU concurrentes. Prototipo privado probado con Cpu completo/trazas/alias/streams y controles negativos; especialización UINT32_MAX aumenta código O1/O2 sin ganancia medida. No se integra como optimización. Reserva liberada; queda medida comparable si surge un candidato útil. |
-| LAUNCH-POSTBUILD-06 | P0 | REVISIÓN | RTX tester · PR4/5 integrados | Dos causas corregidas: marcador de shaders sin registros bloqueaba el primer inicio; --boot ejecutaba una sonda que salía0 en primera NVN. PR4/5 integrados, CI y regresiones rojo→verde/revisión independiente. Prueba congelada anterior reprodujo exactamente el cierre0; queda observar ventana/frames en modo interactivo con el congelado corregido, cuando el turno GPU de MatyMeatBoy termine. No modificar GameData original ni la release0.6 publicada. |
-| POOL-BOUNDS-01 | P1 | REVISIÓN | RTX tester / investigación · 2026-11-14 | Condición de solapamiento reproducida en CPU. Logging limitado a 16 color + 4 DS y experimento AC_SNAP_POOL_BOUNDS=1 integrado, apagado por defecto. Cinco pruebas nativas/sintaxis/concurrencia pasan; no es fix AMD ni prueba de causa. Ver docs/bugs/pool-allocation-bounds.md. |
-| HEAD-INTRO | P1 | REVISIÓN | MatyMeatBoy / RTX tester · PR #3 | PR y correcciones de revisión integrados: medida RTX de una toma, sin causa identificada ni fix. Intervención de timer concreta no cambia esa trayectoria; no descarta universalmente GPU/pacing/CRC. Tool conserva segmentos/paridad al descartar pares; diez tests y cuatro mediciones guardadas verificadas. Pendiente referencia comparable y JSON auditable de 30 FPS. docs/bugs/head-intro-stutter.md. |
-| KEYBOARD-CRASH | P0 | REVISIÓN | MatyMeatBoy / integración RTX tester · PR #2 | PR integrado con bool exacto false, cuatro overrides de cuenta no fundamentados retirados y lectura de variante12bytes. Cuatro tests nativos/headerreal pasan. Se conserva triage nuevo de main y se acotan inferencias docs. Recorrido RTX540s por fotos/evaluación/primera expedición y60s del binario final pasan; causa del teclado/cierre AMD no acreditada. docs/bugs/pr2-applet-contracts.md. |
+| SS-03 | P1 | IN PROGRESS | MatyMeatBoy | Higher-resolution photos. CPU reads of enlarged colour now average (box filter); `AC_SS_PHOTO=1` (off) enlarges photo targets as an experiment. Next: find which texture the selection/album shows (the big photo is the 360×240 thumbnail) and whether saving/scoring is unchanged. |
+| PACE-AMD-01 | P1 | FREE | — | Camera-turn judder on RX 6900 XT: 60 fps on a 100 Hz FIFO display alternates 10/20 ms. Measure with present trace at 120 Hz/FreeSync before changing present modes. |
+| FG-01/02 | P2 | REVIEW | MatyMeatBoy | FSR frame generation (SDK 2.4, no FFX swapchain), `frame_gen = fsr`, off by default, FSR 3.1/4 only; pauses when real fps > 0.55 × refresh. No HUD-less image (HUD trails possible). Not done: DLSS-G, VRR pacing. |
+| SS-02 | P1 | REVIEW | MatyMeatBoy | Host-scaled internal resolution 125–300 % and "display"; 16:9 chain; `shadow_scale` for Snap's sun maps. RX 6900 XT verified at 60/120 fps. Missing: RTX, photo score comparison. [SUPERSAMPLING.md](SUPERSAMPLING.md). |
+| FPS-01 | P1 | REVIEW | RTX tester | 90/120/144 FPS caps without timing patches. RTX verified; RX 6900 XT 120 fps at 200 % verified by MatyMeatBoy. [HIGH_FPS.md](HIGH_FPS.md). |
+| VRR-01 | P1 | REVIEW | RTX tester | Present-timing status (unknown/fixed/variable); no active VRR mode yet. FreeSync physical check pending. |
+| GYRO-01/02 | P1 | REVIEW | MatyMeatBoy | Six-axis IPC answered; `gyro_sens` (2.5). Physical controller test pending. |
+| CRISTAL-01 | P1 | REVIEW | MatyMeatBoy | NaN-safe SPIR-V on AMD. A/B attribution and RTX control pending. |
+| FOTO-01 | P0 | REVIEW | MatyMeatBoy | RDNA 1/2 BC block-view stand-ins. More levels/album and RTX control pending. |
+| PRESENT-WIN-01, PIPE-MO-01 | P1/P2 | REVIEW | MatyMeatBoy | Windowed immediate without mailbox; motion pipeline prewarm. |
+| PACE-01, CPU-WORKER-07, POOL-BOUNDS-01, HEAD-INTRO | P1/P2 | REVIEW | RTX tester/MatyMeatBoy | Pacing and CPU investigations; details in the archived board. |
+| KEYBOARD-CRASH, TUTO-01, INPUT-01, GPU-WRITE-01, COLOR-01, PAD-01, MENU-01, LAUNCH-POSTBUILD-06, QA-AMD-01 | P0/P1 | REVIEW | RTX tester | Integrated fixes awaiting physical acceptance; details in the archived board. |
 
-| RELEASE-07-TESTER | P0 | EN CURSO | MatyMeatBoy · 2026-11-14 · orden directa del propietario | Publicar `v0.7.0-tester` como prerelease de prueba con todo lo integrado en main, para depurar en la RX 6900 XT. Reservados por esta entrega: `newsnap/version.py`, `assets/windows-version.txt`, `tools/build_launcher.py` (incluye `tools/pruebas-amd/` en el paquete), `docs/releases/0.7-tester.md`. No corrige los fallos AMD; no sustituye a 0.6. Kit y ZIP desde `toolchain/newsnap-14patches-sdk` con el pin de traductor de main. |
-| FOTO-01 | P0 | REVISIÓN | MatyMeatBoy / revisión RTX tester · PR #6 · 2026-11-14 | **Tercera ronda: causa encontrada y corregida en AMD.** El volcado F12 de la prueba 6 mostró que la miniatura es una BC1 2D que el juego codifica dibujando por vistas de bloques; el controlador RDNA 1/2 escribe fuera de esas imágenes (issue #5 del donor, ya evitado allí solo para BC 3D). `newsnap/bc_block_views_adapt.py`: `AC_BLOCK_VIEWS`, por defecto 0 en `vk_caps.amd_sc` (NVIDIA sin cambio), BC 2D por imagen intermedia refrescada por pase. Probado en la RX 6900 XT: miniatura completa, interfaz limpia, sin `write invalid` (una sesión). Pendiente: más niveles/álbum/cuadrados y control RTX con `AC_BLOCK_VIEWS=0`. Ver `docs/bugs/amd-photo-gpu-fault.md`. Reservados además `bc_block_views_adapt.py`, `test_bc_block_views.py`. — Historial: Dos logs 0.6 RX 6900 XT reportan write-invalid y fotos con bandas; causa no acreditada. Diagnóstico GPU→buffer siempre activo, PNG opt-in, asignación best-effort y presupuesto atómico de 64 MiB pendiente. Shadow permanece experimento AC_SHADOW=1 explícito, sin default por vendor ni aceptación AMD. Tests nativos: fallos de ambas asignaciones, cleanup parcial, límite de 24 sin PNG y presupuesto pendiente; PR6 integrado; runtime privado compila y pasa selftest/loader; entrega pública y prueba física pendientes. Nuevo log confirma shadow activo y el mismo tipo de fault, sin demostrar causa FSR4 ni estado de fotos. Ver docs/bugs/integration-07.md. No inferir visibilidad CPU/JPEG ni causa import/driver desde mismatch GPU. Reservados photo_readback_adapt.py, test_photo_readback.py, amd-photo-gpu-fault.md; evidencia privada build/foto01-*. **Segunda ronda del propietario (0.6, RX 6900 XT):** la miniatura de la foto ya sale con franjas dentro del nivel (patrón fijo, 1 de cada 4 tramos), también retrato del profesor, placa del nombre y marco; vuelven los cuadrados de GPU-WRITE-01; con `fifo` el retrato sale bien; shadow no cambia el aspecto. En RTX todo limpio; dentro del nivel la foto es un pase de dibujo sin copias. PR #11 (MatyMeatBoy): línea `amd_diag:` con los ajustes A/B en cada log y seis `.bat` de descarte en `tools/pruebas-amd/`; la combinación conservadora pasa la ruta de fotos en RTX. Pendiente del propietario: pruebas 1 a 6 en la RX 6900 XT. |
-| TUTO-01 | P0 | EN CURSO | RTX tester / coordinación con MatyMeatBoy | El propietario pudo elegir carpetas de Pikachu/Vivillon y avanzar; después reportó teclado de Windows y cierre tras registro/evaluación de Pikachu. Ver KEYBOARD-CRASH. No cambiar lógica de sujetos/progreso ni recuperar el perfil anterior: recuperación excluida por el propietario. |
-| INPUT-01 | P0 | REVISIÓN | RTX tester · 2026-11-13 | Cámara apunta sola: auditar mouse relativo, foco inicial, sticks y gyro; comprobar reposo, reconexión y cambio mando/ratón. Integrados `newsnap/camera_input_adapt.py` + `tests/test_camera_input.py`; 19 escenarios nativos y revisión independiente. Aceptación con mando/mouse físico pendiente. Sin activar sensores/vibración físicos por sorpresa. |
-| GPU-WRITE-01 | P0 | REVISIÓN | RTX tester / agente de render | Draws gráficos con escrituras SSBO/imagen no pueden omitirse durante compilación. Fix específico integrado, 11 casos nativos y revisión independiente aprobados; compute ya era síncrono y queda descartado. `graphics_effects_adapt.py`, `tests/test_graphics_effects.py`, `docs/bugs/graphics-side-effects.md`. Binario integrado en prueba; causalidad AMD pendiente. |
-| COLOR-01 | P0 | REVISIÓN | RTX tester / renderer | Actualización0.6: propietario confirma que el primer nivel ya no se ve oscuro en RX6900XT y parece funcionar bien a60FPS. Confirmación acotada a esa escena; no es benchmark ni cierra fotos, otros modos o saturación de todas las escenas. Reporte anterior: saturación excesiva con ZIP0.5. Las nuevas capturas muestran HUD «AMD FSR 1, sharpness 80%»; comprobar runtime realmente iniciado al forzar lanzamiento, configuración efectiva y formato/transferencia. No bajar saturación arbitrariamente ni declarar equivalencia AMD por la prueba RTX. |
-| PACE-01 | P1 | EN CURSO | RTX tester / agente de render | Puente entero con equivalencia completa y guardas de original/receta integrado; A/B local de dos pares inversos reduce p99 42,970→25,469 ms, conserva mediana ≈16,67 ms y aún registra pico 107,692 ms. Evidencia `build/v05-rng-pacing-ab/`; archivos `random_range_adapt.py`, `snap_random_range.*`, `test_random_range.py`, `cpu-asset-workers.md`. Aceptación final alpha RTX completada; AMD pendiente y virtual-core starvation sigue documentada, sin alterar prioridades/simulación. |
-| PACE-AMD-01 | P1 | LIBRE | — · 2026-11-14 | RX 6900 XT, 0.7.1-tester: el propietario nota irregularidad al girar la cámara rápido. Compatible con judder de cadencia: el controlador AMD de Windows no ofrece `mailbox` y cae a `fifo`, y 60 fps en un monitor de 100 Hz alternan 10/20 ms. Logs: 60,0 fps de media, 1 % low 49–58, picos aislados ≤54 ms en espera de fence/present. Sin medir. Siguiente: repetir con el monitor a 120 Hz o FreeSync activo y con traza de presentación; separar cadencia del monitor de picos del runtime. No cambiar el modo de presentación sin esa medida. Ver `docs/releases/0.7.1-tester.md`. |
-| CRISTAL-01 | P1 | REVISIÓN | MatyMeatBoy · 2026-11-14 | **Corregido en AMD:** `newsnap/spirv_nminmax_adapt.py` reescribe cada módulo al crearlo: FMin/FMax/FClamp→NMin/NMax/NClamp (semántica de Maxwell) y Sqrt/InverseSqrt/Log2 con NMax(x,0). `AC_SPIRV_NMINMAX` y `AC_SPIRV_DOMAIN_CLAMP` activos en AMD, apagados en el resto. Prueba 10 en la RX 6900 XT: cristal correcto y 0 pases con NaN (volcado f8681); spirv-val OK en 89 shaders. Pendiente: A/B para atribuir cuál de los dos ajustes lo arregla, y control en RTX. Guía para otros recomps: `docs/bugs/amd-nan-shader-math.md`. — Historial: RX 6900 XT, 0.7.1-tester: el centro de cristal de la Cristalflor sale negro. Volcado F12 f47390: el pase de escena (52 dibujos) no tiene NaN; el pase siguiente, un solo dibujo transparente (vs cc2c6ed76addc42d / fs 4dbd63498689dbcc; BC5 normales, BC1 color, 2 mapas de sombra, cubemap BC6H; mezcla src 5 dst 16), deja 55.836 píxeles NaN que se ven negros. Hipótesis: semántica de coma flotante del shader traducido (p. ej. 0×∞ o rsqrt(0) que en la Switch dan 0) distinta en el controlador AMD. Sin comparación RTX del mismo plano. |
-| GYRO-01 | P0 | REVISIÓN | MatyMeatBoy · 2026-11-14 | Activar el giroscopio en las opciones cerraba el juego: `FATAL: ipc: hid command 82 is not implemented` (IsSixAxisSensorAtRest, llamado por el cliente hid del SDK; log de la prueba 8 en RX 6900 XT, independiente de la GPU). `newsnap/hid_six_axis_adapt.py` contesta los comandos de seis ejes 68–83 del IHidServer (ajustes aceptados, consultas con valores por defecto del SDK, reposo según el movimiento real). `tests/test_hid_six_axis.py`. Falta prueba física con el giroscopio activo. |
-| PAD-01 | P1 | REVISIÓN | RTX tester / agente de controles | Backend SDL de prueba de mandos implementado y probado con dispositivos virtuales/ABI real. Reservados `controller_probe.py`, `controller_ui.py`, `tests/test_controller_probe.py`. UI visual se integra con ART-01. |
-| VRR-01 | P1 | REVISIÓN | RTX tester / agente de render | Estado real de presentación por VK_EXT_present_timing, unknown/fixed/variable; nunca inferir VRR por FIFO/mailbox. Reservados `vrr_adapt.py`, overlays `snap_vrr*`, `display_status.py`, `display_ui.py`, tests y `docs/DISPLAY.md`. Prueba swapchain real integrada completada: API disponible, intervalo cero → unknown, sin inferir VRR. Validación FreeSync física pendiente. |
-| MENU-01 | P1 | REVISIÓN | RTX tester / agente de render | Menú dentro del juego: Original/Auto/DLSS/FSR 3.1/FSR 4, Native AA/DLAA y tres presets reducidos. Quitar FSR 3 genérico, XeSS/FSR espacial y opciones artísticas ignoradas. Reservados `menu_adapt.py`, `tests/test_snap_menu.py`. |
-| SS-02 | P1 | REVISIÓN | MatyMeatBoy · 0.8.1-tester | Resolución interna por escalado en el host, 125–300 % y «Según la pantalla», cadena 16:9, `shadow_scale` para los mapas de sol de Snap. RX 6900 XT: 200 % a 60 y 120 fps, fotos correctas. Falta RTX y puntuación comparada. `docs/SUPERSAMPLING.md`. |
-| FG-01 | P2 | REVISIÓN | MatyMeatBoy · 0.8.1-tester | Generación de fotogramas FSR (SDK 2.4, sin swapchain de FFX), `frame_gen = fsr`, apagada por defecto, solo con FSR 3.1/4. `newsnap/framegen_adapt.py`, `overlays/snap_fsr_fg.c`. RX 6900 XT: frames reales a 16,667 ms con `immediate`. Falta: imagen sin HUD, DLSS-G, ritmo con VRR y monitores de 100 Hz. |
-| FPS-01 | P1 | REVISIÓN | RTX tester · PR #20 · 2026-11-14 | Opciones integradas 30/60/90/120/144, 60 por defecto, sin uncapped; metadata exige runtime nuevo. Reservas de implementación liberadas: high_fps_adapt.py, overlays snap_high_fps.*, patches snap-2.0.1-high-fps.txt, selector FPS exclusivamente en launcher/settings, capacidad en version.py sin cambiar release, adapt/build y tests de la receta. Sondas de solo lectura timer/rail/UI y check_fps_rail.py. Cinco pasadas RTX 180 s con mismo binario/perfil/ruta/caché salen 0 y conservan origen; tramo rail 10 a 80 tarda 87,969–87,971 s a todos los caps, dentro de variación de dos controles 60. CI 493 tests pasa (34 omitidos Linux); Windows 483 pasa (16 omitidos) y fila FPS nativa adicional. No acredita todo HUD/menú, foto/puntuación/persistencia ni AMD/FreeSync; un warm boot aislado falló SwitchToFiber(0) antes de presentar, causa sin atribuir. Cuatro controles de arranque posteriores pasan. Pedida revisión; no marcar HECHA. Integrado main/PR #21 en la rama del PR: 485 tests Windows pasan (16 omitidos), CI 494 pasa (34 omitidos Linux). RTX: 90 s a 144 nativo y dos pasadas 120 + Internal x2 salen 0, targets 3840x2160, HUD/miniaturas completos, sin fallos de shader/draws omitidos; caché x2 caliente elimina la espera de traducción observada, quedan picos. No es aceptación AMD ni toda foto/evaluación. Evidencia privada build/fps01/, informe docs/HIGH_FPS.md. Conserva la implementación de SS-02 de MatyMeatBoy. |
-| GYRO-02 | P1 | REVISIÓN | MatyMeatBoy · 0.8.0-tester | Pestaña Mods, `gyro_sens` 2,5 por defecto (0,1–10, en vivo). Falta prueba con mando físico. |
-| PIPE-MO-01 | P2 | REVISIÓN | MatyMeatBoy · 0.8.0-tester | Prewarm de los pipelines del pase de movimiento por objeto (99 de 286 registros se descartaban). |
-| PRESENT-WIN-01 | P1 | REVISIÓN | MatyMeatBoy · 0.8.0-tester | Ventana compuesta sin `mailbox` → `immediate` (`AC_WINDOWED_IMMEDIATE=0` lo desactiva). Medido en RX 6900 XT. |
-| QA-AMD-01 | P0 | EN CURSO | RTX tester / propietario · RX 6900 XT | Prueba física0.6 en curso: propietario confirma primer nivel sin oscuridad y funcionamiento aparente a60FPS. Fotos/miniaturas siguen corruptas y dos cierres actuales registran escritura GPU inválida. MatyMeatBoy trabaja en esos fallos. Evidencia histórica ZIP0.5: Recuadro de foto confirmado correcto; fotos/miniaturas y color fallan; cabeza vibra en intro; launcher falla y cierre tras teclado Windows. Registrar launcher/version/hash del runtime por separado, ya que hubo lanzamiento forzado. No declarar toda AMD validada. |
+## Ideas after 0.8.3
 
-## Evidencia ya disponible (local, no subir)
+- DLSS frame generation (needs RTX 40/50 to test). HUD-less image for FSR FG (needs a
+  tone-mapped pre-HUD copy).
+- Ultrawide: the donor's `resolution.c` "wide" set widens the 16:9 lens; Snap needs its own
+  camera and UI-camera sites, and photos must stay 16:9 so scoring is unchanged.
 
-- `build/v04-production-owner-maintenance/verification.json`: runtime 0.4 final,
-  perfiles/configuración preservados; backup `build/runtime-backups/0.3-before-0.4`.
-- `build/v04-production-neutral-fsr31/`: prueba del runtime portable final sobre
-  copia de perfil; nunca confundirla con evidencia física AMD.
-- `build/v05-original-color-chain/`: Original, captura de juego y presentación;
-  `pixel-comparison-scaled.json` cuantifica error de transferencia de color.
-- `build/v03-jump-fixed/`: tutorial, evaluación previa, primeras fotos válidas y
-  ruta reproducible. `tests/routes/tutorial-photo.txt` conserva su script.
-- Capturas del propietario: archivos `clipboard-4d415416-…`,
-  `clipboard-473be5db-…`, `clipboard-b8af3c5e-…` en su carpeta temporal local.
-  Copiar a `build/user-reports/` para inspección, sin añadirlas a Git.
+## Release recipe (owner's PC)
 
-## Referencia de ReKHCoM para ART-01
-
-El `LEEME.md` de la carpeta local `ReKHCoM-build` señala como mapa canónico el
-`LEEME.md` y el `NOTES.md` del proyecto local `KHCoMPC` del propietario.
-No recorrer junctions ni duplicar hardlinks. Reutilizar solo el gráfico de mando
-original solicitado por el propietario, adaptando sus etiquetas a Switch.
-
-**Original localizado por RTX tester:** en el repositorio `khcom`, ref
-`refs/heads/release/v2.9-20261106` (commit `51edf7efa2c49c97a1c389ae2e4cd7e3b749448c`),
-`port/assets/controller/ultimate2c-sprite.png` (104×72 RGBA) y
-`ultimate2c-transparent.png` (1254×1254). El checkout HEAD antiguo no los contiene.
-`port/assets/controller/README.md` confirma que es el arte elegido por el usuario;
-`port/src/port_controller_art.inc` tiene paleta/índices del sprite. Copias de
-referencia local en `build/controller-reference-rekhcom/`, sin editar. SHA-256
-del sprite: `a8daabc38680527ad0bb4cc3115b9b07e157b0ea4f00aac27d1d042536b103c4`.
-ART-01 tomada por RTX tester para integrar el original localizado; no duplicar edición. Rejilla 104×72, paleta original y escala entera; UI nativa con etiquetas Switch.
-
-
-## Puerta de aceptación completa, posterior a la alpha limitada
-
-- Fotos y thumbnails correctos; selección/evaluación/relectura/exportación de
-  fotos con sujetos claros; tutorial completado sin editar su lógica.
-- Indicador de enfoque correcto en movimiento y zoom.
-- Cámara estable en reposo y cambio de dispositivos; causa de vibración/pacing
-  documentada y comparada con la misma escena.
-- Color digital correcto y sin ajustes añadidos; validación por GPU registrada.
-- Home/launcher y canales de actualización comprobados; opciones FSR coherentes.
-- Pruebas automáticas, nativas, integración, revisión independiente y evidencias
-  de hardware pendientes explícitas. Una tarea en REVISIÓN no cumple esta puerta.
-
-## Futuras (pedidas por el propietario, después de 0.7.1; estado a 0.8.0)
-
-Orden sugerido. Ninguna cambia la lógica del juego; cada una necesita medida antes de darla
-por buena.
-
-1. **HECHO en 0.8.0-tester (GYRO-02).** Pestaña «Mods» en el launcher.
-   - Llevar a ella el giroscopio (`motion`, ya existe y está activo por defecto) y la
-     sensibilidad del ratón.
-   - Añadir `gyro_sens`: por defecto 2,5, rango 0,1–10, ajustable en vivo. El propietario siente
-     la base actual como un «2» de shooter y la quiere en «5». Plan: escalar el giroscopio antes
-     de integrarlo en `motion_fusion.c` y, si la escala no es 1, sin la corrección por gravedad.
-   - Texto de ayuda sobre mandos compatibles sin drivers: Pro, Joy-Con, DS4, DualSense y 8BitDo
-     en modo Switch (en modo X-input no envían giroscopio).
-   - Proponer un layout de teclado para este modo.
-2. **(FPS-01, otro modelo)** **FPS altos con presets 30/60/90/120/144/240 y libre**, solo si la lógica del juego no
-   cambia. Base: `docs/HIGH_FPS.md` (temporizador con canales fijos a 1/60 por medir).
-   - Antes, medir la sensación de que algunas animaciones van a 30 fps. Puede ser judder de
-     60 fps en 100 Hz con `fifo` (PACE-AMD-01) o animaciones a mitad de ritmo propias del juego.
-3. **Pacing en AMD (PACE-AMD-01):**
-   - Tirones al girar la cámara rápido.
-   - Pruebas: monitor a 120 Hz o FreeSync, y traza de presentación.
-   - Ajustes del sistema a probar (no son del código): reloj mínimo en Adrenalin, MPO.
-4. **Renderizado interno y sombras (SS-02, MatyMeatBoy en curso).**
-   - Escala ×2 «como otros juegos»: hoy existe 125/150/200 % experimental solo en TV
-     (`docs/SUPERSAMPLING.md`); falta validar fotos y puntuación a esa escala.
-   - Sombras de más resolución o calidad: existe `AC_SHADOW_RES`/`AC_SHADOW_SCALE`, sin medir en
-     Snap.
-5. **Fotos a mayor resolución** que 1080×720 en el álbum (mod opcional). Requiere ver cómo
-   guarda y puntúa el juego.
-6. **CRISTAL-01:** A/B de `AC_SPIRV_NMINMAX` y `AC_SPIRV_DOMAIN_CLAMP` para atribuir la causa, y
-   control en RTX.
-
-## Hoja de ruta AMD (RDNA 2 y siguientes)
-
-Estado tras 0.7.1-tester: fotos, interfaz, cierres, giroscopio y Cristalflor corregidos y
-probados en la RX 6900 XT. Lo que sigue va ordenado por impacto. La columna NVIDIA indica si el
-cambio también le sirve: es aceptable siempre que no empeore lo que ya funciona allí.
-
-| # | Tema | Qué hacer | ¿Sirve en NVIDIA? |
-|---|---|---|---|
-| 1 | Pacing (PACE-AMD-01) | Medir con traza de presentación los tirones al girar la cámara. Probar 120 Hz o FreeSync; valorar `fifo_relaxed` cuando no hay `mailbox` | Sí, la medida y los presets de FPS |
-| 2 | FPS altos con presets 30–240 | `docs/HIGH_FPS.md`: medir los canales del temporizador fijos a 1/60 antes de tocar nada; sin cambiar la lógica | Sí |
-| 3 | Atribución de CRISTAL-01 | A/B de `AC_SPIRV_NMINMAX` y `AC_SPIRV_DOMAIN_CLAMP`. Si el control en RTX da imagen idéntica, valorar activarlo en todas las GPU: es la semántica de la Switch | Posible, tras el control RTX |
-| 4 | Otros NaN y negros | Revisar cada volcado buscando pases con `nan` mayor que 0 (`docs/bugs/amd-nan-shader-math.md`); recorrer más niveles y el álbum | Sí, el método |
-| 5 | Vida útil de memoria | Liberación diferida hasta que termine el envío (TotK, `amd-native-source-audit.md`). Es la clase de fallo de los `write invalid`, todavía sin portar | Sí, es una corrección general |
-| 6 | Compilación de pipelines en RDNA 1/2 | GPL apagado: medir esperas y omisiones de dibujo en recorridos largos y mejorar la preparación de shaders para que no haya tirones la primera vez | Parcial |
-| 7 | FSR 4 en RDNA 2 | Comparar coste y calidad con FSR 3.1 en la 6900 XT y elegir el valor por defecto según la arquitectura | No (FSR 4 depende del controlador de AMD) |
-| 8 | Robustez del traductor | Bloque de retorno tras CAL incondicional y enumeración Vulkan con `VK_INCOMPLETE` (`amd-emulation-source-audit.md`) | Sí |
-| 9 | Renderizado interno y sombras | Escala ×2 validada con fotos y puntuación; sombras de más resolución medidas en Snap | Sí |
-| 10 | Limpieza | Retirar de la documentación el experimento `shadow = 1` (no era la causa de nada) y las pruebas `.bat` ya superadas | — |
-
-Reglas que siguen vigentes: una prueba en AMD no valida NVIDIA ni al revés. Todo cambio por
-fabricante debe tener un ajuste para desactivarlo, y nada se marca HECHO sin una prueba física.
-
-## Receta de release (PC del propietario)
-
-Clon en `D:\Dev\NewSnapRecomp\repo` (`core.autocrlf=false`, `core.eol=lf`), `.venv` con
-Python 3.12 y `requirements-release`. SDK en `D:\Dev\NewSnapRecomp\sdkroot` (kit 0.7.0).
-Pasos: merge del PR → `python -m tools.package_build_kit --sdk-root <sdkroot>` →
-`tools/build_launcher.py` → `python -m tools.package_windows_release` → verificar kit y
-recompilación con PATH mínimo → `gh release create` → instalar con
-`updater.stage_update/apply_update` y `maintenance.rebuild_runtime`.
+Clone at `D:\Dev\NewSnapRecomp\repo` (`core.autocrlf=false`, `core.eol=lf`), `.venv` with
+Python 3.12 and `requirements-release`; SDK root `D:\Dev\NewSnapRecomp\sdkroot`.
+Merge the PR → `python -m tools.package_build_kit --sdk-root <sdkroot>` →
+`tools/build_launcher.py` → `python -m tools.package_windows_release` →
+`gh release create` → install with `updater.stage_update/apply_update` and
+`maintenance.rebuild_runtime`. Candidate builds from the repo source: run
+`newsnap.maintenance --worker` with the SDK root's Python (the kit's Python imports its own
+`../source`). Delete test profiles, work folders and captures after use.

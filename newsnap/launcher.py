@@ -236,7 +236,7 @@ class Launcher:
             'Equilibrado · escena 60 %': 'balanced', 'Rendimiento · escena 50 %': 'performance'},
             help_text='Cada proveedor usa su propio algoritmo con el preset elegido. Las escalas corresponden a los niveles reales del motor de Snap; requieren reiniciar la expedición.')
         self._choice(video, 'Generación de fotogramas · FSR', 'frame_gen', {'Desactivada': 'off', 'AMD FSR · 1 fotograma generado': 'fsr'},
-                     help_text='Inserta un fotograma generado entre cada dos reales: con el juego a 60 fps se muestran unos 120. Necesita FSR 3.1 o FSR 4 y un monitor de 120 Hz o más (o VRR); con «fifo» en un monitor más lento el juego se frena. Añade un fotograma de latencia y los elementos del HUD que se mueven pueden dejar estela. Experimental.')
+                     help_text='Inserta un fotograma generado entre cada dos reales: con el juego a 60 fps se muestran unos 120. Necesita FSR 3.1 o FSR 4. Solo genera si el monitor puede mostrarlo (unos 110 Hz o más a 60 fps); en un monitor más lento se pausa sola y el juego sigue a su ritmo, con cualquier modo de presentación. Añade un fotograma de latencia y los elementos del HUD que se mueven pueden dejar estela. Experimental.')
         self._choice(video, 'Escala interna de la escena', 'render_scale', {'Según el juego': 'game', **{f'{n} %': str(n) for n in (50, 60, 70, 80, 90, 100)},
                      'Según la pantalla · supersampling': 'display',
                      **{f'{label} ({n} %) · supersampling': str(n) for label, n in (('1,25×', 125), ('1,33× · 1440p', 133), ('1,5×', 150), ('1,75×', 175), ('2× · 4K', 200), ('2,5×', 250), ('3×', 300))}},
