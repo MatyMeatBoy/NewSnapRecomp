@@ -149,3 +149,25 @@ por buena.
    guarda y puntúa el juego.
 6. **CRISTAL-01:** A/B de `AC_SPIRV_NMINMAX` y `AC_SPIRV_DOMAIN_CLAMP` para atribuir la causa, y
    control en RTX.
+
+## Hoja de ruta AMD (RDNA 2 y siguientes)
+
+Estado tras 0.7.1-tester: fotos, interfaz, cierres, giroscopio y Cristalflor corregidos y
+probados en la RX 6900 XT. Lo que sigue va ordenado por impacto. La columna NVIDIA indica si el
+cambio también le sirve: es aceptable siempre que no empeore lo que ya funciona allí.
+
+| # | Tema | Qué hacer | ¿Sirve en NVIDIA? |
+|---|---|---|---|
+| 1 | Pacing (PACE-AMD-01) | Medir con traza de presentación los tirones al girar la cámara. Probar 120 Hz o FreeSync; valorar `fifo_relaxed` cuando no hay `mailbox` | Sí, la medida y los presets de FPS |
+| 2 | FPS altos con presets 30–240 | `docs/HIGH_FPS.md`: medir los canales del temporizador fijos a 1/60 antes de tocar nada; sin cambiar la lógica | Sí |
+| 3 | Atribución de CRISTAL-01 | A/B de `AC_SPIRV_NMINMAX` y `AC_SPIRV_DOMAIN_CLAMP`. Si el control en RTX da imagen idéntica, valorar activarlo en todas las GPU: es la semántica de la Switch | Posible, tras el control RTX |
+| 4 | Otros NaN y negros | Revisar cada volcado buscando pases con `nan` mayor que 0 (`docs/bugs/amd-nan-shader-math.md`); recorrer más niveles y el álbum | Sí, el método |
+| 5 | Vida útil de memoria | Liberación diferida hasta que termine el envío (TotK, `amd-native-source-audit.md`). Es la clase de fallo de los `write invalid`, todavía sin portar | Sí, es una corrección general |
+| 6 | Compilación de pipelines en RDNA 1/2 | GPL apagado: medir esperas y omisiones de dibujo en recorridos largos y mejorar la preparación de shaders para que no haya tirones la primera vez | Parcial |
+| 7 | FSR 4 en RDNA 2 | Comparar coste y calidad con FSR 3.1 en la 6900 XT y elegir el valor por defecto según la arquitectura | No (FSR 4 depende del controlador de AMD) |
+| 8 | Robustez del traductor | Bloque de retorno tras CAL incondicional y enumeración Vulkan con `VK_INCOMPLETE` (`amd-emulation-source-audit.md`) | Sí |
+| 9 | Renderizado interno y sombras | Escala ×2 validada con fotos y puntuación; sombras de más resolución medidas en Snap | Sí |
+| 10 | Limpieza | Retirar de la documentación el experimento `shadow = 1` (no era la causa de nada) y las pruebas `.bat` ya superadas | — |
+
+Reglas que siguen vigentes: una prueba en AMD no valida NVIDIA ni al revés. Todo cambio por
+fabricante debe tener un ajuste para desactivarlo, y nada se marca HECHO sin una prueba física.
