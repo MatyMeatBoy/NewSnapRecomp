@@ -146,7 +146,8 @@ def build(sdk_root, shader_tools=None, jobs=0, generate=True, cpu='v3', *, owner
     patches = work / 'snap-runtime-patches.txt'
     write_changed(patches, '\n'.join((ROOT / 'patches' / name).read_text(encoding='utf-8')
                                     for name in ('snap-2.0.1-render.txt', 'snap-2.0.1-supersample.txt',
-                                                 'snap-2.0.1-random-range.txt')))
+                                                 'snap-2.0.1-random-range.txt',
+                                                 'snap-2.0.1-high-fps.txt')))
     if main_hash != profile['main_sha256']:
         raise ValueError('This runtime adaptation requires the verified Snap 2.0.1 code module')
     verify_random_range_original(exefs)

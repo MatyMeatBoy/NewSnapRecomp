@@ -387,7 +387,7 @@ int main(void) {
             path = Path(folder) / 'astralchain.ini'
             path.write_text('[audio]\nvolume = 72\n')
             original = path.read_bytes()
-            for key, value in [('fps', '120'), ('volume', '101'), ('mouse_sens', 'nan'),
+            for key, value in [('fps', '240'), ('volume', '101'), ('mouse_sens', 'nan'),
                                ('mouse_sens', '-1'), ('motion', 'yes'), ('window_size', '0x720'),
                                ('vk_present', 'adaptive'), ('upscaling', 'unknown')]:
                 with self.subTest(key=key, value=value), self.assertRaises(ValueError):

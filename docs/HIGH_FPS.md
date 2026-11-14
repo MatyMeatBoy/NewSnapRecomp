@@ -1,6 +1,118 @@
-# High frame rate investigation — 2026-11-13
+# High frame rate options and investigation
 
-**Status: more than 60 presents/s with correct game timing has not been demonstrated.** A host frame cap controls presentation frequency; it does not establish that Snap's simulation, photography or scripts are independent of that frequency. Keep 120/144/unlimited experimental until the checks below pass. No guest FPS patches were applied during this investigation.
+## FPS-01 implementation — 2026-11-14
+
+The launcher and in-game video menu offer **30 / 60 / 90 / 120 / 144 FPS**.
+60 remains the default; there is no unlimited or 240 FPS option. Higher limits
+are experimental. They can be changed live because they alter pacing, without
+recreating rendering resources. A new private runtime is required: its receipt
+must advertise `high-fps-presets`, so a new launcher cannot silently use an old
+runtime that still caps at 60.
+
+`newsnap/high_fps_adapt.py` lifts the ordinary interval-1 NVN host ceiling. It
+preserves authored intervals of 2 or more and never enables Astral's `fps60`
+patch. The strict parser falls back to 60 for unsupported environment/INI values.
+There is no vendor-specific rate policy: the BC block-view, shader-math and
+presentation fixes from 0.8 remain in effect. RTX 4060 results do not validate
+the RX 6900 XT or FreeSync.
+
+The script's 60 Hz tick estimate previously advanced by one tick per present.
+Above 60 it now uses the clamped presentation delta, avoiding 2x/2.4x playback
+of frame-number scripts. This remains a presentation-derived script clock,
+including the existing 66.7 ms clamp; it is not an independently observed game
+clock. The inherited log now calls its estimate `presentation clock`, rather
+than claiming measured simulation speed.
+
+### Read-only observations
+
+The exact main SHA-256/build ID below is checked by the owner build before
+generation, and the patch table checks original instructions. The probes replay
+the original store and leave all Cpu registers and guest memory unchanged:
+
+| Probe | Exact main site / original word | Opt-in diagnostic |
+| --- | --- | --- |
+| Timer after its channel updates, before epoch store | `6ac134 / f9000668` | `NEWSNAP_TIMER_TRACE=1` |
+| Rail progress after its real store | `4c1df0 / bd007261` | `NEWSNAP_RAIL_TRACE=1` |
+| UI Player::SetState entry | `79a6d0 / d10403ff` | `NEWSNAP_UI_TRACE=1` |
+| UI event callback entry | `6c1d90 / d10203ff` | `NEWSNAP_UI_TRACE=1` |
+
+`NEWSNAP_TIMER_PATCH=0` disables all observation sites. Logging is off by
+default. The timer reports float and integer sums, mode and pause counts. The
+rail probe checks readable objects, finite progress/length and a valid range;
+it logs at most 1,024 samples with monotonic timestamps and object/reset identity.
+It does not set progress, change vehicle speed or skip a scene.
+
+The UI probes accept bounded printable short/long libc++ strings, reject invalid
+descriptors and record at most 2,048 events per thread. They read scene/state
+identities and events 2/3/5/6/7; per-frame event 22 is deliberately omitted.
+State dwell and entered-to-ready intervals can be compared in real seconds.
+They are state observations, not proof of every visual tween or HUD blink.
+
+`tools/check_fps_rail.py` compares crossings of the same progress interval using
+monotonic timestamps interpolated between samples. It rejects incomplete runs,
+changed source saves and mismatched executable, input route, seed, cache, GPU or
+settings receipts. It does not bridge rail resets. For example, with private
+run folders and receipts:
+
+```text
+python tools/check_fps_rail.py build/fps01/rail60a build/fps01/rail120 --to-progress 80
+```
+
+This measures rail speed only. It cannot certify animation phases, input repeat,
+audio synchronization, pose/score equivalence, photo persistence or display cadence.
+
+### Reference audit and boundaries
+
+The [Snap reference investigation](https://github.com/finalpantasy/new-pokemon-snap-recomp/blob/839128e031eb224455f8715fce755cf3cf12b9f6/docs/high-fps-plan.md)
+and its [rail observation](https://github.com/finalpantasy/new-pokemon-snap-recomp/blob/839128e031eb224455f8715fce755cf3cf12b9f6/host/mods/neofilm.cpp)
+provided candidates, subsequently checked against the local original module.
+The rail comment's `4c2df0` offset does **not** match this module: local inspection
+finds the stated load/add/store at `4c1de8..4c1df0`. No speed/film/progression mod
+from that reference is enabled or copied.
+
+Both timer callers and their indirect callbacks remain under investigation.
+The 14 ms sleep loop is separate from the other caller; there is no basis for
+globally shortening SleepThread or changing the shared 1/60 constant. The observed
+timer channels use mode 0, but other consumers cannot be inferred from that alone.
+In particular, integer milliseconds truncate each update. A fractional carry
+would change their consumers; no carry patch is applied without attribution.
+Menu/HUD animation, blink, cooldown and button-repeat timing need separate checks.
+
+Gyro polling/integration uses its own real-time clock. The FPS option does not
+increase the sensor worker rate or multiply sensitivity. Audio's device clock is
+also preserved. These code boundaries do not replace physical input/audio tests.
+
+[TotK's frame timing implementation](https://github.com/valentderah/totk-pc-recomp/blob/main/runtime/frame_rate.c)
+illustrates separate pacing and simulation contracts, rather than transferable
+Snap offsets. The [Vulkan presentation specification](https://docs.vulkan.org/refpages/latest/refpages/source/VkPresentModeKHR.html)
+explains why a requested cap is not an achieved display rate: FIFO waits for the
+display; mailbox availability, immediate/tearing and VRR remain separate concerns.
+
+### Current local evidence
+
+Private evidence is under `build/fps01/`, excluded from source control. Preliminary
+60/120/144 runs lasted 100 seconds, 90 lasted 120 seconds, and a 120 FPS run lasted
+360 seconds and reached photo selection after the expedition. They exited 0 and
+preserved the source profile. Screenshots show the scene, HUD and thumbnails;
+photo submission/scoring/persistence were not established by those runs. They
+use different intermediate builds and are **not** an equivalence comparison.
+
+The final comparison uses one executable, copied profile, route and cache seed.
+Results are recorded below after the matrix completes. A separate warm-start
+attempt (`rail120`) exited 70 before the first frame with
+`SwitchToFiber(0): not an initialized fiber`. That is the guest fiber-token
+validation, not Windows rejecting a host fiber and not an out-of-memory finding.
+The cause and any relationship to FPS are unproven; do not turn null into a
+successful fiber switch to hide it.
+Four subsequent copied-profile boot controls (120, 60, 120, 144 FPS, three
+seconds each after boot) exited 0. This does not identify or fix that isolated
+failure; keep it visible during further testing.
+
+## Historical static investigation — 2026-11-13
+
+At the time of the investigation below, more than 60 presents/s with correct
+game timing had not been demonstrated. The acceptance criteria remain useful;
+the current implementation/evidence above supersedes historical status claims.
 
 ## Scope and provenance
 
