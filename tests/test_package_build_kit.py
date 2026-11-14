@@ -9,6 +9,7 @@ from unittest.mock import patch
 import zipfile
 
 from newsnap import build as builder
+from newsnap import translator
 from tools import package_build_kit as package
 from tools import fetch_upscaler_sdk as fsr, fetch_dlss as dlss
 
@@ -22,7 +23,13 @@ class BuildKitProducerTests(unittest.TestCase):
         self.target = self.root / 'release' / 'public-kit'
         self.recipe = 'a' * 64
         header = ('// public fixture\n// recipe sha256 ' + self.recipe + '\n').encode()
+        tool = b'public NativeAOT translator fixture'
+        tool_id = 'c' * 64
         files = {
+            'portable/bin/ac_xlate.exe': tool,
+            'portable/bin/ac_xlate.id': (tool_id + '\n').encode(),
+            'profiles/translator-windows.json': json.dumps(dict(format=1, platform='windows-x64',
+                size=len(tool), sha256=hashlib.sha256(tool).hexdigest(), identity=tool_id)).encode(),
             'newsnap/maintenance.py': b'# public fixture',
             'newsnap/build.py': b'# public fixture',
             'patches/public.txt': b'# public fixture',
@@ -55,7 +62,8 @@ class BuildKitProducerTests(unittest.TestCase):
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes(data)
         self.target.parent.mkdir()
-        self.patches = [patch.object(package, 'ROOT', self.root),
+        self.patches = [patch.object(translator, 'PIN', self.root / 'profiles/translator-windows.json'),
+                        patch.object(package, 'ROOT', self.root),
                         patch.object(builder, 'ROOT', self.root),
                         patch.object(package.subprocess, 'run', return_value=SimpleNamespace(returncode=0)),
                         patch.object(package.subprocess, 'check_output', side_effect=self.git_identity)]
@@ -127,6 +135,25 @@ class BuildKitProducerTests(unittest.TestCase):
                     output.write(b'\n# staged-only mutation; recipe_hash stays unchanged\n')
         with patch.object(package, '_copy', side_effect=mutate_staged_helper):
             with self.assertRaisesRegex(ValueError, 'helper.*donor'):
+                self.close()
+        self.assertFalse(package.archive_path(self.target).exists())
+
+    def test_old_translator_with_valid_id_rejects_package_before_staging(self):
+        path = self.sdk / 'bin/ac_xlate.exe'
+        path.write_bytes(b'X' * path.stat().st_size)
+        with self.assertRaisesRegex(ValueError, 'translator.*executable differs'):
+            self.close()
+        self.assertFalse(self.target.exists())
+        self.assertFalse(package.archive_path(self.target).exists())
+
+    def test_translator_corrupted_during_copy_prevents_archive(self):
+        copy = package._copy
+        def corrupt(source, destination):
+            copy(source, destination)
+            if destination == self.target / 'sdk/bin/ac_xlate.exe':
+                destination.write_bytes(b'X' * destination.stat().st_size)
+        with patch.object(package, '_copy', side_effect=corrupt):
+            with self.assertRaisesRegex(ValueError, 'translator.*executable differs'):
                 self.close()
         self.assertFalse(package.archive_path(self.target).exists())
 

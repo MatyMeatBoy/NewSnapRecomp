@@ -1,0 +1,56 @@
+--- a/src/Ryujinx.Graphics.Shader/Instructions/InstEmitShift.cs
++++ b/src/Ryujinx.Graphics.Shader/Instructions/InstEmitShift.cs
+@@ -124,18 +124,22 @@
+                 srcB = context.BitwiseAnd(srcB, Const(maxShiftConst - 1));
+             }
+ 
++            // Keep every intermediate shift defined, including unselected terms.
++            // The original count still controls the 32/64-bit endpoint selection.
++            Operand wordShift = context.BitwiseAnd(srcB, Const(31));
++            Operand complementShift = context.BitwiseAnd(context.ISubtract(Const(32), srcB), Const(31));
+             Operand res;
+ 
+             if (left)
+             {
+                 // res = (C << B) | (A >> (32 - B))
+-                res = context.ShiftLeft(srcC, srcB);
+-                res = context.BitwiseOr(res, context.ShiftRightU32(srcA, context.ISubtract(Const(32), srcB)));
++                res = context.ShiftLeft(srcC, wordShift);
++                res = context.BitwiseOr(res, context.ShiftRightU32(srcA, complementShift));
+ 
+                 if (isLongShift)
+                 {
+                     // res = B >= 32 ? A << (B - 32) : res
+-                    Operand lowerShift = context.ShiftLeft(srcA, context.ISubtract(srcB, Const(32)));
++                    Operand lowerShift = context.ShiftLeft(srcA, wordShift);
+ 
+                     Operand shiftGreaterThan31 = context.ICompareGreaterOrEqualUnsigned(srcB, Const(32));
+                     res = context.ConditionalSelect(shiftGreaterThan31, lowerShift, res);
+@@ -144,20 +148,23 @@
+             else
+             {
+                 // res = (A >> B) | (C << (32 - B))
+-                res = context.ShiftRightU32(srcA, srcB);
+-                res = context.BitwiseOr(res, context.ShiftLeft(srcC, context.ISubtract(Const(32), srcB)));
++                res = context.ShiftRightU32(srcA, wordShift);
++                res = context.BitwiseOr(res, context.ShiftLeft(srcC, complementShift));
+ 
+                 if (isLongShift)
+                 {
+                     // res = B >= 32 ? C >> (B - 32) : res
+                     Operand upperShift = signedShift
+-                        ? context.ShiftRightS32(srcC, context.ISubtract(srcB, Const(32)))
+-                        : context.ShiftRightU32(srcC, context.ISubtract(srcB, Const(32)));
++                        ? context.ShiftRightS32(srcC, wordShift)
++                        : context.ShiftRightU32(srcC, wordShift);
+ 
+                     Operand shiftGreaterThan31 = context.ICompareGreaterOrEqualUnsigned(srcB, Const(32));
+                     res = context.ConditionalSelect(shiftGreaterThan31, upperShift, res);
+                 }
+             }
++
++            // Maxwell zero-count funnel shift returns the unshifted word.
++            res = context.ConditionalSelect(context.ICompareEqual(srcB, Const(0)), left ? srcC : srcA, res);
+ 
+             if (!mask)
+             {
