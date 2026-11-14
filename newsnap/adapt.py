@@ -25,6 +25,7 @@ from .console_adapt import edits as console_edits
 from .branding_adapt import edits as branding_edits
 from .present_trace_adapt import edits as present_trace_edits
 from .pool_bounds_adapt import edits as pool_bounds_edits
+from .bc_block_views_adapt import edits as bc_block_views_edits
 from .crc_isa_adapt import edits as crc_isa_edits
 from .xlate_semantics_adapt import edits as xlate_semantics_edits, stage_patches as stage_xlate_patches
 from .version import VERSION
@@ -225,7 +226,8 @@ def adapt_sources(destination, *, patch_output=None):
     for adapter in (temporal_edits, upscaler_edits, neutral_edits, vrr_edits,
                     menu_edits, color_transfer_edits, photo_readback_edits, camera_input_edits,
                     graphics_effects_edits, random_range_edits, console_edits, branding_edits,
-                    present_trace_edits, pool_bounds_edits, crc_isa_edits, xlate_semantics_edits):
+                    present_trace_edits, pool_bounds_edits, crc_isa_edits, xlate_semantics_edits,
+                    bc_block_views_edits):
         for name, changes in adapter().items():
             edits.setdefault(name, []).extend(changes)
     for folder in ('runtime', 'recomp', 'tools'):
