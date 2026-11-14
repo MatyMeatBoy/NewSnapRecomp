@@ -9,6 +9,7 @@ import json
 import os
 import shutil
 import signal
+import stat
 import subprocess
 import tempfile
 import time
@@ -187,6 +188,24 @@ def _sync_tree(folder):
     return all([_sync_directory(p) for p in sorted(directories, key=lambda p: len(p.parts), reverse=True)])
 
 
+def _copy_tree_no_links(source, destination):
+    """Never follow nested symlinks or Windows junctions into owner data."""
+    metadata = source.lstat()
+    if (stat.S_ISLNK(metadata.st_mode) or
+            getattr(metadata, 'st_file_attributes', 0) & 0x400):
+        raise ValueError('Runtime backup links cannot be copied safely')
+    if stat.S_ISDIR(metadata.st_mode):
+        destination.mkdir()
+        with os.scandir(source) as entries:
+            for entry in entries:
+                _copy_tree_no_links(Path(entry.path), destination / entry.name)
+        shutil.copystat(source, destination, follow_symlinks=False)
+    elif stat.S_ISREG(metadata.st_mode):
+        shutil.copy2(source, destination, follow_symlinks=False)
+    else:
+        raise ValueError('Unsupported runtime backup entry')
+
+
 def _backup_inventory(backup, cancel_event=None):
     if not backup.is_dir():
         raise ValueError('Runtime backup integrity failure: backup directory missing')
@@ -205,6 +224,25 @@ def _backup_inventory(backup, cancel_event=None):
     return {'files': files, 'directories': directories}
 
 
+def _cleanup_transaction(directory):
+    transaction=_safe_runtime_path(directory,TRANSACTION)
+    if transaction.resolve()!=directory.resolve()/TRANSACTION:
+        raise ValueError('Unsafe runtime cleanup path')
+    shutil.rmtree(transaction)
+    if transaction.exists() or transaction.is_symlink():
+        raise ValueError('Runtime cleanup incomplete; temporary backup remains')
+
+
+def _cleanup_build_workspace(directory,work):
+    safe=_safe_runtime_path(directory,work.name)
+    if (not work.name.startswith('.runtime-build-') or
+            safe.resolve()!=work.resolve() or work.resolve().parent!=directory.resolve()):
+        raise ValueError('Unsafe runtime build workspace cleanup path')
+    shutil.rmtree(work)
+    if work.exists() or work.is_symlink():
+        raise ValueError('Runtime build cleanup incomplete; temporary compilation files remain')
+
+
 def recover_runtime(root):
     """Idempotently restore the previous generation after a failed switch."""
     directory = data_dir(root)
@@ -215,7 +253,7 @@ def recover_runtime(root):
     journal_path = transaction / 'journal.json'
     if not journal_path.exists():
         # Backups are copied before publishing a journal; active files are intact.
-        shutil.rmtree(transaction)
+        _cleanup_transaction(directory)
         return True
     journal = _json(journal_path)
     files = journal.get('files', {})
@@ -240,7 +278,7 @@ def recover_runtime(root):
             temporary.parent.mkdir(parents=True, exist_ok=True)
             _remove(temporary)
             if backup.is_dir():
-                shutil.copytree(backup, temporary)
+                _copy_tree_no_links(backup, temporary)
                 _sync_tree(temporary)
                 _remove(target)
             else:
@@ -252,11 +290,30 @@ def recover_runtime(root):
         else:
             _remove(target)
             _sync_directory(target.parent)
+    # Validate destinations before discarding the only known-good backup.
+    inventory = journal['backup']
+    for name, existed in files.items():
+        target = _safe_runtime_path(directory, name)
+        if not existed:
+            valid = not target.exists() and not target.is_symlink()
+        elif name in inventory['files']:
+            valid = (target.is_file() and
+                     {'size': target.stat().st_size, 'sha256': digest(target)} == inventory['files'][name])
+        else:
+            prefix = name + '/'
+            expected = {
+                'files': {key[len(prefix):]: value for key, value in inventory['files'].items()
+                          if key.startswith(prefix)},
+                'directories': [key[len(prefix):] for key in inventory['directories']
+                                if key.startswith(prefix)]}
+            valid = target.is_dir() and _backup_inventory(target) == expected
+        if not valid:
+            raise ValueError(f'Runtime restored integrity verification failed: {name}')
     # Restored bytes and metadata precede committing recovery. Cleanup must never
     # leave a pending journal referring to already discarded backup files.
     journal_path.unlink()
     _sync_directory(transaction)
-    shutil.rmtree(transaction)
+    _cleanup_transaction(directory)
     return True
 
 
@@ -296,7 +353,7 @@ def install_candidate(root, candidate, cancel_event=None):
                 if source.is_symlink() or (hasattr(source, 'is_junction') and source.is_junction()):
                     raise ValueError('Runtime links cannot be switched safely')
                 if source.is_dir():
-                    shutil.copytree(source, backup / name)
+                    _copy_tree_no_links(source, backup / name)
                 else:
                     (backup / name).parent.mkdir(parents=True, exist_ok=True)
                     shutil.copy2(source, backup / name)
@@ -321,13 +378,27 @@ def install_candidate(root, candidate, cancel_event=None):
             else:
                 _remove(directory / name)
             _sync_directory((directory / name).parent)
+        # Check the actual destinations while rollback is still possible. A
+        # successful remove/replace call alone is not a verified postcondition.
+        if (_json(directory/'newsnap-game.json')!=marker or
+                digest(directory/'newsnap.exe')!=marker['native_executable_sha256']):
+            raise ValueError('Installed runtime integrity verification failed')
+        _verify_runtime_files(directory,marker)
+        for name in INVALIDATED:
+            path=_safe_runtime_path(directory,name)
+            if path.exists() or path.is_symlink():
+                raise ValueError(f'Runtime cache invalidation incomplete: {name}')
     except BaseException:
         recover_runtime(root)
         raise
     # Removing the journal commits the generation. Backups are then disposable.
     (transaction / 'journal.json').unlink()
     _sync_directory(transaction)
-    shutil.rmtree(transaction)
+    _cleanup_transaction(directory)
+    return {'format':1,'runtime_sha256':marker['native_executable_sha256'],
+            'invalidated':list(INVALIDATED),
+            'removed_existing':[name for name in INVALIDATED if journal['files'][name]],
+            'cache_absence_verified':True,'transaction_removed':True}
 
 
 def verify_build_kit(kit_root, root=None, cancel_event=None):
@@ -448,11 +519,24 @@ def rebuild_runtime(root, kit_root, cancel_event=None, progress=None, force=Fals
                 cache_record = _json(cache_receipt)
                 shutil.copy2(cache_receipt, directory / 'logs/generation-cache.json')
             progress(ProgressUpdate('activate','Activando el runtime verificado…'))
-            install_candidate(root, work / 'candidate', cancel_event)
-            return {'rebuilt': True, 'runtime_version': VERSION, 'logfile': str(logfile),
-                    'generation_cache': cache_record}
+            replacement=install_candidate(root, work / 'candidate', cancel_event)
+            result={'rebuilt': True, 'runtime_version': VERSION, 'logfile': str(logfile),
+                    'generation_cache': cache_record,'replacement':replacement}
         finally:
-            shutil.rmtree(work)
+            _cleanup_build_workspace(directory,work)
+        replacement['build_temporaries_removed']=True
+        replacement['log_recorded']=True
+        try:
+            with logfile.open('a',encoding='utf-8') as log:
+                log.write('\n[newsnap_maintenance] '+json.dumps(replacement,sort_keys=True)+'\n')
+        except OSError:
+            # The active runtime and cleanup already passed their checks; an
+            # optional log-write failure must not masquerade as a failed build.
+            replacement['log_recorded']=False
+        progress(ProgressUpdate('cache-clean',
+            'Cachés anteriores invalidadas; reemplazo y limpieza verificados',
+            len(replacement['invalidated']),len(INVALIDATED)))
+        return result
 
 
 def _worker():

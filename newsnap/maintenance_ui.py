@@ -3,6 +3,23 @@ import queue
 import threading
 from tkinter import ttk
 
+
+def completion_message(result):
+    if not result.get('rebuilt'):
+        return 'Juego verificado; listo para iniciar.'
+    proof=result.get('replacement',{})
+    verified=all(proof.get(key) is True for key in
+                 ('cache_absence_verified','transaction_removed','build_temporaries_removed'))
+    if not verified:
+        return 'Runtime reconstruido; sin comprobante de limpieza de cachés.'
+    checked=len(proof.get('invalidated',[]))
+    removed=len(proof.get('removed_existing',[]))
+    message=(f'Juego reemplazado y verificado. Cachés anteriores: {removed} retiradas; '
+             f'{checked}/{checked} rutas comprobadas; sin copias temporales de reconstrucción.')
+    if proof.get('log_recorded') is False:
+        message+=' El comprobante no se pudo guardar en el log.'
+    return message
+
 class RuntimeMaintenance:
     def __init__(self, launcher, parent, status):
         self.launcher, self.status = launcher, status
@@ -65,9 +82,7 @@ class RuntimeMaintenance:
                 self.repair.configure(state='normal')
                 self.cancel.configure(state='disabled')
                 self.launcher._set_busy(False)
-                message=(('Juego reconstruido y verificado. Comprobando los shaders disponibles.'
-                          if value.get('rebuilt') else 'Juego verificado; listo para iniciar.')
-                         if kind=='done' else value)
+                message=completion_message(value) if kind=='done' else value
                 self.status.configure(text=message)
                 self.launcher.status.set(message)
                 self.launcher.home.progress.finish('Runtime verificado' if kind=='done' else 'Reconstrucción sin completar',error=kind!='done')
