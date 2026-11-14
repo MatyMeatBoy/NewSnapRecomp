@@ -14,6 +14,7 @@ from pathlib import Path
 from newsnap.maintenance import digest, verify_build_kit
 from newsnap.upstream import ROOT, COMMIT
 from newsnap.version import VERSION, RUNTIME_API, RUNTIME_CAPABILITIES
+from newsnap.translator import verify_translator
 
 
 def archive_path(target):
@@ -64,6 +65,7 @@ def _copy_pinned_sdk(provisioner, source, destination):
 
 def package(sdk_root, destination=None, shader_tools=None, allow_dirty=False):
     sdk = Path(sdk_root).resolve()
+    verify_translator(sdk / 'bin')
     if not allow_dirty and subprocess.run(['git', 'diff', '--quiet', 'HEAD', '--ignore-submodules=none'], cwd=ROOT).returncode:
         raise ValueError('Commit the recipe before closing a public build kit')
     revision = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip()
@@ -126,6 +128,7 @@ def package(sdk_root, destination=None, shader_tools=None, allow_dirty=False):
     if shader_tools:
         # Includes the tool distribution's DLLs and license; do not copy host SDKs.
         _copy(Path(shader_tools), target / 'sdk/shader-tools')
+    verify_translator(target / 'sdk/bin')
     verify_kit_tree(target)
     files = {p.relative_to(target).as_posix(): digest(p) for p in sorted(target.rglob('*')) if p.is_file()}
     manifest = {'format': 1, 'runtime_version': VERSION, 'runtime_api': RUNTIME_API,

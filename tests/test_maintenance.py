@@ -131,7 +131,8 @@ class BuildOwnerTests(TestCase):
             (root / 'profiles/snap-2.0.1.json').write_text(json.dumps(profile))
             (root / 'owner/exefs').mkdir(parents=True)
             (root / 'owner/exefs/main').write_bytes(b'modified')
-            with patch.object(builder, 'ROOT', root):
+            # This fixture tests owner verification; tool integrity has its own real fixtures.
+            with patch.object(builder, 'ROOT', root), patch.object(builder, 'verify_translator'):
                 with self.assertRaisesRegex(ValueError, 'ExeFS main'):
                     builder.build(root / 'sdk', owner_data=root / 'owner', work_dir=root / 'work')
             self.assertFalse((root / 'work/generated').exists())
@@ -244,7 +245,7 @@ class OwnerIndexTests(TestCase):
                 'exefs_sha256': {'main': m.digest(data / 'exefs/main')},
                 'romfs_sha256': m.digest(data / 'romfs/romfs.bin'),
                 'verified_control': {'display_version': '2.0.1', 'save_size': 42, 'journal_size': 2}}))
-            with patch.object(builder, 'ROOT', root), patch('newsnap.upstream.extractor',
+            with patch.object(builder, 'ROOT', root), patch.object(builder, 'verify_translator'), patch('newsnap.upstream.extractor',
                     return_value=SimpleNamespace(index_romfs=lambda _: [])), patch.object(builder, 'adapt_sources',
                     side_effect=RuntimeError('stop after verified staging')):
                 with self.assertRaisesRegex(RuntimeError, 'stop after verified staging'):
@@ -422,7 +423,7 @@ class VerifiedReplacementTests(OwnerRuntimeFixture, TestCase):
             if path==stale:return
             return remove(path)
         with patch.object(m,'_remove',side_effect=keep_one):
-            with self.assertRaisesRegex(ValueError,'cache|caché'):
+            with self.assertRaisesRegex(ValueError,'cache|cachÃ©'):
                 m.install_candidate(self.root,self.candidate())
         self.assertEqual((self.data/'newsnap.exe').read_bytes(),b'old executable')
         self.assertEqual(stale.read_bytes(),b'stale pipeline')
