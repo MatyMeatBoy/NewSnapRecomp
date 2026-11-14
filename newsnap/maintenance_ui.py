@@ -29,7 +29,7 @@ class RuntimeMaintenance:
         self.cancel.configure(state='normal')
         self.status.configure(text='Preparando la reconstrucción local…')
         def progress(message):
-            self.events.put(('progress',str(message)))
+            self.events.put(('progress',message))
         def work():
             try:
                 from .build_kit import ensure_build_kit
@@ -55,18 +55,22 @@ class RuntimeMaintenance:
                 if not self.active:
                     continue  # Late events cannot release another operation's busy ownership.
                 if kind=='progress':
-                    self.status.configure(text=value)
-                    self.launcher.status.set(value)
+                    from .progress import coerce
+                    update=coerce(value)
+                    self.status.configure(text=update.label)
+                    self.launcher.status.set(update.label)
+                    self.launcher.home.progress.report(update)
                     continue
                 self.active=False
                 self.repair.configure(state='normal')
                 self.cancel.configure(state='disabled')
                 self.launcher._set_busy(False)
-                message=(('Juego reconstruido y verificado. Los shaders se prepararán antes de jugar.'
+                message=(('Juego reconstruido y verificado. Comprobando los shaders disponibles.'
                           if value.get('rebuilt') else 'Juego verificado; listo para iniciar.')
                          if kind=='done' else value)
                 self.status.configure(text=message)
                 self.launcher.status.set(message)
+                self.launcher.home.progress.finish('Runtime verificado' if kind=='done' else 'Reconstrucción sin completar',error=kind!='done')
                 if kind=='done' and self.resume_game:
                     self.launcher.root.after(100,self.launcher.launch)
                 self.resume_game=False

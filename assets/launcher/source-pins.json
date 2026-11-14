@@ -1,0 +1,75 @@
+{
+  "format": 1,
+  "official_page": "https://newpokemonsnap.pokemon.com/en-us/",
+  "retrieval_date_utc": "2026-11-14",
+  "request_context": "Official promotional images explicitly requested by project owner; no ROM extraction, private screenshots or owner photos.",
+  "copyright_notice": "©1995–2021 Nintendo / Creatures Inc. / GAME FREAK inc. ©1999 Nintendo / HAL Laboratory, Inc.",
+  "developer_credited_by_official_page": "BANDAI NAMCO Studios Inc.",
+  "trademarks_credited_by_official_page": "Pokémon and Nintendo Switch: Nintendo",
+  "license_statement": "Third-party promotional artwork. No MIT, public-domain or redistribution license is asserted. Public availability is not represented as a license grant.",
+  "assets": [
+    {
+      "file": "lental-hero.jpg",
+      "source_url": "https://newpokemonsnap.pokemon.com/assets/img/homepage/intro-fallback.jpg",
+      "final_url": "https://newpokemonsnap.pokemon.com/assets/img/homepage/intro-fallback.jpg",
+      "official_page": "https://newpokemonsnap.pokemon.com/en-us/",
+      "retrieved_at_utc": "2026-11-14T05:11:59.163617+00:00",
+      "sha256": "4758d49e5aa462310c050147d2a9d96bb0b09a377389bec0163767a0a7978f81",
+      "bytes": 21580,
+      "format": "JPEG",
+      "width": 375,
+      "height": 494,
+      "mode": "RGB",
+      "response_content_type": "image/jpeg",
+      "transformation": "none; original response bytes preserved",
+      "has_transparency": false,
+      "validation": {
+        "fully_decoded": true,
+        "visually_inspected": true,
+        "original_bytes_preserved": true
+      }
+    },
+    {
+      "file": "lental-explore.jpg",
+      "source_url": "https://newpokemonsnap.pokemon.com/assets/img/homepage/explore.jpg",
+      "final_url": "https://newpokemonsnap.pokemon.com/assets/img/homepage/explore.jpg",
+      "official_page": "https://newpokemonsnap.pokemon.com/en-us/",
+      "retrieved_at_utc": "2026-11-14T05:11:59.062628+00:00",
+      "sha256": "ef88386ca3469a99c28ac2fa0d71130d55e7066b999d263773a6cc5ab90e87b2",
+      "bytes": 4966,
+      "format": "JPEG",
+      "width": 322,
+      "height": 181,
+      "mode": "RGB",
+      "response_content_type": "image/jpeg",
+      "transformation": "none; original response bytes preserved",
+      "has_transparency": false,
+      "validation": {
+        "fully_decoded": true,
+        "visually_inspected": true,
+        "original_bytes_preserved": true
+      }
+    },
+    {
+      "file": "snap-logo.png",
+      "source_url": "https://newpokemonsnap.pokemon.com/assets/img/logos/snap-logo.png",
+      "final_url": "https://newpokemonsnap.pokemon.com/assets/img/logos/snap-logo.png",
+      "official_page": "https://newpokemonsnap.pokemon.com/en-us/",
+      "retrieved_at_utc": "2026-11-14T05:11:59.352503+00:00",
+      "sha256": "8cb13d97a86a9a2c88d29579597775aa02466ca7acbaf2dad828fe1d7997299b",
+      "bytes": 41783,
+      "format": "PNG",
+      "width": 484,
+      "height": 283,
+      "mode": "P",
+      "response_content_type": "image/png",
+      "transformation": "none; original response bytes preserved",
+      "has_transparency": true,
+      "validation": {
+        "fully_decoded": true,
+        "visually_inspected": true,
+        "original_bytes_preserved": true
+      }
+    }
+  ]
+}

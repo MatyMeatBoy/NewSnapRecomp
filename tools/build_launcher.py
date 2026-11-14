@@ -15,7 +15,7 @@ from newsnap.version import VERSION
 
 def source_fingerprints(root=ROOT):
     files = []
-    for pattern in ('newsnap/**/*.py', 'newsnap/overlays/*', 'assets/icons/*', 'assets/controllers/*', 'profiles/*.json',
+    for pattern in ('newsnap/**/*.py', 'newsnap/overlays/*', 'assets/icons/*', 'assets/controllers/*', 'assets/launcher/*', 'profiles/*.json',
                     'tools/fetch_*.py', 'tools/package_build_kit.py', 'tools/triage_game_log.py'):
         files.extend(p for p in root.glob(pattern) if p.is_file())
     files.extend(root / name for name in ('tools/launcher_entry.py', 'tools/build_launcher.py',
@@ -35,7 +35,7 @@ def build():
                str(ROOT / 'tools/launcher_entry.py')]
     subprocess.run(command, cwd=ROOT, check=True)
     application = output / 'NewSnapLauncher'
-    for folder in ('assets/icons', 'assets/controllers', 'licenses'):
+    for folder in ('assets/icons', 'assets/controllers', 'assets/launcher', 'licenses'):
         shutil.copytree(ROOT / folder, application / folder, dirs_exist_ok=True)
     # Older installed updaters accept only the curated Snap specifications here.
     # Native shader pins belong to the separate build kit, not the launcher.
