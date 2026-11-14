@@ -91,37 +91,35 @@ posteriori.
 
   No cubre mando físico, teclado táctil de Windows ni escritura manual.
 
-## Defecto adicional encontrado y corregido: diálogos y servicios sin host
+## Endurecimiento independiente: applets y contratos de retorno
 
-Independiente del cierre reportado. El runtime atiende nueve servicios IPC;
-una función del SDK que necesite otro termina en
-`rt_fatal("sm: service … is not implemented")`, y las de red se ejecutaban sobre
-un cliente que el host nunca inicializa. Snap 2.0.1 importa y llama, sin
-respuesta de host hasta ahora:
+Este overlay no corrige el cierre JPEG reportado, cuya continuación se trató
+separadamente desde 0.3. Las rutas nuevas no se han observado durante una partida
+real. La política del host registra diálogos sin UI y mantiene la red y el álbum
+de consola sin servicio; no afirma equivalencia exacta con una consola offline.
 
-| Función | Sitios en `main` | Respuesta nueva del host |
-|---|---|---|
-| `nn::err::ShowApplicationError` | `0x5087f4`, `0x5088c8` | Registra número y textos; vuelve como diálogo cerrado |
-| `nn::err::ShowError(ErrorResultVariant)` | `0x508834` | Registra el contenido; vuelve |
-| `nn::nifm::SubmitNetworkRequestAndWait` | 3 | Petición rechazada (sin red) |
-| `nn::nifm::HandleNetworkRequestErrorResult` | 3 | Fallo: sigue sin conexión |
-| `nn::nifm::CancelNetworkRequest`, `GetCurrentPrimaryIpAddress`, `GetCurrentProxySetting` | 1 cada una | Sin efecto / fallo |
-| `nn::account::IsNetworkServiceAccountAvailable` | 1 | Éxito con «no» |
-| `nn::account::EnsureNetworkServiceAccountAvailable` | 1 | Cancelado |
-| `GetNetworkServiceAccountId`, `EnsureNetworkServiceAccountIdTokenCacheAsync`, `LoadNetworkServiceAccountIdTokenCache` | 2 cada una | Fallo: sin cuenta enlazada |
-| `nn::friends::Initialize`, `ShowUserDetailInfo` | 1 cada una | Sin efecto / cerrado |
-| `nn::album::Initialize`, `Finalize`, `SaveScreenshot` | 1 cada una | Sin efecto / fallo registrado |
+| Función | Política del host revisada |
+|---|---|
+| `nn::err::ShowApplicationError` | Registra número y textos acotados; retorna `void` |
+| `nn::err::ShowError(ErrorResultVariant)` | Registra solo tag y payload verificados (12 bytes); retorna `void` |
+| `nn::nifm::SubmitNetworkRequestAndWait`, `CancelNetworkRequest` | Sin petición real; `void` |
+| `nn::nifm::HandleNetworkRequestErrorResult` | **Booleano `false` exacto: sin reintento**, no un `Result` |
+| `GetCurrentPrimaryIpAddress`, `GetCurrentProxySetting` | Fallo sintético del host, descripción no derivada de consola |
+| `nn::account::IsNetworkServiceAccountAvailable` | Consulta correcta con un byte «no enlazada»; no simula enlazar |
+| `nn::friends::Initialize`, `ShowUserDetailInfo` | Sin servicio; acción de perfil cerrada según política host |
+| `nn::album::Initialize`, `Finalize`, `SaveScreenshot` | Sin servicio; guardar devuelve fallo sintético, nunca éxito |
 
-`newsnap/overlays/snap_applets.c` da a cada una la respuesta de una consola sin
-conexión tras cerrar el diálogo y lo registra (máximo 16 líneas por tipo). Es la
-misma regla que el donor ya aplica a `nn::err::ShowError(Result)` y que
-`snap_host.c` aplica a `IsNetworkAvailable`. No escribe partidas, fotos ni
-progreso; no finge red, cuenta ni álbum; no salta pasos del juego.
+Se retiraron los cuatro overrides de cuenta `EnsureNetworkServiceAccountAvailable`,
+`GetNetworkServiceAccountId`, `EnsureNetworkServiceAccountIdTokenCacheAsync` y
+`LoadNetworkServiceAccountIdTokenCache`: no se pudo derivar el resultado offline o
+cancelado exacto. Sus rutas conservan el SDK original y siguen **sin soporte host**;
+pueden terminar en servicio no implementado o cliente no inicializado. No se
+reemplazan por éxito ni se omiten validaciones de progreso.
 
-Límite: ninguna de esas respuestas se ha visto ejecutarse en una partida real
-(las rutas locales no llegan a un diálogo de error ni a una petición de red).
-Su comportamiento lo cubre el fixture nativo. Los valores de fallo de `nifm` y
-`capsrv` usan el módulo correcto y una descripción genérica.
+La selección de descripción importa: varios callers distinguen rangos de error
+de cuenta. Los valores 124/0 y 124/100 del PR original no estaban justificados.
+Procedencia, offsets, límites y evidencia RED/GREEN en
+[pr2-applet-contracts.md](pr2-applet-contracts.md).
 
 ## Herramienta: `tools/triage_game_log.py`
 
@@ -155,17 +153,17 @@ cuatro sesiones anteriores en `totk.1.log` … `totk.4.log`.
 python -X utf8 -m unittest tests.test_snap_applets tests.test_game_log_triage
 ```
 
-- `tests/test_snap_applets.py` (4): lista exacta de 17 símbolos; ningún otro
+- `tests/test_snap_applets.py` (4): lista exacta de 13 símbolos; ningún otro
   fuente los sustituye; sin escrituras de archivos ni parches; fixture nativo
-  con clang `-Wall -Wextra -Werror` que ejecuta cada respuesta.
+  con clang `-Wall -Wextra -Werror` que ejecuta cada respuesta y comprueba booleano exacto, gates de caller por bit/valor y lectura limitada a 12 bytes del variant.
 - `tests/test_game_log_triage.py` (13): los seis veredictos, servicio con
   nombre, generación del runtime, fatal JPEG conocido, redacción de rutas,
   elección del log más reciente (launcher e inicio directo), solo lectura, logs
   grandes.
-- Suite completa en el worktree: 316 pruebas; las únicas 2 que fallan son
+- Suite histórica del PR original en el worktree: 316 pruebas; las únicas 2 que fallan son
   ajenas al cambio y propias del worktree (falta `toolchain/` para un fixture
   SDL y un SVG extraído con finales de línea CRLF).
-- Runtime real con el overlay (`build/kbd01-build`, 280 objetos, selftest y
+- Evidencia histórica del PR original, anterior a estas correcciones ABI (no es aceptación del overlay revisado): runtime con el overlay (`build/kbd01-build`, 280 objetos, selftest y
   sonda de carga correctos): configuración inicial con ventana de apodo
   (`kbd01-applets-setup`, salida 0) y ruta de fotos de 540 s
   (`kbd01-applets-photo540`, salida 0, 32 332 frames, 0 errores de validación,
