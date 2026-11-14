@@ -51,6 +51,17 @@ Para cualquier modelo que retome el trabajo:
   escala en `launcher.py`.
 - **Asignado a otro modelo: FPS-01** (FPS altos 30–240, `docs/HIGH_FPS.md`). No tocar los
   archivos de SS-02 sin coordinar aquí.
+- **Cola de Claude después de SS-02** (pedido del propietario, 2026-11-14): pasar todo el repo a
+  inglés (docs, textos de commit/PR futuros; la interfaz del launcher mantiene sus idiomas) y
+  añadir imágenes del juego corriendo al README.
+- También pedido (2026-11-14), después de SS-02: limpiar `tools/pruebas-amd` (hecho en la rama de
+  SS-02); sombras de vegetación de más resolución (las de personajes ya se ven finas, las de plantas
+  siguen al tamaño del juego); ultrawide si es posible (el donor trae `resolution.c` wide con sitios
+  de Astral: hay que encontrar los de Snap y mantener las fotos en 16:9); frame pacing y cargas en
+  los modos extendidos; launcher con la mayor compatibilidad de volcados (NSP, NSZ, XCI, XCZ y
+  carpetas `exefs`/`romfs` ya extraídas).
+- Regla del propietario: antes de cada solución, buscar cómo lo resolvieron otros recomps y
+  emuladores (Astral, TotK, Witch Time, LAS, Lichii, Savage Wind, yuzu/Ryujinx) y citarlo.
 - Receta de release en esta máquina: sección «Receta de release» al final de este archivo.
 La cola siguiente conserva únicamente investigación o aceptación pendientes.
 
@@ -86,7 +97,7 @@ fotos ni constituye una validación completa AMD/VRR/mando. Reporte histórico:
 | PAD-01 | P1 | REVISIÓN | Codex / agente de controles | Backend SDL de prueba de mandos implementado y probado con dispositivos virtuales/ABI real. Reservados `controller_probe.py`, `controller_ui.py`, `tests/test_controller_probe.py`. UI visual se integra con ART-01. |
 | VRR-01 | P1 | REVISIÓN | Codex / agente de render | Estado real de presentación por VK_EXT_present_timing, unknown/fixed/variable; nunca inferir VRR por FIFO/mailbox. Reservados `vrr_adapt.py`, overlays `snap_vrr*`, `display_status.py`, `display_ui.py`, tests y `docs/DISPLAY.md`. Prueba swapchain real integrada completada: API disponible, intervalo cero → unknown, sin inferir VRR. Validación FreeSync física pendiente. |
 | MENU-01 | P1 | REVISIÓN | Codex / agente de render | Menú dentro del juego: Original/Auto/DLSS/FSR 3.1/FSR 4, Native AA/DLAA y tres presets reducidos. Quitar FSR 3 genérico, XeSS/FSR espacial y opciones artísticas ignoradas. Reservados `menu_adapt.py`, `tests/test_snap_menu.py`. |
-| SS-02 | P1 | EN CURSO | Claude · 2026-11-14 | Escala interna 125/150/200 % rota en AMD con 0.8: a 200 % la imagen final ocupa la cuarta parte superior izquierda de la ventana (log: presentación 3840×2160, textura 1920×1080, escala 2), la escena otra cuarta parte dentro del HUD, y fotos/miniaturas incompletas. Capturas del propietario 2026-11-14 11:56–12:00; log `fs-ss200` (fuera del repo). Objetivo: escala interna correcta en TV con fotos y miniaturas a resolución lógica; después ×2 «como otros juegos» y fotos a mayor resolución opcionales. |
+| SS-02 | P1 | EN CURSO | Claude · 2026-11-14 · rama `claude/ss-02-internal-scale` | **Funciona en RX 6900 XT:** escalado en el host de los render targets 16:9 (como Witch Time/emuladores) en lugar del redimensionado del motor; HUD, fotos y miniaturas correctos a 200 %, 1 % low 52–58 fps. Añade 133/175/250/300 % y «Según la pantalla», cadena 16:9 (`AC_SS_CHAIN`) y `shadow_scale` para los mapas de sol 1024 de Snap. Detalle y tabla en `docs/SUPERSAMPLING.md`. Falta: RTX, demás escalas, pantalla completa, puntuación comparada, y después frame generation (FFX FG del SDK 2.4, apagado por defecto) para 0.8.1. |
 | FPS-01 | P1 | LIBRE · para otro modelo | — · 2026-11-14 | FPS altos con presets 30/60/90/120/144/240 y libre, sin cambiar la lógica. Medir primero los canales del temporizador fijos a 1/60 (`docs/HIGH_FPS.md`). No tocar archivos de SS-02. |
 | GYRO-02 | P1 | REVISIÓN | Claude · 0.8.0-tester | Pestaña Mods, `gyro_sens` 2,5 por defecto (0,1–10, en vivo). Falta prueba con mando físico. |
 | PIPE-MO-01 | P2 | REVISIÓN | Claude · 0.8.0-tester | Prewarm de los pipelines del pase de movimiento por objeto (99 de 286 registros se descartaban). |
