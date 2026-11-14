@@ -43,7 +43,7 @@ py -3.12 -m venv .venv
 .venv\Scripts\python -m newsnap import --base "path\base.nsp" --update "path\update.nsp" --keys "path\prod.keys" --hactool "path\hactool.exe"
 ```
 
-Use the selected upstream's patched hactool (see its `tools/build_hactool.py`). `--exefs-only` imports code modules without merging RomFS. Outputs go to `build/extracted`, with verified hashes and receipts; a second run validates input and output hashes before reuse. A stale output is refused; use another `--work` directory to preserve the earlier import.
+The launcher does the same from Home → "Importar NSP/XCI/NSZ…". `--base` may be NSP, NSZ, XCI or XCZ and `--update` NSP or NSZ; compressed and cartridge dumps are rebuilt as a temporary NSP first (`newsnap/container.py`). Build hactool with `tools/build_hactool.py`. `--exefs-only` imports code modules without merging RomFS. Outputs go to `build/extracted`, with verified hashes and receipts; a second run validates input and output hashes before reuse. A stale output is refused; use another `--work` directory to preserve the earlier import.
 
 ```powershell
 .venv\Scripts\python -m unittest discover -s tests -v

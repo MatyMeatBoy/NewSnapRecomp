@@ -81,6 +81,29 @@ def import_game(base, update, keys, work, *, hactool=None, exefs_only=False):
     for source in (base, update, keys):
         if not source.is_file():
             raise ValueError(f'Missing input: {source.name}')
+    work.mkdir(parents=True, exist_ok=True)
+    converted = []
+    try:
+        base, update = (normalized(source, work / f'converted-{tag}.nsp', converted)
+                        for tag, source in (('base', base), ('update', update)))
+        return _import(e, base, update, keys, work, hactool, exefs_only)
+    finally:
+        for path in converted:
+            path.unlink(missing_ok=True)
+
+
+def normalized(source, target, converted):
+    """A plain NSP for the NCA reader: NSZ/XCI/XCZ are rebuilt next to the output, then removed."""
+    from .container import needs_conversion, to_nsp
+    if not needs_conversion(source):
+        return source
+    print(f'Converting {source.name} to NSP (NCZ/XCI)', flush=True)
+    converted.append(target)
+    to_nsp(source, target, progress=lambda name: print(f'  {name}', flush=True))
+    return target
+
+
+def _import(e, base, update, keys, work, hactool, exefs_only):
     # Validate both identities and ticket/key availability before writing output.
     tickets, inputs = e.program_ncas(base, update, keys)
     del tickets
