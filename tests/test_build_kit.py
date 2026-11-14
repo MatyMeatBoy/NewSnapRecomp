@@ -340,6 +340,111 @@ class BuildKitAcquisitionTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'integrity'):
                 kit.ensure_build_kit(self.root)
 
+    def corrupt_cache_with_bundle(self):
+        result=kit.ensure_build_kit(self.root)
+        self.bundle()
+        (result/'sdk/bin/ninja.exe').write_bytes(b'bad cached tool')
+        self.calls.clear()
+        return result
+
+    def test_corrupt_cache_recovers_only_from_verified_bundle_and_keeps_quarantine(self):
+        previous=self.corrupt_cache_with_bundle()
+        result=kit.ensure_build_kit(self.root)
+        self.assertEqual(result,previous)
+        self.assertEqual((result/'sdk/bin/ninja.exe').read_bytes(),self.data['sdk/bin/ninja.exe'])
+        quarantines=list(self.cache.glob('.invalid-build-kit-*'))
+        self.assertEqual(len(quarantines),1)
+        self.assertEqual((quarantines[0]/'kit/sdk/bin/ninja.exe').read_bytes(),b'bad cached tool')
+        self.assertEqual(self.calls,[])
+        self.assertEqual(list(self.cache.glob('.build-kit-*')),[])
+
+    def test_cancelled_cache_repair_preserves_bad_cache_and_bundle(self):
+        previous=self.corrupt_cache_with_bundle()
+        event=threading.Event()
+        extract=kit._extract
+        def cancel(*args):
+            extract(*args);event.set()
+        with patch.object(kit,'_extract',side_effect=cancel):
+            with self.assertRaises(MaintenanceCancelled):kit.ensure_build_kit(self.root,cancel_event=event)
+        self.assertEqual((previous/'sdk/bin/ninja.exe').read_bytes(),b'bad cached tool')
+        self.assertEqual(list(self.cache.glob('.invalid-build-kit-*')),[])
+        self.assertEqual((self.root/'build-kits'/self.name).read_bytes(),self.payload)
+
+    def test_cache_repair_rejects_invalid_bundle_without_network_or_cache_changes(self):
+        previous=self.corrupt_cache_with_bundle()
+        (self.root/'build-kits'/self.name).write_bytes(b'bad bundle')
+        with self.assertRaises(kit.updater.UpdateError):kit.ensure_build_kit(self.root)
+        self.assertEqual((previous/'sdk/bin/ninja.exe').read_bytes(),b'bad cached tool')
+        self.assertEqual(self.calls,[])
+        self.assertEqual(list(self.cache.glob('.invalid-build-kit-*')),[])
+
+    def test_cache_repair_uses_concurrently_published_valid_generation(self):
+        previous=self.corrupt_cache_with_bundle()
+        extract=kit._extract
+        def publish_during_extraction(*args):
+            extract(*args)
+            (previous/'sdk/bin/ninja.exe').write_bytes(self.data['sdk/bin/ninja.exe'])
+        with patch.object(kit,'_extract',side_effect=publish_during_extraction):
+            self.assertEqual(kit.ensure_build_kit(self.root),previous)
+        self.assertEqual(list(self.cache.glob('.invalid-build-kit-*')),[])
+        self.assertEqual(self.calls,[])
+
+    def test_permission_failure_is_not_hidden_as_cache_corruption(self):
+        previous=self.corrupt_cache_with_bundle()
+        with patch.object(kit,'_verify',side_effect=PermissionError('cache access denied')):
+            with self.assertRaises(PermissionError):kit.ensure_build_kit(self.root)
+        self.assertEqual((previous/'sdk/bin/ninja.exe').read_bytes(),b'bad cached tool')
+        self.assertEqual(list(self.cache.glob('.invalid-build-kit-*')),[])
+
+    def test_failed_cache_publication_restores_old_directory_without_erasing_it(self):
+        previous=self.corrupt_cache_with_bundle()
+        rename=Path.rename
+        def fail_candidate(path,target):
+            if path.name=='kit' and path.parent.name.startswith('.build-kit-'):
+                raise OSError('simulated publication failure')
+            return rename(path,target)
+        with patch.object(Path,'rename',fail_candidate):
+            with self.assertRaisesRegex(OSError,'publication failure'):
+                kit.ensure_build_kit(self.root)
+        self.assertEqual((previous/'sdk/bin/ninja.exe').read_bytes(),b'bad cached tool')
+        self.assertEqual(list(self.cache.glob('.invalid-build-kit-*')),[])
+        self.assertEqual(list(self.cache.glob('.build-kit-*')),[])
+
+    def test_cache_target_cannot_alias_selected_owner_data(self):
+        previous=self.corrupt_cache_with_bundle()
+        (previous/'newsnap-game.json').write_text('{}')
+        (self.root/'launcher-settings.json').write_text(json.dumps({'game_data_path':str(previous)}))
+        with self.assertRaisesRegex(kit.updater.UpdateError,'owner data'):
+            kit.ensure_build_kit(self.root)
+        self.assertEqual((previous/'sdk/bin/ninja.exe').read_bytes(),b'bad cached tool')
+        self.assertEqual(list(self.cache.glob('.invalid-build-kit-*')),[])
+
+    def test_simultaneous_repairs_publish_one_verified_generation_and_one_quarantine(self):
+        from concurrent.futures import ThreadPoolExecutor
+        previous=self.corrupt_cache_with_bundle()
+        barrier=threading.Barrier(2)
+        extract=kit._extract
+        def together(*args):
+            extract(*args)
+            barrier.wait(timeout=10)
+        with patch.object(kit,'_extract',side_effect=together),ThreadPoolExecutor(max_workers=2) as executor:
+            futures=[executor.submit(kit.ensure_build_kit,self.root) for _ in range(2)]
+            results=[future.result(timeout=15) for future in futures]
+        self.assertEqual(results,[previous,previous])
+        kit._verify(previous,self.root,self.revision,None)
+        self.assertEqual(len(list(self.cache.glob('.invalid-build-kit-*'))),1)
+        self.assertEqual(list(self.cache.glob('.build-kit-*')),[])
+        self.assertEqual(self.calls,[])
+
+    def test_cache_target_cannot_alias_selected_profile(self):
+        previous=self.corrupt_cache_with_bundle()
+        (self.root/'build').mkdir(exist_ok=True)
+        (self.root/'build/launcher.json').write_text(json.dumps({'profile':str(previous)}))
+        with self.assertRaisesRegex(kit.updater.UpdateError,'owner data'):
+            kit.ensure_build_kit(self.root)
+        self.assertEqual((previous/'sdk/bin/ninja.exe').read_bytes(),b'bad cached tool')
+        self.assertEqual(list(self.cache.glob('.invalid-build-kit-*')),[])
+
 
 if __name__ == '__main__':
     unittest.main()

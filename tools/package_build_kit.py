@@ -53,7 +53,7 @@ def package(sdk_root, destination=None, shader_tools=None, allow_dirty=False):
     target.mkdir(parents=True, exist_ok=False)
     for name in ('newsnap', 'patches', 'profiles', 'assets/icons', 'LICENSE', 'THIRD_PARTY_NOTICES.md'):
         _copy(ROOT / name, target / 'source' / name)
-    for name in ('fetch_upscaler_sdk.py', 'fetch_dlss.py'):
+    for name in ('fetch_upscaler_sdk.py', 'fetch_dlss.py', 'triage_game_log.py'):
         _copy(ROOT / 'tools' / name, target / 'source/tools' / name)
     # The pinned official SDK cache is public. It avoids network access during an
     # owner rebuild and supplies headers as well as redistributable DLLs/terms.

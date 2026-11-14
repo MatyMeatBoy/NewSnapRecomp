@@ -56,7 +56,7 @@ def _json(path, limit=MAX_JSON_BYTES):
     try:
         value=json.loads(raw.decode('utf-8-sig')) if raw is not None else None
         return value if isinstance(value,dict) else {}
-    except (ValueError,UnicodeError):
+    except (ValueError,UnicodeError,RecursionError):
         return {}
 
 
@@ -249,6 +249,16 @@ def export_diagnostics(project, destination, *, cancel_event=None):
                     _cancel(cancel_event)
                     text=_text_log(path,MAX_TEXT_BYTES)
                     if text is not None:
+                        from tools.triage_game_log import triage_lines
+                        report=triage_lines(text.splitlines())
+                        brief={key:report.get(key) for key in ('verdict','meaning','gpu','driver',
+                            'runtime','launch_identity','observed_exit_code','hints')}
+                        if report.get('fatal'):
+                            brief['fatal']={key:report['fatal'][key] for key in
+                                ('message','known','guest_pc','what','code','service') if key in report['fatal']}
+                        brief_text=json.dumps(_safe_value(brief,private),ensure_ascii=False,indent=2)
+                        if len(brief_text.encode('utf-8'))<=min(16<<10,MAX_TOTAL_BYTES-used):
+                            append('analysis/'+path.name+'.json',brief_text,16<<10,redact=False)
                         append('logs/'+path.name,text,MAX_TEXT_BYTES)
                         included+=1
             if output.tell()>MAX_TOTAL_BYTES+(64<<10):

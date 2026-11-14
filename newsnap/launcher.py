@@ -298,6 +298,11 @@ class Launcher:
         self.diagnostics_button = ttk.Button(content, text='Exportar diagnóstico…', command=self.export_diagnostics)
         self.diagnostics_button.pack(anchor='w', pady=(0, 12))
         Tooltip(self.diagnostics_button, 'Crea un ZIP local con identidad del launcher/runtime, ajustes conocidos, logs recientes y observaciones de pantalla. No incluye fotos, partidas, claves ni archivos del juego; no envía nada por Internet.')
+        self.trace_present=tk.BooleanVar(master=self.root,value=False)
+        self.trace_present_button=ttk.Checkbutton(content,text='Traza de presentación Vulkan · diagnóstico',
+            variable=self.trace_present)
+        self.trace_present_button.pack(anchor='w',pady=(0,12))
+        Tooltip(self.trace_present_button,'Añade tiempos separados de adquisición de imagen, espera de fence, presentación y recreación del swapchain al próximo inicio. No cambia VSync, VRR ni el límite de FPS. Se desactiva al cerrar el launcher; el registro puede afectar a las mediciones. Inclúyelo con Exportar diagnóstico.')
         self._help(content, 'Los cambios se aplican al próximo inicio. Estos ajustes conservan tu perfil y sus guardados.')
         languages = {'Según el sistema': '', 'Español · España': 'es', 'Español · Latinoamérica': 'es-419',
                      'English · US': 'en-US', 'English · UK': 'en-GB', 'Français': 'fr', 'Français · Canada': 'fr-CA',
@@ -543,6 +548,7 @@ class Launcher:
             widget.configure(state='disabled' if busy else 'normal')
         if hasattr(self,'home'):self.home.set_busy(busy)
         if hasattr(self,'controller_test_button'):self.controller_test_button.configure(state='disabled' if busy else 'normal')
+        if hasattr(self,'trace_present_button'):self.trace_present_button.configure(state='disabled' if busy else 'normal')
 
     def launch(self):
         if self.busy:
@@ -558,6 +564,7 @@ class Launcher:
         except ValueError as error:
             self.status.set(str(error));return
         profile = self.profile
+        self._session_diagnostic_env=({'AC_SNAP_PRESENT_TRACE':'1'} if self.trace_present.get() else {})
         required = settings.shader_preparation_required(self.project)
         command = settings.preparation_command(self.project) if self.prepare.get() or required else None
         self._set_busy(True)
@@ -590,6 +597,8 @@ class Launcher:
         logdir.mkdir(parents=True, exist_ok=True)
         session = datetime.now().strftime('%Y%m%d-%H%M%S') + '-' + uuid.uuid4().hex[:8]
         env = settings.game_environment(root=self.project)
+        env.pop('AC_SNAP_PRESENT_TRACE',None)
+        env.update(getattr(self,'_session_diagnostic_env',{}))
         hidden = subprocess.CREATE_NO_WINDOW if hasattr(subprocess, 'CREATE_NO_WINDOW') else 0
         if preparation:
             logfile = logdir / f'launcher-prepare-{session}.log'
@@ -606,11 +615,17 @@ class Launcher:
             logfile = logdir / f'launcher-game-{session}-{attempt:03d}.log'
             display_file=logdir/f'launcher-display-{session}-{attempt:03d}.json'
             env['NEWSNAP_DISPLAY_STATUS']=str(display_file.resolve())
+            command=settings.game_command(self.project, profile)
+            from .session_log import runtime_identity, write_record
             with logfile.open('x', encoding='utf-8') as log:
+                write_record(log,'start',attempt=attempt,runtime=runtime_identity(command[0]),
+                             requested_present_mode=env.get('AC_VK_PRESENT','runtime-default'))
                 started_at=time.time()
-                self.process = subprocess.Popen(settings.game_command(self.project, profile), cwd=self.project, env=env, stdout=log, stderr=subprocess.STDOUT, creationflags=hidden)
+                self.process = subprocess.Popen(command, cwd=self.project, env=env, stdout=log, stderr=subprocess.STDOUT, creationflags=hidden)
                 self.events.put(('display_file',display_file,self.process.pid,started_at))
-                return self.process.wait()
+                code=self.process.wait()
+                write_record(log,'exit',exit_code=code)
+                return code
         code = settings.supervise_game(run_attempt)
         if code:
             raise RuntimeError(settings.game_failure_message(code, logfile))
