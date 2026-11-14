@@ -71,12 +71,23 @@ static inline int snap_output_display_class(const nvn_texdesc *d, uint32_t sampl
            d->format == NVN_FORMAT_BGRA8 || d->format == NVN_FORMAT_BGRA8_SRGB;
 }
 
-// A full-screen render target of the docked game: what host scaling enlarges.
+// A full-screen (or 16:9 effect) render target of the docked game: what host scaling enlarges.
 static inline int snap_host_scale_class(const nvn_texdesc *d, uint32_t samples, int mirrored, int depth_format) {
     const uint32_t refused = NVN_TEXTURE_FLAGS_VIDEO_DECODE | NVN_TEXTURE_FLAGS_IMAGE | NVN_TEXTURE_FLAGS_LINEAR |
                              NVN_TEXTURE_FLAGS_SPARSE | NVN_TEXTURE_FLAGS_LINEAR_RENDER_TARGET;
     if (mirrored || samples != 1 || d->samples > 1 || d->target != NVN_TEXTURE_TARGET_2D) return 0;
-    if (d->width != 1920 || d->height != 1080 || d->depth > 1) return 0;
+    if (d->depth > 1) return 0;
+    // The full-screen size, and (AC_SS_CHAIN, on by default) the game's smaller
+    // exact-16:9 targets down to 192x108: half-resolution effects, bloom
+    // pyramid, luminance. Witch Time scales the same class; storage images and
+    // CPU-written textures stay native (refused above and below).
+    int full = d->width == 1920 && d->height == 1080;
+    int chain = d->width >= 192 && d->width < 1920 && d->width * 9 == d->height * 16;
+    if (chain) {
+        const char *knob = cfg_get("AC_SS_CHAIN");
+        if (knob && !strcmp(knob, "0")) chain = 0;
+    }
+    if (!full && !chain) return 0;
     if ((uint32_t)d->flags & refused) return 0;
     return (d->flags & (NVN_TEXTURE_FLAGS_DISPLAY | NVN_TEXTURE_FLAGS_COMPRESSIBLE)) || depth_format;
 }

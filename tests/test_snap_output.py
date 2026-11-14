@@ -56,7 +56,8 @@ class SnapOutputTests(unittest.TestCase):
 static const char *choice="game",*mode=NULL,*upscaling="off";
 static int portable;
 const char *cfg_value(const char *key) {if(strcmp(key,"AC_RENDER_SCALE"))abort();return choice;}
-const char *cfg_get(const char *key) {if(strcmp(key,"AC_SS_MODE"))abort();return mode;}
+static const char *chain_knob=NULL;
+const char *cfg_get(const char *key) {if(!strcmp(key,"AC_SS_CHAIN"))return chain_knob;if(strcmp(key,"AC_SS_MODE"))abort();return mode;}
 const char *cfg_upscaling(void) {return upscaling;}
 int ov_handheld(void) {return portable;}
 void rt_log(const char *f,...) {(void)f;}
@@ -108,7 +109,7 @@ int main(void) {
   if(kind==9)usable=0;
   if(kind==10)mirrored=1;
   if(kind==11)d.flags|=NVN_TEXTURE_FLAGS_LINEAR_RENDER_TARGET;
-  if(kind==12)d.width=960,d.height=540;
+  if(kind==12)d.width=1000,d.height=540;            /* not 16:9 */
   if(kind==13)d.samples=4;
   if(host(&d,samples,usable,mirrored,depth)!=1) return 10+kind;
  }
@@ -119,6 +120,16 @@ int main(void) {
  upscaling="off";
  const char *native[]={"game","50","75","100","400","garbage",""};
  for(unsigned i=0;i<sizeof native/sizeof native[0];i++) {choice=native[i];if(host(&d,1,1,0,0)!=1) return 33;}
+ /* the 16:9 chain: 960x540 and its bloom pyramid scale, 192x108 too, unless AC_SS_CHAIN=0 */
+ choice="200";
+ {nvn_texdesc c=rt(NVN_TEXTURE_FLAGS_COMPRESSIBLE);c.width=960;c.height=540;c.levels=6;
+  if(host(&c,1,1,0,0)!=2) return 50;
+  c.width=192;c.height=108;if(host(&c,1,1,0,0)!=2) return 51;
+  c.width=160;c.height=90;if(host(&c,1,1,0,0)!=1) return 52;
+  c.width=1080;c.height=720;if(host(&c,1,1,0,0)!=1) return 53;
+  c.width=960;c.height=540;c.flags|=NVN_TEXTURE_FLAGS_IMAGE;if(host(&c,1,1,0,0)!=1) return 54;
+  c.flags=NVN_TEXTURE_FLAGS_COMPRESSIBLE;chain_knob="0";if(host(&c,1,1,0,0)!=1) return 55;
+  chain_knob=NULL;}
  /* added presets and display: the monitor in full screen, the window otherwise, 1..3 */
  const char *more[]={"133","175","250","300"};float more_s[]={4.0f/3.0f,1.75f,2.5f,3};
  for(int i=0;i<4;i++){choice=more[i];if(snap_host_scale_factor()!=more_s[i]) return 34;}
