@@ -32,9 +32,32 @@ CONTROLLER_SPRITE_SHA256 = 'a8daabc38680527ad0bb4cc3115b9b07e157b0ea4f00aac27d1d
 CONTROLLER_SPRITE_HEADER = bytes.fromhex(
     '89504e470d0a1a0a0000000d49484452000000680000004808060000001ab0b097')
 
+# Owner-requested, visually reviewed official promotional artwork. Its source
+# and copyright are recorded in assets/launcher/{README.md,source-pins.json};
+# those mutable documents cannot grant permission to different indexed bytes.
+# No project-code or redistribution licence is implied by these narrow pins.
+PROMOTIONAL_JPEG_HEADER = bytes.fromhex('ffd8ffe000104a46494600010100000100010000')
+PROMOTIONAL_ASSETS = {
+    'assets/launcher/lental-hero.jpg': (
+        21580, PROMOTIONAL_JPEG_HEADER,
+        '4758d49e5aa462310c050147d2a9d96bb0b09a377389bec0163767a0a7978f81'),
+    'assets/launcher/lental-explore.jpg': (
+        4966, PROMOTIONAL_JPEG_HEADER,
+        'ef88386ca3469a99c28ac2fa0d71130d55e7066b999d263773a6cc5ab90e87b2'),
+    'assets/launcher/snap-logo.png': (
+        41783, bytes.fromhex('89504e470d0a1a0a0000000d49484452000001e40000011b08030000003cb40707'),
+        '8cb13d97a86a9a2c88d29579597775aa02466ca7acbaf2dad828fe1d7997299b'),
+}
+
 
 def violations(path, content, mode='100644'):
     p = PurePosixPath(path)
+    if path in PROMOTIONAL_ASSETS:
+        size, header, checksum = PROMOTIONAL_ASSETS[path]
+        if (mode == '100644' and len(content) == size and content.startswith(header) and
+                hashlib.sha256(content).hexdigest() == checksum):
+            return []
+        return ['official promotional artwork changed; review its approved path, bytes and mode']
     if path == CONTROLLER_SPRITE:
         if (mode == '100644' and len(content) == 8510 and
                 content.startswith(CONTROLLER_SPRITE_HEADER) and
@@ -48,7 +71,7 @@ def violations(path, content, mode='100644'):
     errors = []
     if mode == '160000':
         return [] if path == 'third_party/astral' else ['unapproved submodule']
-    if p.suffix.lower() in PRIVATE or p.name in ('main', 'sdk', 'rtld', 'config.local.toml'):
+    if p.suffix.lower() in PRIVATE | {'.jpg', '.jpeg', '.png'} or p.name in ('main', 'sdk', 'rtld', 'config.local.toml'):
         errors.append('private input or binary')
     if p.parts[0] in ('build', 'generated', 'game', 'toolchain', '.venv'):
         errors.append('private output directory')
