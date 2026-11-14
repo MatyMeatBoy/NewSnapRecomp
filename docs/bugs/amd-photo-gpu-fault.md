@@ -202,3 +202,14 @@ primer nivel. Para separar FSR 4: repetir además con el escalador en FSR 3.1.
   desconocida.
 - El cierre de la sesión 1 no ocurrió al hacer una foto; no está demostrado que
   comparta causa con el de la sesión 2.
+
+## Pruebas por lotes (`tools/pruebas-amd/`)
+
+Quince `.bat` que arrancan `newsnap.exe` con un ajuste distinto cada uno
+mediante variables de entorno (mandan sobre `newsnap.ini`, que no se modifica)
+y copian el log a `logs\pruebas\<nombre>.log` al cerrar el juego. Incluye una
+referencia sin cambios, el volcado de F12 y una combinación conservadora con
+todo a la vez; `LEEME.txt` explica el orden. Se copian junto a `newsnap.exe`.
+Comprobado en seco con un ejecutable de relleno (variables fijadas, salida y
+copia del log); no ejecutado con el juego ni en AMD. El empaquetado de la
+versión de prueba debe incluir la carpeta: es punto de integración de RTX tester.
