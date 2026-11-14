@@ -1,84 +1,78 @@
-# INPUT-01 · Continuidad de cámara y sensores
+# INPUT-01 · Camera and sensor continuity
 
-Estado: propuesta para revisión independiente. Responsable: RTX tester, 2026-11-13.
+Status: proposal for independent review. Owner: RTX tester, 2026-11-13.
 
-## Causas reproducidas en funciones del donor
+## Causes reproduced in the donor's functions
 
-1. `mouse_camera` conserva `held[2]` durante el mismo frame presentado. Los
-   backends borran los deltas del ratón al recapturar, pero el consumidor no sabe
-   que hubo una liberación/recaptura si ambas ocurrieron entre dos lecturas del
-   juego. Reutiliza entonces la inclinación anterior, aunque el ratón esté quieto.
-2. `motion_main` llama `sensors_ready` antes de comprobar `AC_MOTION`. Por tanto
-   puede encender sensores con movimiento desactivado. Si se habilita gyro y
-   falla habilitar acelerómetro, deja el gyro habilitado parcialmente.
-3. Desconectar/cambiar mando, desactivar movimiento o perder una lectura no
-   reinicia la fusión. El anillo conserva muestras hasta 200 ms y un mando nuevo
-   hereda ángulo/orientación anteriores. No es una calibración incorrecta del
-   sensor: el fixture reproduce el defecto con muestras sintéticas exactas.
-4. `input_motion_enabled` duplica la caché de configuración con dos estáticos
-   no sincronizados (`on`, `seen`) compartidos entre el hilo gyro y lectores del
-   juego. Una lectura antigua pausada puede terminar después de una lectura de
-   la nueva configuración y dejar `on` antiguo con `seen` nuevo: el movimiento
-   queda habilitado aunque la configuración vigente diga apagado.
+1. `mouse_camera` keeps `held[2]` during the same presented frame. The backends clear the
+   mouse deltas on recapture, but the consumer does not know there was a release/recapture
+   if both happened between two game reads. It then reuses the previous tilt, even with the
+   mouse still.
+2. `motion_main` calls `sensors_ready` before checking `AC_MOTION`. So it can turn sensors on
+   with motion off. If the gyro is enabled and enabling the accelerometer fails, it leaves the
+   gyro partially enabled.
+3. Disconnecting/changing controller, turning motion off or losing a read does not reset the
+   fusion. The ring keeps samples up to 200 ms and a new controller inherits the previous
+   angle/orientation. This is not a wrong sensor calibration: the fixture reproduces the
+   defect with exact synthetic samples.
+4. `input_motion_enabled` duplicates the configuration cache with two unsynchronised statics
+   (`on`, `seen`) shared between the gyro thread and the game's readers. A paused old read
+   can finish after a read of the new configuration and leave the old `on` with the new
+   `seen`: motion stays enabled even though the current configuration says off.
 
-Estas causas están verificadas en CPU; no se ha atribuido causalmente a ellas
-la cámara del propietario. El drift físico del gyro o un stick fuera de su zona
-muerta configurada todavía requieren evidencia de su dispositivo.
+These causes are verified on CPU; the owner's camera has not been causally attributed to
+them. Physical gyro drift or a stick outside its configured dead zone still need evidence
+from their device.
 
-## Corrección propuesta
+## Proposed fix
 
-`newsnap/camera_input_adapt.py` añade ediciones puntuales:
+`newsnap/camera_input_adapt.py` adds targeted edits:
 
-- Los backends Win32 y SDL cuentan cada transición efectiva de captura; la
-  cámara invalida su muestra retenida cuando cambia ese contador, incluso sin
-  cambiar el frame. La acumulación/conversión original de movimiento se conserva.
-- El sondeo comprueba `AC_MOTION` antes de habilitar/leer sensores. Al apagarlo,
-  deshabilita los sensores previamente iniciados. Una habilitación parcial se
-  revierte.
-- La fusión real se reinicia al perder/cambiar fuente, tras cerrar/reabrir el
-  mismo identificador y cuando falla una lectura que seguía a muestras válidas.
-  La lectura siguiente empieza una referencia nueva; no integra a través de esa
-  discontinuidad. El cambio se observa en el siguiente sondeo de 4 ms.
-- `input_motion_enabled` consulta directamente `cfg_bool`, cuya publicación ya
-  es atómica, sin añadir una segunda caché compartida que pueda quedar obsoleta.
+- The Win32 and SDL backends count each effective capture transition; the camera invalidates
+  its held sample when that counter changes, even without a frame change. The original
+  motion accumulation/conversion is kept.
+- Polling checks `AC_MOTION` before enabling/reading sensors. When it is turned off, the
+  previously started sensors are disabled. A partial enable is reverted.
+- The real fusion resets when the source is lost/changed, after closing/reopening the same
+  identifier and when a read fails after valid samples. The next read starts a new reference;
+  it does not integrate across that discontinuity. The change is seen at the next 4 ms poll.
+- `input_motion_enabled` queries `cfg_bool` directly, whose publication is already atomic,
+  without adding a second shared cache that can go stale.
 
-No se modifican sensibilidad, defaults, zonas muertas, ejes, simulación ni
-algoritmo de fusión. El mando conserva su comportamiento de entrada en segundo
-plano; la corrección de ratón sigue las transiciones del cursor.
+Sensitivity, defaults, dead zones, axes, simulation and the fusion algorithm are not changed.
+The controller keeps its background input behaviour; the mouse fix follows the cursor's
+transitions.
 
-## Pruebas y evidencia
+## Tests and evidence
 
 ```
 .venv\Scripts\python -X utf8 -m unittest tests.test_camera_input -v
 ```
 
-Seis pruebas compilan/ejecutan las funciones C reales con APIs de plataforma/SDL
-simuladas. Incluyen ambos backends de captura, recaptura sin cambio de frame,
-reposo inicial, retención legítima dentro del frame, siguiente frame quieto,
-liberación y frame detenido; movimiento apagado desde inicio, apagar/encender,
-desconectar/reconectar, cambiar mando, reabrir mismo ID, fallo parcial de sensores,
-fallo de lectura, reposo y giro continuo; y zona muerta original con stick neutro,
-ruido dentro de la zona configurada y entrada deliberada de amplitud completa.
-La fusión procede íntegra de `motion_fusion.c`, no de una reimplementación Python.
-Una prueba adicional usa dos hilos Win32 reales y eventos para detener una lectura
-vieja, aplicar/apagar y leer el ajuste nuevo, y después completar la lectura vieja;
-la llamada posterior debe seguir devolviendo apagado. El donor falla exactamente
-en esa última comprobación. Los sensores siguen simulados y no se inicia SDL.
-También se verifica sintaxis de `input.c`, `input_win.c` e `input_sdl.c` completos
-con headers SDL/Vulkan/Win32 del toolchain.
+Six tests compile/run the real C functions with simulated platform/SDL APIs. They include
+both capture backends, recapture without a frame change, initial rest, legitimate holding
+within the frame, a still next frame, release and a stopped frame; motion off from the start,
+off/on, disconnect/reconnect, changing controller, reopening the same ID, partial sensor
+failure, read failure, rest and continuous turning; and the original dead zone with a neutral
+stick, noise inside the configured zone and deliberate full-amplitude input. The fusion comes
+entirely from `motion_fusion.c`, not from a Python reimplementation. An extra test uses two
+real Win32 threads and events to stop an old read, apply/turn off and read the new setting,
+then complete the old read; the later call must still return off. The donor fails exactly at
+that last check. Sensors stay simulated and SDL is not started. The syntax of the complete
+`input.c`, `input_win.c` and `input_sdl.c` is also checked with the toolchain's
+SDL/Vulkan/Win32 headers.
 
-`NEWSNAP_INPUT_BASELINE=1` omite el adaptador en las mismas pruebas: once
-subcasos fallan sobre el donor. Con el adaptador pasan. Logs locales:
-`build/v05-camera-input-red.txt` y `build/v05-camera-input-green.txt`.
+`NEWSNAP_INPUT_BASELINE=1` skips the adapter in the same tests: eleven sub-cases fail on the
+donor. With the adapter they pass. Local logs: `build/v05-camera-input-red.txt` and
+`build/v05-camera-input-green.txt`.
 
-No se inició SDL real, ningún sensor/vibración físico, juego ni prueba GPU.
-Tampoco se modificaron datos o configuración del propietario.
+No real SDL, physical sensor/rumble, game or GPU test was started. No owner data or
+configuration was modified.
 
-## Integración y límites
+## Integration and limits
 
-El coordinador incorporó `camera_input_adapt.edits` a `newsnap/adapt.py` y
-compiló el runtime integrado `06a8d9df…`. La revisión independiente de locks,
-captura y ciclo de sensores aprobó los cambios; su observación sobre la caché
-compartida de `input_motion_enabled` también se corrigió con una regresión de
-dos hilos reales. Queda pendiente la aceptación con el mouse/mando físico del
-propietario. No atribuir el caso del propietario solo por pasar los fixtures.
+The coordinator added `camera_input_adapt.edits` to `newsnap/adapt.py` and built the
+integrated runtime `06a8d9df…`. The independent review of locks, capture and the sensor cycle
+approved the changes; its remark about `input_motion_enabled`'s shared cache was also fixed
+with a two-real-thread regression. Acceptance with the owner's physical mouse/controller is
+pending. Do not attribute the owner's case just because the fixtures pass.
