@@ -205,11 +205,21 @@ primer nivel. Para separar FSR 4: repetir además con el escalador en FSR 3.1.
 
 ## Pruebas por lotes (`tools/pruebas-amd/`)
 
-Quince `.bat` que arrancan `newsnap.exe` con un ajuste distinto cada uno
-mediante variables de entorno (mandan sobre `newsnap.ini`, que no se modifica)
-y copian el log a `logs\pruebas\<nombre>.log` al cerrar el juego. Incluye una
-referencia sin cambios, el volcado de F12 y una combinación conservadora con
-todo a la vez; `LEEME.txt` explica el orden. Se copian junto a `newsnap.exe`.
-Comprobado en seco con un ejecutable de relleno (variables fijadas, salida y
-copia del log); no ejecutado con el juego ni en AMD. El empaquetado de la
-versión de prueba debe incluir la carpeta: es punto de integración de Codex.
+Seis `.bat`, en orden de descarte. Cada uno arranca `newsnap.exe` con sus
+ajustes mediante variables de entorno (mandan sobre `newsnap.ini`, que no se
+modifica) y copia el log a `logs\pruebas\<nombre>.log` al cerrar el juego.
+
+| Prueba | Ajustes | Para qué |
+|---|---|---|
+| `1-todo-conservador` | `REPLAY_ASYNC=0`, `PIPE_SKIP=strict`, `ASTC=cpu`, `UPSCALING=off`, `TEX_ALIAS=0`, `TEX_PREFETCH=0`, `MEMORY=import`, `VK_PRESENT=fifo` | Decide: si sigue mal, ninguna de las sospechas es la causa y se pasa a la 6 |
+| `2-replay-sincrono` | `REPLAY_ASYNC=0` | Sospecha principal: carrera con el hilo de reproducción (el retrato cambia con el modo de presentación) |
+| `3-sin-omitir-dibujos` | `PIPE_SKIP=strict` | Camino propio de RDNA 2: dibujos omitidos mientras compila su pipeline |
+| `4-astc-por-cpu` | `ASTC=cpu` | Texturas de interfaz por CPU en vez del shader de cómputo |
+| `5-sin-fsr4` | `UPSCALING=fsr3` | Cierres: los tres logs con fallo de GPU tenían FSR 4 activo |
+| `6-volcado-F12` | `DUMP_KEY=1`, `DUMP_N=2` | Volcado del fotograma con el defecto en pantalla |
+
+El orden de sospecha es una estimación a partir de las capturas, no un
+resultado. Se copian junto a `newsnap.exe`. Comprobado en seco con un
+ejecutable de relleno (variables fijadas, salida y copia del log); no ejecutado
+en AMD. El empaquetado de la versión de prueba debe incluir la carpeta: es
+punto de integración de Codex.
