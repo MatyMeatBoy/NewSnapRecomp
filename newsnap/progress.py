@@ -36,7 +36,7 @@ def parse_progress_line(line):
     """Recognize public tooling counters/phase boundaries, never echo paths."""
     if len(line.encode('utf-8',errors='replace')) > MAX_LINE_BYTES:return None
     line=ANSI.sub('',line).strip()
-    for pattern,stage,label in ((NINJA,'compile','Compilando archivos locales'),
+    for pattern,stage,label in ((NINJA,'compile','Compilando · lote actual'),
                                 (EMITTED,'generate','Generando código local')):
         match=pattern.match(line)
         if match:
