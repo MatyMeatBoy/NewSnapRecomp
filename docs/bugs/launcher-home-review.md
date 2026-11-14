@@ -1,49 +1,45 @@
-# Inicio y actualizaciones · revisión 0.5
+# Home and updates · 0.5 review
 
-2026-11-13 · trabajo integrado, sin publicar 0.5.
+2026-11-13 · integrated work, 0.5 not published.
 
-Inicio muestra carga/verificación de GameData, versión, perfil y lanzamiento.
-Sin datos, iniciar abre el selector y cancelar conserva Inicio; ya no navega a
-Actualizaciones. El constructor no crea GameData ni escanea el álbum. Las
-acciones principales permanecen visibles a escala de Windows 125 %.
+Home shows GameData loading/verification, version, profile and launch. Without data, starting
+opens the selector and cancelling keeps Home; it no longer navigates to Updates. The constructor
+does not create GameData or scan the album. The main actions stay visible at 125 % Windows
+scaling.
 
-La revisión independiente detectó y se corrigieron:
+The independent review found, and these were fixed:
 
-- Cerrar una prueba de mando fallida podía liberar el estado ocupado de una
-  operación posterior. La ventana ahora libera solo su propia adquisición,
-  una vez, incluso ante errores de limpieza.
-- Volver a seleccionar GameData sustituía el perfil personalizado por el
-  predeterminado. Ahora carga la preferencia de la carpeta seleccionada.
-- La falta de bibliotecas de shaders podía bloquear la reconstrucción de un
-  runtime antiguo. La comprobación ocurre después de evaluar su reconstrucción.
-- Una observación de pantalla caducada dejaba visibles los datos del monitor
-  anterior. Ahora se retiran al caducar o cerrar el juego. Un error Vulkan no
-  puede validar presentación fija/variable.
+- Closing a failed controller test could release the busy state of a later operation. The window
+  now releases only its own acquisition, once, even on cleanup errors.
+- Selecting GameData again replaced the custom profile with the default one. It now loads the
+  selected folder's preference.
+- Missing shader libraries could block the rebuild of an old runtime. The check happens after
+  evaluating its rebuild.
+- An expired display observation left the previous monitor's data visible. It is now removed when
+  it expires or the game closes. A Vulkan error cannot validate fixed/variable presentation.
 
-Las pruebas de regresión reproducen los fallos sin abrir el juego ni modificar
-datos originales. Construcción Tk real y comprobación visual en
-`build/launcher-audit-v05/verification.json` y `after-home.jpg`.
+The regression tests reproduce the failures without opening the game or modifying original data.
+Real Tk build and visual check in `build/launcher-audit-v05/verification.json` and
+`after-home.jpg`.
 
-Prueba real de red/transacción en
-`build/v05-updater-manual-smoke-bb54b438/verification.json`:
+Real network/transaction test in `build/v05-updater-manual-smoke-bb54b438/verification.json`:
 
-- Consulta automática: ninguna estable disponible, sin inventar una estable.
-- Catálogo manual: 0.4, 0.3 y 0.2 alpha publicadas con launcher verificable.
-- Descarga real 0.4 desde el repositorio, checksum y manifiesto verificados.
-- Instalación y reinstalación de la misma versión en carpeta aislada.
-- 1102 archivos instalados; conservados sentinelas de GameData/perfil/guardado
-  y preferencias del launcher. Ningún dato real del propietario modificado.
+- Automatic query: no stable available, without inventing one.
+- Manual catalogue: published 0.4, 0.3 and 0.2 alphas with a verifiable launcher.
+- Real 0.4 download from the repository, checksum and manifest verified.
+- Install and reinstall of the same version in an isolated folder.
+- 1102 files installed; GameData/profile/save sentinels and launcher preferences kept. No real
+  owner data modified.
 
-No equivale a una entrega 0.5 ni a validación física de mando/AMD. La prueba de
-instalación ejercita la API del updater; el reinicio del ejecutable congelado se
-volverá a comprobar al empaquetar el candidato final.
+This is not a 0.5 delivery or a physical controller/AMD validation. The install test exercises
+the updater's API; restarting the frozen executable will be checked again when packaging the
+final candidate.
 
-El launcher de desarrollo también fue congelado y su `--selftest-launcher`
-terminó con código 0 usando un PATH sin Python instalado. Los fingerprints de
-fuentes coinciden y el PNG de mando incluido conserva el SHA original. Evidencia:
-`build/launcher-audit-v05/frozen-verification.json`. No se publicó este ejecutable;
-su identidad continúa en 0.4 mientras la puerta de salida 0.5 permanece abierta.
+The development launcher was also frozen and its `--selftest-launcher` ended with code 0 using a
+PATH without an installed Python. The source fingerprints match and the included controller PNG
+keeps its original SHA. Evidence: `build/launcher-audit-v05/frozen-verification.json`. This
+executable was not published; its identity stays at 0.4 while the 0.5 exit gate is open.
 
-La prueba visual del mando, con entradas sintéticas y sin sensores físicos, está
-en `build/launcher-audit-v05/controller-switch-after.jpg`. La selección entre
-mandos, desconexión y liberación exclusiva del estado ocupado tienen regresiones.
+The controller's visual test, with synthetic input and no physical sensors, is in
+`build/launcher-audit-v05/controller-switch-after.jpg`. Choosing between controllers,
+disconnection and exclusive release of the busy state have regressions.
