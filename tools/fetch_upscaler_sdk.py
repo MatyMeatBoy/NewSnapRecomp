@@ -19,6 +19,11 @@ FILES = {
     '3rdpartynotice.md': (2519, '3b69b1a1011622557a81b55a9a211dd797d01b8160924a5ec51b4c3432d33a4f'),
     PREFIX + 'signedbin/amd_fidelityfx_loader_vk.dll': (39184, '38a56a01fb3565c0757d9f5c1e4e69de4b65e5f2e5769b323b200dc1f142bab9'),
     PREFIX + 'signedbin/amd_fidelityfx_upscaler_vk.dll': (36135696, '4a7e895af6e0b615d40a84d59eb8c2b1054ad91cdd0c739567940270d51bdab7'),
+    # FG-01: FSR frame generation (Vulkan provider and its C API headers), same pinned commit.
+    PREFIX + 'framegeneration/include/ffx_framegeneration.h': (26606, 'bc78a18aa95f5157b4699b0602700592b624788c5bc55d1762cb46a1b6557ca1'),
+    PREFIX + 'framegeneration/include/ffx_framegeneration_api_types.h': (4976, '396596af3df63310674e8036abd2ad0fcd061e61334e7a2c76653a2be3c686b4'),
+    PREFIX + 'framegeneration/include/vk/ffx_api_framegeneration_vk.h': (11044, '321d3138005757759d9ee05281d3dcd4cc2c3608bc1d524f9b1d0a6dadd49f61'),
+    PREFIX + 'signedbin/amd_fidelityfx_framegeneration_vk.dll': (36806928, 'd002dabff8c5e71eaa715fc99438cd4dc81230262a7897b16bc402efec3498b4'),
 }
 
 
