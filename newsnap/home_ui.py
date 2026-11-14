@@ -32,6 +32,8 @@ class HomePanel:
         actions=ttk.Frame(card);actions.pack(anchor='w')
         self.load_button=ttk.Button(actions,text='Cargar GameData…',command=self.choose_data)
         self.load_button.pack(side='left')
+        self.import_button=ttk.Button(actions,text='Importar NSP/XCI…',command=self.import_dump)
+        self.import_button.pack(side='left',padx=(8,0))
         self.verify_button=ttk.Button(actions,text='Verificar datos',command=self.verify)
         self.verify_button.pack(side='left',padx=8)
         self.cancel_button=ttk.Button(actions,text='Cancelar',command=self.cancel.set,state='disabled')
@@ -71,6 +73,7 @@ class HomePanel:
 
     def set_busy(self,busy):
         self.load_button.configure(state='disabled' if busy else 'normal')
+        self.import_button.configure(state='disabled' if busy else 'normal')
         self.verify_button.configure(state='disabled' if busy else 'normal')
         self.cancel_button.configure(state='normal' if self.verifying else 'disabled')
         if busy and not self.progress.active:self.progress.begin('Preparando el inicio…')
@@ -80,6 +83,43 @@ class HomePanel:
         if self.launcher.busy:return
         chosen=filedialog.askdirectory(parent=self.launcher.root,title='Elige tu carpeta GameData',mustexist=True)
         if not chosen:return
+        self._use_data(chosen)
+
+    def import_dump(self):
+        """Import the base game (NSP or XCI), the 2.0.1 update (NSP) and prod.keys into GameData.
+
+        Runs `newsnap import` with the build kit's Python (cryptography, the pinned NCA reader) and the
+        bundled hactool for the update RomFS; the owner's files are only read."""
+        if self.launcher.busy:return
+        ask=lambda title,types:filedialog.askopenfilename(parent=self.launcher.root,title=title,filetypes=types)
+        base=ask('Juego base de New Pokémon Snap',[('Volcado del juego','*.nsp *.xci'),('Todos','*.*')])
+        if not base:return
+        update=ask('Actualización 2.0.1',[('Actualización','*.nsp'),('Todos','*.*')])
+        if not update:return
+        keys=ask('Tus claves de consola (prod.keys)',[('Claves','*.keys'),('Todos','*.*')])
+        if not keys:return
+        from pathlib import Path
+        from .upstream import ROOT
+        hactool=ROOT/'tools/hactool.exe'
+        if not hactool.is_file():hactool=ROOT/'toolchain/hactool/hactool.exe'
+        if not hactool.is_file():
+            self.launcher.status.set('Falta hactool.exe junto al launcher: reinstala el paquete.');return
+        work=Path(self.launcher.project)/'GameData-import'
+        self.verifying=True;self.cancel.clear();self.launcher._set_busy(True)
+        self.progress.report('Importando tu juego (ExeFS y RomFS)… puede tardar varios minutos')
+        def job():
+            try:
+                from .build_kit import ensure_build_kit
+                from .maintenance import run_build_command
+                kit=Path(ensure_build_kit(self.launcher.project,cancel_event=self.cancel))
+                command=[kit/'python/python.exe','-B','-E','-s','-m','newsnap','import','--base',base,'--update',update,
+                         '--keys',keys,'--work',work,'--hactool',hactool]
+                run_build_command(command,kit/'source',Path(self.launcher.project)/'logs/import.log',self.cancel)
+                self.events.put(('imported',str(work/'updated')))
+            except Exception as error:self.events.put(('error','Importación sin completar: '+str(error)))
+        threading.Thread(target=job,daemon=True).start()
+
+    def _use_data(self,chosen):
         try:
             selected=select_data_dir(self.launcher.project,chosen)
             self.launcher.ini=runtime_dir(self.launcher.project)/'newsnap.ini'
@@ -115,7 +155,10 @@ class HomePanel:
         try:
             while True:
                 kind,value=self.events.get_nowait()
-                self.verifying=False;self.launcher._set_busy(False);self.refresh()
+                self.verifying=False;self.launcher._set_busy(False)
+                if kind=='imported':
+                    self._use_data(value);self.progress.finish('Juego importado');continue
+                self.refresh()
                 self.launcher.status.set('Datos del juego verificados.' if kind=='verified' else value)
                 self.progress.finish('Datos del juego verificados' if kind=='verified' else 'Verificación sin completar',error=kind!='verified')
                 if kind=='verified' and self.resume:self.launcher.root.after(50,self.launcher.launch)
