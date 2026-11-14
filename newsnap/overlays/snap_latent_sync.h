@@ -8,10 +8,6 @@
 #include <stdint.h>
 #include <string.h>
 
-#ifdef _WIN32
-#include <windows.h>
-#include <dwmapi.h>   // DWM_TIMING_INFO only; the function is loaded at run time, no import library
-
 static inline int snap_latent_on(const char *fps) { return fps && !strcmp(fps, "display"); }
 
 // Pure part, unit-tested: the time in the middle of the refresh interval nearest to at.
@@ -22,6 +18,10 @@ static inline uint64_t snap_vblank_mid_of(uint64_t at, uint64_t vblank_ns, doubl
     double t = (double)vblank_ns + (r + 0.5) * period_ns;
     return t > 0 ? (uint64_t)t : at;
 }
+
+#ifdef _WIN32
+#include <windows.h>
+#include <dwmapi.h>   // DWM_TIMING_INFO only; the function is loaded at run time, no import library
 
 static inline uint64_t snap_vblank_mid(uint64_t at, const char *fps) {
     typedef HRESULT (WINAPI *TimingFn)(HWND, DWM_TIMING_INFO *);
