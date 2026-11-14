@@ -92,6 +92,12 @@ static uint32_t ffx_format(VkFormat f) {
     }
 }
 
+// Snap's window textures are sRGB; FFX reads and writes them as UNORM bytes (the transfer
+// function says SRGB), through views the runtime's MUTABLE_FORMAT colour images allow.
+static VkFormat unorm(VkFormat f) {
+    return f == VK_FORMAT_R8G8B8A8_SRGB ? VK_FORMAT_R8G8B8A8_UNORM : f == VK_FORMAT_B8G8R8A8_SRGB ? VK_FORMAT_B8G8R8A8_UNORM : f;
+}
+
 static struct FfxApiResource res(VkImage image, VkFormat f, uint32_t w, uint32_t h, int uav, int depth) {
     struct FfxApiResource r;
     memset(&r, 0, sizeof r);
@@ -261,7 +267,7 @@ static int output_locked(VkFormat fmt, uint32_t w, uint32_t h) {
     }
     VkImageCreateInfo ii = {.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO, .imageType = VK_IMAGE_TYPE_2D, .format = fmt,
                             .extent = {w, h, 1}, .mipLevels = 1, .arrayLayers = 1, .samples = VK_SAMPLE_COUNT_1_BIT,
-                            .tiling = VK_IMAGE_TILING_OPTIMAL,
+                            .tiling = VK_IMAGE_TILING_OPTIMAL, .flags = VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT,
                             .usage = VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT |
                                      VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
                             .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED};
@@ -286,6 +292,7 @@ static void barrier(VkCommandBuffer cb, VkImage img, VkImageLayout from, VkImage
 
 VkImage snap_fg_present_source(VkCommandBuffer cb, VkImage src, VkFormat fmt, int w, int h) {
     if (!snap_fg_enabled() || !src || w <= 0 || h <= 0) return VK_NULL_HANDLE;
+    fmt = unorm(fmt);
     plat_mutex_lock(&fg_lock);
     VkImage result = VK_NULL_HANDLE;
     uint64_t id = G.armed;
