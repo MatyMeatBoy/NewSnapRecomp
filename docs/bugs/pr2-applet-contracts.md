@@ -1,79 +1,75 @@
-# PR #2: correcciones del contrato de applets
+# PR #2: applet contract fixes
 
-Revisión para integración 0.6 desde `732671b`. No valida AMD ni modifica la
-continuación JPEG, corregida separadamente desde 0.3. Tampoco identifica el
-origen del teclado de Windows. No se tocaron progreso, fotos o guardados.
+Review for the 0.6 integration from `732671b`. It does not validate AMD or change the JPEG
+continuation, fixed separately since 0.3. Nor does it identify the origin of the Windows
+keyboard. Progress, photos and saves were not touched.
 
-## Procedencia y booleano de red
+## Provenance and the network boolean
 
-Inspección local de los inputs privados Snap 2.0.1, sin copiarlos a Git:
+Local inspection of the private Snap 2.0.1 inputs, without copying them to Git:
 
 - Main build ID `ddb900ff04a912ed42430508389853cfaf1accce`.
 - SDK build ID `0617f669301f922a811886048dd7b41a249cc1b3`, SHA-256
   `86cbb6d9f9e2d83dca0fed1f2081ff3adb88ad5b663b6d05b551927769505574`.
 
-`nn::nifm::HandleNetworkRequestErrorResult` en SDK `+0x32e950` normaliza
-el retorno a bit 0 en ambas salidas: es **bool**, no `Result`. El miembro en
-`+0x330170` devuelve false en fallos intermedios; al terminar solo devuelve true
-si su resultado interno es cero o `0x17c6e`. La política host sin conexión
-devuelve ahora `false` exacto, sin solicitar reintento.
+`nn::nifm::HandleNetworkRequestErrorResult` at SDK `+0x32e950` normalises the return to bit 0
+on both exits: it is a **bool**, not a `Result`. The member at `+0x330170` returns false on
+intermediate failures; at the end it returns true only if its internal result is zero or
+`0x17c6e`. The offline host policy now returns exactly `false`, without asking for a retry.
 
-Los tres callers main `+0x537a00`, `+0x537a2c`, `+0x53b7ec` usan PLT
-`+0xa383a0`, GOT `+0xcc7278`, y prueban bit 0 en la instrucción siguiente.
-El valor anterior 622 tenía ese bit a cero, por lo que coincidía accidentalmente
-con la rama false de estos callers; no se ha demostrado que cambiara esa rama
-en este dump. Sin embargo, era un booleano inválido y una prueba por valor no
-cero produciría una respuesta contradictoria. El fixture exige cero exacto y
-coincidencia entre ambos gates; falla contra el C original y pasa al corregirlo.
+The three main callers `+0x537a00`, `+0x537a2c`, `+0x53b7ec` use PLT `+0xa383a0`, GOT
+`+0xcc7278`, and test bit 0 in the next instruction. The old value 622 had that bit clear,
+so it accidentally matched these callers' false branch; it was not shown to change that
+branch in this dump. It was, however, an invalid boolean, and a non-zero test would give a
+contradictory answer. The fixture requires exactly zero and agreement between both gates;
+it fails against the original C and passes once fixed.
 
-## Cuenta: no sustituir descripciones desconocidas
+## Account: do not substitute unknown descriptions
 
-Los wrappers SDK `+0x15550`, `+0x15580`, `+0x15650` delegan en servicios o
-clientes de cuenta. Su código no proporciona por sí solo el resultado exacto
-de una consola sin cuenta enlazada. No se inventa una descripción alternativa.
+The SDK wrappers `+0x15550`, `+0x15580`, `+0x15650` delegate to account services or
+clients. Their code alone does not give the exact result of a console without a linked
+account. No alternative description is invented.
 
-Los callers **sí distinguen descripciones**, además de módulo/éxito:
+The callers **do distinguish descriptions**, besides module/success:
 
-- Main `+0x538cac..0x538cc4` y `+0x538d50..0x538d68` clasifican módulo 124,
-  descripciones 200–269, como estado 3.
-- `+0x538e34..0x538e5c` distingue también 430–499.
-- `+0x1f2b10..0x1f2b28` usa 430–499 para una ruta con reintentos acotados.
+- Main `+0x538cac..0x538cc4` and `+0x538d50..0x538d68` classify module 124, descriptions
+  200–269, as state 3.
+- `+0x538e34..0x538e5c` also distinguishes 430–499.
+- `+0x1f2b10..0x1f2b28` uses 430–499 for a path with bounded retries.
 
-El anterior 124/100 quedaba fuera de esos rangos y llegaba al manejador común
-`+0x5443d0`; no se acreditó que esa ruta fuera una cancelación segura equivalente.
-Se retiraron únicamente los cuatro overrides especulativos de ensure/id/token.
-El SDK original sigue atendiendo esas llamadas, **sin soporte host garantizado**:
-pueden fallar por servicios no implementados o cliente no inicializado.
+The old 124/100 fell outside those ranges and reached the common handler `+0x5443d0`; that
+path was not shown to be an equivalent safe cancellation. Only the four speculative
+ensure/id/token overrides were removed. The original SDK still serves those calls,
+**without guaranteed host support**: they can fail on unimplemented services or an
+uninitialised client.
 
-Se conserva `IsNetworkServiceAccountAvailable`: consulta exitosa del estado local
-con un único byte false; no crea cuenta, ID, token ni contexto asíncrono. El
-fixture verifica el byte adyacente intacto y la lista exacta de 13 registros,
-impidiendo reintroducir inadvertidamente los cuatro overrides retirados.
+`IsNetworkServiceAccountAvailable` is kept: a successful query of the local state with a
+single false byte; it creates no account, ID, token or async context. The fixture checks
+that the adjacent byte is untouched and the exact list of 13 registrations, preventing the
+four removed overrides from coming back by accident.
 
-## Otros límites revisados
+## Other limits reviewed
 
-`ApplicationErrorArg` usa número u32 en +8 y textos en +0x14/+0x814, verificados
-en constructores SDK `+0x15c650/+0x15c670`. Las copias para el log están acotadas.
-`ErrorResultVariant` verifica tag de 4 bytes y payload máximo de 8 en +4
-(constructores `+0x15ca00/+0x15ca20`): el log lee solo esos 12 bytes. Un fixture
-con exactamente 12 bytes legibles falla antes de esa corrección y pasa después.
+`ApplicationErrorArg` uses a u32 number at +8 and texts at +0x14/+0x814, checked in the SDK
+constructors `+0x15c650/+0x15c670`. The copies for the log are bounded.
+`ErrorResultVariant` checks a 4-byte tag and a payload of at most 8 at +4 (constructors
+`+0x15ca00/+0x15ca20`): the log reads only those 12 bytes. A fixture with exactly 12
+readable bytes fails before that fix and passes after.
 
-Los fallos sintéticos `nifm` 110/1 y `album` 206/1 son política explícita del
-host; sus descripciones de consola no están derivadas. Los callers revisados
-de dirección IP `main+0x179df0`, proxy `+0x2475c0` y guardar captura
-`+0x7d5844` toman ramas de fallo con resultados no cero. El fixture conserva
-salidas sin inventar conexión, proxy o captura guardada. Esto no sustituye una
-prueba integrada de esas rutas ni garantiza un mensaje idéntico al de consola.
+The synthetic `nifm` 110/1 and `album` 206/1 failures are explicit host policy; their console
+descriptions are not derived. The reviewed callers of IP address `main+0x179df0`, proxy
+`+0x2475c0` and save capture `+0x7d5844` take failure branches on non-zero results. The
+fixture keeps outputs without inventing a connection, proxy or saved capture. This does not
+replace an integrated test of those paths or guarantee a message identical to the console's.
 
-## Validación y aceptación pendiente
+## Validation and pending acceptance
 
-`python -m unittest tests.test_snap_applets -v`: cuatro tests focalizados,
-fixture C compilado con `-Wall -Wextra -Werror`. El overlay también pasa
-`clang -fsyntax-only -Wall -Wextra -Werror` con el `host.h` real del donor.
-El escaneo de duplicados se ejecutó adicionalmente contra el donor y los
-overlays del checkout de integración, ya que el worktree aislado no contiene
-el submódulo inicializado.
+`python -m unittest tests.test_snap_applets -v`: four focused tests, C fixture compiled with
+`-Wall -Wextra -Werror`. The overlay also passes `clang -fsyntax-only -Wall -Wextra -Werror`
+with the donor's real `host.h`. The duplicate scan was also run against the donor and the
+integration checkout's overlays, because the isolated worktree lacks the initialised
+submodule.
 
-No se ejecutó GPU ni suite completa. Las pruebas RTX anteriores pertenecen al
-PR original de 17 registros y no validan este C revisado; falta build integrado
-y aceptación de las rutas nuevas. El reporte AMD del usuario sigue abierto.
+No GPU or full suite was run. Earlier RTX tests belong to the original 17-registration PR and
+do not validate this revised C; an integrated build and acceptance of the new paths are
+missing. The user's AMD report stays open.

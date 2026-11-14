@@ -1,40 +1,38 @@
-# Correcciones portables posteriores a 0.5 alpha
+# Portable fixes after 0.5 alpha
 
-Integradas en main: `47be383`. No modifica los assets publicados de 0.5 alpha.
-El ZIP que probó el propietario sigue siendo el publicado, todavía sin estas
-correcciones. La siguiente entrega necesita freeze, kit exacto y validación del
-paquete completo en una instalación sin credenciales de GitHub.
+Integrated into main: `47be383`. Does not modify the published 0.5 alpha assets. The ZIP the
+owner tested is still the published one, without these fixes. The next delivery needs a freeze,
+the exact kit and validation of the complete package on an installation without GitHub
+credentials.
 
-## Causa y cambios
+## Cause and changes
 
-La reconstrucción desde el launcher descargaba el kit al necesitar un runtime
-compatible. El repositorio privado responde 404 sin acceso; el PC de desarrollo
-autenticado no cubría ese caso. El paquete Windows ahora exige e incluye el kit
-público exacto (versión, revisión completa, API, capacidades, donante, inventario
-y hashes). El cliente verifica tamaño/hash fijados en MANIFEST antes de extraer
-el kit local en su caché propia; con el bundle válido no consulta GitHub.
-Sin bundle mantiene la descarga verificada y explica el 404. No se incluyen
-credenciales ni se fuerza la ejecución de un runtime incompatible.
+Rebuilding from the launcher downloaded the kit when it needed a compatible runtime. The private
+repository answers 404 without access; the authenticated development PC did not cover that case.
+The Windows package now requires and includes the exact public kit (version, full revision, API,
+capabilities, donor, inventory and hashes). The client verifies the size/hash pinned in MANIFEST
+before extracting the local kit into its own cache; with a valid bundle it does not query GitHub.
+Without a bundle it keeps the verified download and explains the 404. No credentials are included
+and an incompatible runtime is never forced to run.
 
-La detección prioriza imports completos frente a selecciones antiguas ausentes
-y carpetas solo con marcador. Revisa únicamente layouts conocidos directos,
-anidados y vecinos; no recorre el disco ni cambia la preferencia guardada.
-Una instalación inexistente no adopta los datos de su padre. La presencia no
-sustituye la verificación de los datos originales.
+Detection prefers complete imports over old missing selections and folders with only a marker. It
+checks only known direct, nested and sibling layouts; it does not walk the disk or change the
+saved preference. A missing installation does not adopt its parent's data. Presence does not
+replace verification of the original data.
 
-Se ocultan las consolas de productores Python/Ninja redirigidos y helpers
-nativos. Reexec/restart conservan una consola explícita de uso CLI y permanecen
-sin consola cuando el launcher no tiene una. Se conservan pipes, salida,
-códigos de retorno, suspensión, Job y cancelación. No se cierran CMD ajenos.
+The consoles of redirected Python/Ninja producers and native helpers are hidden. Re-exec/restart
+keep an explicit console for CLI use and stay console-less when the launcher has none. Pipes,
+output, return codes, suspension, Job and cancellation are kept. Other programs' CMD windows are
+not closed.
 
-## Verificación y límites
+## Verification and limits
 
-72 pruebas dirigidas pasan: adquisición local/remota, rechazo de bundle roto o
-sin pin, cancelación, 404, empaquetado público, descubrimiento, mantenimiento,
-procesos nativos y aplicación conjunta de overlays. Evidencia privada:
-`build/launcher-portable-final.log`. Revisión independiente del bundle sin
-bloqueos nuevos. No es una confirmación física de RX 6900 XT ni del nuevo EXE.
+72 targeted tests pass: local/remote acquisition, rejection of a broken or unpinned bundle,
+cancellation, 404, public packaging, discovery, maintenance, native processes and the joint
+application of overlays. Private evidence: `build/launcher-portable-final.log`. Independent review
+of the bundle without new blockers. Not a physical confirmation on the RX 6900 XT or of the new
+EXE.
 
-Pendiente P2 preexistente: una caché local corrupta se rechaza antes de intentar
-usar el bundle válido. La recuperación debe aislar únicamente esa generación
-de caché y verificar otra extracción; nunca borrar imports o runtime del usuario.
+Pre-existing P2 pending: a corrupt local cache is rejected before trying the valid bundle.
+Recovery must isolate only that cache generation and verify another extraction; never delete the
+user's imports or runtime.

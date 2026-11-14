@@ -1,153 +1,139 @@
-# HEAD-INTRO · La cabeza del personaje vibra al entrar caminando en la intro
+# HEAD-INTRO · The character's head vibrates when walking in during the intro
 
-Estado: **REVISIÓN** · Responsable: Claude · 2026-11-14
-Equipo: RTX 4060 Laptop, runtime privado de diagnóstico derivado de `e314751d`.
-SHA256 medido: `6221080431d8c18ac1de5b30ebb1df6629e6408dee0ad33dfa8253100c53c08c`.
-**Causa no identificada; sin corrección.** Este informe acota el problema con
-medidas de una toma y una intervención sobre su temporizador. No descarta en
-general causas de pacing, carga, driver ni diferencias de otros subsistemas.
+Status: **REVIEW** · Owner: Claude · 2026-11-14
+Hardware: RTX 4060 Laptop, private diagnostic runtime derived from `e314751d`.
+Measured SHA256: `6221080431d8c18ac1de5b30ebb1df6629e6408dee0ad33dfa8253100c53c08c`.
+**Cause not identified; no fix.** This report narrows the problem with measurements of one
+shot and one intervention on its timer. It does not rule out pacing, loading, driver or other
+subsystem causes in general.
 
-Nota de procedencia: el reporte original se hizo en la RX 6900 XT con un
-runtime de la generación 0.1.x (ver `keyboard-after-photo.md`). Lo medido aquí
-es el comportamiento de ese binario de diagnóstico en RTX, no una validación
-del ejecutable público ni de la cadena física AMD.
+Provenance note: the original report was made on the RX 6900 XT with a 0.1.x-generation
+runtime (see `keyboard-after-photo.md`). What is measured here is the behaviour of that
+diagnostic binary on RTX, not a validation of the public executable or the physical AMD chain.
 
-## Resultado
+## Result
 
-| Afirmación | Clase | Evidencia |
+| Claim | Class | Evidence |
 |---|---|---|
-| En esta toma RTX se mide desplazamiento desigual de la región de la cabeza | **Observado** | Índice ≈0,25 en cabeza, ≈0,11 en torso y ≈0,004 en fondo; no establece independencia de GPU |
-| La cadencia registrada tiene media cercana a 60 FPS en la ventana medida | **Observado** | Intervalos del registrador: media ≈16,67 ms, desviación 1,0–1,7 ms, máximo 21,9 ms; no son timestamps de presentación física |
-| El fondo medido es más uniforme que la cabeza en estas regiones | **Observado** | Índice ≈0,004 en cuatro ejecuciones; no excluye toda contribución de cámara ni calibra el ruido del método |
-| Cuantizar el temporizador no eliminó la irregularidad medida en esta toma | **Intervención acotada** | Desviación del paso baja a 0,02 ms; índice de cabeza 0,248/0,246 frente a 0,248/0,248 sin cuantizar |
-| Las cuatro ejecuciones tienen índices similares | **Observado** | 0,2482 / 0,2479 / 0,2456 / 0,2482; esto no demuestra igualdad de todas las trayectorias ni descarta cargas, CRC o trabajo de fondo |
-| Comparación cuantitativa equivalente a 30 FPS | **Pendiente** | Existe una corrida exploratoria; falta el JSON de esta herramienta con ventana, regiones y conteos auditables |
-| Las dos mitades de la cabeza presentan patrones parecidos | **Observación exploratoria** | No es una calibración independiente del error óptico ni prueba por sí sola una causa de animación |
-| Qué subsistema del juego lo produce | **Sin determinar** | Ver hipótesis |
-| Si la consola original lo muestra igual | **Sin determinar** | No hay captura de referencia de hardware real |
+| In this RTX shot the head region moves unevenly | **Observed** | Index ≈0.25 on the head, ≈0.11 on the torso and ≈0.004 on the background; GPU independence not established |
+| The recorded cadence averages close to 60 FPS in the measured window | **Observed** | Recorder intervals: mean ≈16.67 ms, deviation 1.0–1.7 ms, max 21.9 ms; not physical presentation timestamps |
+| The measured background is more even than the head in these regions | **Observed** | Index ≈0.004 in four runs; does not exclude every camera contribution or calibrate the method's noise |
+| Quantising the timer did not remove the measured irregularity in this shot | **Bounded intervention** | Step deviation drops to 0.02 ms; head index 0.248/0.246 against 0.248/0.248 unquantised |
+| The four runs have similar indices | **Observed** | 0.2482 / 0.2479 / 0.2456 / 0.2482; this does not prove all trajectories equal or rule out loading, CRC or background work |
+| An equivalent quantitative comparison at 30 FPS | **Pending** | An exploratory run exists; this tool's JSON with auditable window, regions and counts is missing |
+| Both halves of the head show similar patterns | **Exploratory observation** | Not an independent calibration of the optical error, nor proof by itself of an animation cause |
+| Which game subsystem produces it | **Undetermined** | See hypotheses |
+| Whether the original console shows it the same | **Undetermined** | No reference capture from real hardware |
 
-## Qué se midió
+## What was measured
 
-Toma: el personaje entra de espaldas hacia el laboratorio, justo antes del
-logo (presentaciones ≈2775–2858 a 60 fps en un perfil nuevo con la ruta
-`tests/routes/initial-setup.txt`).
+Shot: the character walks in, back to the camera, towards the lab, just before the logo
+(presents ≈2775–2858 at 60 fps on a new profile with the `tests/routes/initial-setup.txt`
+route).
 
-Método (`tools/measure_region_motion.py`): el registrador de vuelo del runtime
-(`AC_FLIGHT=1`) guarda miniaturas por presentación en memoria. Su coste diagnóstico
-no es cero. Sobre fotogramas consecutivos se mide el desplazamiento subpíxel de tres
-rectángulos — cabeza, torso y fondo (el laboratorio, que solo refleja la
-cámara) — y su regularidad:
+Method (`tools/measure_region_motion.py`): the runtime's flight recorder (`AC_FLIGHT=1`) keeps
+thumbnails per present in memory. Its diagnostic cost is not zero. Over consecutive frames the
+sub-pixel displacement of three rectangles — head, torso and background (the lab, which only
+reflects the camera) — and its regularity are measured:
 
-- **irregularidad**: desviación de cada paso respecto a su media móvil de 5
-  fotogramas, relativa al tamaño del paso;
-- **alternancia**: la parte de esa desviación que cambia de signo cada
-  fotograma (lo que haría un componente actualizado a mitad de cadencia).
+- **irregularity**: each step's deviation from its 5-frame moving average, relative to the
+  step size;
+- **alternation**: the part of that deviation that flips sign every frame (what a component
+  updated at half cadence would do).
 
-Ambos índices son adimensionales. Se conservan los índices originales de frame:
-los huecos y pares rechazados separan segmentos, sin inventar adyacencia ni
-reiniciar la fase par/impar. `frames` cuenta pares aceptados, `discarded` los
-rechazados por residuo, `segments` las secuencias contiguas y `analyzed_pairs`
-los pares interiores que participan en la métrica tras recortar los bordes.
-Los segmentos demasiado cortos no dan un veredicto.
+Both indices are dimensionless. The original frame indices are kept: gaps and rejected pairs
+split segments, without inventing adjacency or resetting the even/odd phase. `frames` counts
+accepted pairs, `discarded` those rejected by residual, `segments` the contiguous sequences
+and `analyzed_pairs` the interior pairs that take part in the metric after trimming the edges.
+Segments that are too short give no verdict.
 
-Las capturas a tamaño completo (`AC_SHOTS_FULL`) no sirven para esto: escribir
-8 MB por fotograma frena el juego y altera el movimiento. Las miniaturas se
-tomaron a 640×360 desde una ventana de 1280×720 con un runtime privado de
-diagnóstico (el tamaño de miniatura es una constante de compilación; a 320×180
-la gorra tiene poca textura y a 960×540 se pierden fotogramas).
+Full-size captures (`AC_SHOTS_FULL`) are no use for this: writing 8 MB per frame slows the game
+and alters the motion. The thumbnails were taken at 640×360 from a 1280×720 window with a
+private diagnostic runtime (the thumbnail size is a compile-time constant; at 320×180 the cap
+has little texture and at 960×540 frames are lost).
 
-| Ejecución (`build/…`) | Cadencia | Paso de tiempo del juego (ms, desv.) | Cabeza | Torso | Fondo |
+| Run (`build/…`) | Cadence | Game time step (ms, dev.) | Head | Torso | Background |
 |---|---|---|---|---|---|
-| `head01-ab-off-1` | 60 | 16,69 ± 1,03 | 0,248 | 0,109 | 0,004 |
-| `head01-ab-on-1` (tiempo exacto) | 60 | 16,68 ± 0,02 | 0,248 | 0,109 | 0,003 |
-| `head01-ab-on-2` (tiempo exacto) | 60 | 16,68 ± 0,02 | 0,246 | 0,091 | 0,004 |
-| `head01-ab-off-2` | 60 | 16,66 ± 1,71 | 0,248 | 0,109 | 0,004 |
-| `head01-fps30` (exploratoria) | 30 | Comparación pendiente | — | — | — |
+| `head01-ab-off-1` | 60 | 16.69 ± 1.03 | 0.248 | 0.109 | 0.004 |
+| `head01-ab-on-1` (exact time) | 60 | 16.68 ± 0.02 | 0.248 | 0.109 | 0.003 |
+| `head01-ab-on-2` (exact time) | 60 | 16.68 ± 0.02 | 0.246 | 0.091 | 0.004 |
+| `head01-ab-off-2` | 60 | 16.66 ± 1.71 | 0.248 | 0.109 | 0.004 |
+| `head01-fps30` (exploratory) | 30 | Comparison pending | — | — | — |
 
-Cada JSON `motion.json` de las cuatro corridas a 60 FPS conserva la ventana
-2775–2858, 83 pares por región y cero descartes. Los conteos y regiones forman
-parte de la comparación; no deben mezclarse índices de métodos o ventanas
-distintos. La corrida a 30 FPS conserva `flow.json` de un análisis exploratorio
-anterior, pero no un `motion.json` equivalente. Los antiguos valores 0,202/0,170/
-0,003 quedan fuera de esta tabla hasta regenerar y conservar ese informe con
-ventana y regiones explícitas; no permiten descartar una causa por cadencia.
+Each `motion.json` of the four 60 FPS runs keeps the 2775–2858 window, 83 pairs per region
+and zero discards. The counts and regions are part of the comparison; indices from different
+methods or windows must not be mixed. The 30 FPS run keeps a `flow.json` from an earlier
+exploratory analysis, but no equivalent `motion.json`. The old values 0.202/0.170/0.003 stay
+out of this table until that report is regenerated and kept with an explicit window and
+regions; they do not allow ruling out a cadence cause.
 
-Ejemplo de pasos horizontales consecutivos de la cabeza a 60 fps (px a
-640×360): 2,00 · 1,29 · 1,81 · 1,19 · 1,56 · 1,18 · 1,38 · 1,23, con el fondo
-en 1,07 · 1,09 · 1,10 · 1,11 · 1,13 · 1,14 · 1,15 · 1,16 en los mismos
-fotogramas. La alternancia alto/bajo aparece en ráfagas (≈2773–2784, 2789–2800,
-2821–2832), no en toda la toma, por eso el índice global de alternancia es bajo
-(0,012) y el de irregularidad alto.
+Example of consecutive horizontal head steps at 60 fps (px at 640×360): 2.00 · 1.29 · 1.81 ·
+1.19 · 1.56 · 1.18 · 1.38 · 1.23, with the background at 1.07 · 1.09 · 1.10 · 1.11 · 1.13 ·
+1.14 · 1.15 · 1.16 over the same frames. The high/low alternation comes in bursts
+(≈2773–2784, 2789–2800, 2821–2832), not over the whole shot, which is why the global
+alternation index is low (0.012) and the irregularity index high.
 
-## Experimento: tiempo de fotograma exacto
+## Experiment: exact frame time
 
-El temporizador de fotograma del juego (`main+0x6abea0`) mide el tiempo real
-entre actualizaciones; sus tres canales están siempre en modo «medido» (traza de
-3 586 llamadas, un solo sitio de llamada). En el host ese tiempo oscila entre
-≈12 y ≈22 ms aunque la media sea exacta.
+The game's frame timer (`main+0x6abea0`) measures real time between updates; its three
+channels are always in «measured» mode (trace of 3,586 calls, a single call site). On the host
+that time swings between ≈12 and ≈22 ms even though the mean is exact.
 
-En un runtime privado se dio a esa actualización un instante anterior tal que
-el paso medido fuera un número entero de periodos de 60 Hz, con un reloj ideal
-que sigue al real sin deriva. Efecto sobre el paso: desviación de 1,0–1,7 ms a
-0,02 ms. No se observa que elimine la irregularidad de la región medida (tabla). La toma
-tiene índices parecidos entre ejecuciones con variaciones de ritmo distintas,
-aunque no idénticas en todas las regiones. Conclusión acotada: esta intervención
-redujo la variación del temporizador sin eliminar la irregularidad óptica de
-la región medida. No demuestra que el ritmo de presentación, el driver o todos
-los temporizadores y subsistemas del juego sean ajenos al síntoma.
+In a private runtime that update was given an earlier instant such that the measured step was
+a whole number of 60 Hz periods, with an ideal clock that follows the real one without drift.
+Effect on the step: deviation from 1.0–1.7 ms to 0.02 ms. It is not seen to remove the
+irregularity of the measured region (table). The shot has similar indices across runs with
+different rhythm variations, though not identical in every region. Bounded conclusion: this
+intervention reduced the timer's variation without removing the optical irregularity of the
+measured region. It does not show that presentation rhythm, the driver or all of the game's
+timers and subsystems are unrelated to the symptom.
 
-El experimento escribe en un campo del temporizador del juego; es solo un
-instrumento de diagnóstico, no una corrección propuesta, y no está en este PR.
-Queda como parche local en `build/head01-diagnostic.patch` (conjunto de parches
-`snap_timer_trace`, apagado por defecto, y miniaturas mayores).
+The experiment writes to a field of the game's timer; it is only a diagnostic instrument, not
+a proposed fix, and it is not in this PR. It stays as a local patch in
+`build/head01-diagnostic.patch` (the `snap_timer_trace` patch set, off by default, and larger
+thumbnails).
 
-## Hipótesis que quedan (ninguna comprobada)
+## Remaining hypotheses (none checked)
 
-1. **Animación secundaria de la cabeza** (hueso con muelle, gorra o seguimiento
-   de mirada) que responde a cada pisada con una oscilación rápida. Encaja con
-   las ráfagas separadas ≈40 fotogramas y con que el torso tenga menos. Sería
-   comportamiento del juego; faltaría saber si la consola lo muestra igual.
-2. **Diferencia numérica de la recompilación** en ese cálculo (estimaciones de
-   raíz/recíproco NEON, contracción FMA): un muelle rígido cerca de la
-   inestabilidad amplificaría una diferencia pequeña. No hay evidencia que la
-   confirme ni que excluya otros posibles defectos del port.
-3. **Datos de animación** con claves a otra cadencia muestreadas sin
-   interpolar. La comparación equivalente a 30 FPS sigue pendiente; no se usa
-   la corrida exploratoria para asignar menor probabilidad a esta hipótesis.
+1. **Secondary head animation** (a spring bone, the cap or gaze tracking) that answers each
+   footstep with a fast oscillation. It fits the bursts ≈40 frames apart and the torso having
+   less. It would be game behaviour; whether the console shows it the same is unknown.
+2. **A numerical difference from the recompilation** in that calculation (NEON root/reciprocal
+   estimates, FMA contraction): a stiff spring close to instability would amplify a small
+   difference. No evidence confirms it or excludes other possible port defects.
+3. **Animation data** keyed at another cadence and sampled without interpolation. The
+   equivalent 30 FPS comparison is still pending; the exploratory run is not used to lower this
+   hypothesis's likelihood.
 
-## Qué falta para cerrar
+## What is needed to close
 
-- Una referencia de hardware real de la misma toma (vídeo a 60 Hz de la
-  consola): decide entre comportamiento original y defecto del port.
-- Si es defecto: localizar el subsistema comparando la toma con las
-  estimaciones NEON forzadas a aritmética exacta, o trazando la matriz del
-  hueso de la cabeza.
-- Mantener la simulación 30/60 y la lógica originales. La intervención actual
-  no justifica proponer una modificación del temporizador como corrección.
+- A real-hardware reference of the same shot (60 Hz video from the console): it decides
+  between original behaviour and a port defect.
+- If it is a defect: locate the subsystem by comparing the shot with the NEON estimates forced
+  to exact arithmetic, or by tracing the head bone's matrix.
+- Keep the original 30/60 simulation and logic. The current intervention does not justify
+  proposing a timer change as a fix.
 
-## Herramienta y pruebas
+## Tool and tests
 
-`tools/measure_region_motion.py` (solo lectura) + `tests/test_region_motion.py`
-(10): recuperación de traslaciones subpíxel, contenido cambiado detectado por el
-residuo, series uniforme/alternante/aleatoria/acelerada, sujeto desigual sobre
-fondo uniforme en fotogramas sintéticos, huecos nunca puenteados, CLI que no
-escribe en la carpeta de fotogramas. Las regresiones de revisión preservan
-paridad y segmentos al rechazar un paso de una serie alternante de 40, y no
-calculan métricas juntando segmentos individualmente insuficientes. El defecto
-anterior reducía falsamente la alternancia de 0,24 a 0,0072 al rechazar un paso;
-corregido da ≈0,238, con la pequeña diferencia debida al nuevo promedio de paso.
-Las cuatro mediciones a 60 FPS no descartaban pares: no quedan invalidadas por
-este defecto, pero sus conclusiones mantienen los límites anteriores.
+`tools/measure_region_motion.py` (read-only) + `tests/test_region_motion.py` (10): recovery of
+sub-pixel translations, changed content detected by the residual, uniform/alternating/random/
+accelerating series, an uneven subject over a uniform background in synthetic frames, gaps
+never bridged, a CLI that does not write into the frame folder. The review regressions keep
+parity and segments when rejecting one step of an alternating series of 40, and do not compute
+metrics by joining individually insufficient segments. The earlier defect falsely lowered the
+alternation from 0.24 to 0.0072 when rejecting a step; fixed, it gives ≈0.238, the small
+difference coming from the new mean step. The four 60 FPS measurements discarded no pairs:
+they are not invalidated by this defect, but their conclusions keep the earlier limits.
 
 ```
-python tools\measure_region_motion.py <volcado AC_FLIGHT> --first 2775 --last 2858 --box cabeza:284,116,384,208 --box torso:276,232,380,320 --box fondo:40,80,200,220
+python tools\measure_region_motion.py <AC_FLIGHT dump> --first 2775 --last 2858 --box cabeza:284,116,384,208 --box torso:276,232,380,320 --box fondo:40,80,200,220
 ```
 
-## Límites
+## Limits
 
-- Una sola toma, una sola GPU (RTX 4060) y una sola resolución de medida.
-- La irregularidad incluye la aceleración natural del caminar; por eso se
-  compara siempre con el torso y el fondo de la misma toma, no con cero.
-- Los rectángulos son fijos; se descartan pares cuyo residuo indica cambio de
-  contenido.
-- No se ha medido en la RX 6900 XT con un runtime actual.
+- One shot, one GPU (RTX 4060) and one measurement resolution.
+- The irregularity includes the natural acceleration of walking; that is why it is always
+  compared with the torso and background of the same shot, not with zero.
+- The rectangles are fixed; pairs whose residual indicates changed content are discarded.
+- Not measured on the RX 6900 XT with a current runtime.

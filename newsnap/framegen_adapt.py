@@ -40,12 +40,12 @@ def edits():
              '    { extern float snap_fg_view[16]; memcpy(snap_fg_view, vw, sizeof snap_fg_view); }   // FG-01 camera'),
         ],
         'runtime/vk_backend.c': [
-            ('#include "vk_dlaa.h"', '#include "vk_dlaa.h"\n#include "snap_fsr_fg.h"'),
+            ('#include "vk_dlaa.h"', '#include "vk_dlaa.h"\n#include "snap_fsr_fg.h"\n#include "snap_latent_sync.h"'),
             ('    uint64_t frame, at, queued, value;', '    uint64_t frame, at, queued, value;\n    uint64_t fg;            // FG-01: the frame generation prepare of this frame, 0 for none'),
             ('    uint64_t last = 0, last_queued = 0;', '    uint64_t last = 0, last_queued = 0, fg_interval = 0;'),
             (PRESENT_BEFORE, PRESENT_AFTER),
             ('        wait_until(j.at);\n        uint64_t t1 = kern_now_ns();',
-             '        wait_until(j.at ? j.at : fg_real_at);\n        uint64_t t1 = kern_now_ns();\n'
+             '        wait_until(j.at ? snap_vblank_mid(j.at, cfg_value("AC_FPS")) : fg_real_at);   // PACE-AMD-01: mid-refresh with AC_FPS=display\n        uint64_t t1 = kern_now_ns();\n'
              '        if (last && t1 > last && t1 - last < 100000000) fg_interval = t1 - last;'),
             ('    vk_hdr_present_source(img, &j.scene, &j.scene_format);',
              '    j.fg = snap_fg_take();   // FG-01: taken here, in order with the replay\n'
