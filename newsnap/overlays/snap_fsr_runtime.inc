@@ -111,6 +111,7 @@ static int snap_fsr_runtime_evaluate(VkCommandBuffer cb,const VkExecTarget *colo
     /* issued excludes the submission currently being recorded: retain through its explicit fence too. */
     snap_sdk.entries[slot].after=fence;
     int ok=snap_fsr_sdk_dispatch(snap_sdk.entries[slot].sdk,&f);
+    if(ok) snap_fg_prepare(cb,&f,e->w,e->h,e->ow,e->oh); /* FG-01: inputs still SHADER_READ_ONLY here */
     for(unsigned i=0;i<3;i++) {
         barriers[i].oldLayout=VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;barriers[i].newLayout=VK_IMAGE_LAYOUT_GENERAL;
         barriers[i].srcAccessMask=VK_ACCESS_SHADER_READ_BIT;barriers[i].dstAccessMask=VK_ACCESS_MEMORY_READ_BIT|VK_ACCESS_MEMORY_WRITE_BIT;
