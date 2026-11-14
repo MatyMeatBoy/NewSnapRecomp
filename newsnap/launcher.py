@@ -246,8 +246,8 @@ class Launcher:
                      help_text='Mejora las texturas vistas en ángulo. El controlador y la GPU pueden limitar el nivel efectivo. Automático heredado conserva la heurística de la base, aún sin validar para Snap; elige un nivel explícito para personalizarlo.')
         self._choice(video, 'Resolución de sombras', 'shadow_scale', {'Original (1×)': '1', 'Alta (2×)': '2', 'Muy alta (4×)': '4'},
                      help_text='Amplía el mapa de sombras del sol (el de la vegetación y el escenario) sin cambiar su suavidad: los bordes salen más definidos. 2× cuesta poco; 4× usa unos 64 MiB más de VRAM por mapa.')
-        self._choice(video, 'Relación de aspecto · Aspect ratio', 'aspect', {'Conservar proporciones': 'fit', 'Estirar a la ventana': 'stretch', 'Ultrawide (vista más ancha, experimental)': 'ultrawide'},
-                     help_text='Solo cambia la presentación: conservar proporciones puede dejar bandas; estirar llena la ventana y deforma la imagen. Ultrawide llena una ventana o pantalla más ancha que 16:9 ampliando la vista a los lados con las proporciones del juego; las fotos y la puntuación siguen en su formato. Experimental: el HUD puede verse estirado.')
+        self._choice(video, 'Relación de aspecto · Aspect ratio', 'aspect', {'Conservar proporciones': 'fit', 'Estirar a la ventana': 'stretch'},
+                     help_text='Solo cambia la presentación: conservar proporciones puede dejar bandas; estirar llena la ventana y deforma la imagen. No amplía el campo de visión.')
         self._heading(video, 'Color original del juego')
         self._help(video, 'Salida neutra: conserva los colores y el posprocesado propios de Snap. '
                    'Sin perfiles de contraste, saturación, gamma, HDR añadido ni nitidez adicional del port.')

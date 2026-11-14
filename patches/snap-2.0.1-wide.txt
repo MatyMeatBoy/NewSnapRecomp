@@ -1,5 +1,0 @@
-# ULTRAWIDE-01: widen 16:9 perspective cameras to the window's ratio (newsnap/overlays/snap_wide.c).
-# 0x29641c: mov v0.s[0],v1.s[0] after fdiv s1,s2,s9 (X scale = cot(fov/2) / aspect). The helper only
-# rescales s1 when AC_ASPECT=ultrawide, the camera is 16:9 and the window is wider; original replayed.
-set snap_wide AC_SNAP_WIDE_PATCH 1
-site snap_wide main 29641c 6e040420 @fn:snap_wide_proj_s1 6e040420
