@@ -167,7 +167,7 @@ int main(void) {
             libraries.mkdir()
             (libraries / 'manifest.json').write_text('{}')
             self.assertEqual(settings.game_command(root, data / 'profile'),
-                             [str(data / 'newsnap.exe'), '--profile', str(data / 'profile'), '--boot'])
+                             [str(data / 'newsnap.exe'), '--profile', str(data / 'profile')])
             self.assertEqual(settings.load_profile(root), data / 'profile')
             self.assertEqual(settings.preparation_command(root),
                              [sys.executable, '-m', 'newsnap', 'prepare', '--build-dir', str(data), '--all'])
@@ -405,7 +405,7 @@ int main(void) {
     def test_launch_uses_explicit_profile_and_no_injected_input(self):
         root = Path('example root').resolve()
         command = settings.game_command(root, root / 'my profile')
-        self.assertEqual(command, [str(root / 'build/updated/newsnap.exe'), '--profile', str(root / 'my profile'), '--boot'])
+        self.assertEqual(command, [str(root / 'build/updated/newsnap.exe'), '--profile', str(root / 'my profile')])
         env = settings.game_environment({'PATH': 'system', 'AC_INPUT': 'script', 'AC_INPUT_SCRIPT': 'x',
                                          'AC_FULLSCREEN': '0', 'AC_TEST_PAD': '1', 'AC_GPU': 'null',
                                          'AC_EXEFS': 'old computer', 'AC_ROMFS': 'old game'})
