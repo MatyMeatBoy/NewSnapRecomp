@@ -9,8 +9,10 @@ Leer **[docs/PENDIENTES.md](docs/PENDIENTES.md)** antes de editar. Tomar una tar
 LIBRE indicando responsable y archivos reservados. Respetar las reservas de
 RTX tester/MatyMeatBoy y coordinar los puntos de integración compartidos.
 
-La release 0.4 y sus artefactos/tag son inmutables. La 0.5 no se publica hasta
-resolver y verificar todos los fallos reportados. No cambiar la lógica del juego
+La release 0.4 y sus artefactos/tag son inmutables. Por solicitud posterior del
+propietario, se autoriza publicar 0.5 como alpha limitada, documentando aceptación
+AMD/mando/FreeSync y picos de pacing pendientes. No presentar esos casos como
+resueltos ni marcar la entrega como estable. No cambiar la lógica del juego
 para saltar validaciones, progreso o tutoriales. Mantener el color/posprocesado
 original de Snap y distinguir evidencia AMD RX 6900 XT de NVIDIA RTX 4060.
 
