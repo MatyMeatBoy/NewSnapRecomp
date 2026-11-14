@@ -390,7 +390,7 @@ class MaintenanceCacheReceiptTests(TestCase):
                 (work/'logs/generation-cache.json').write_text(json.dumps(expected))
             with patch('newsnap.launcher_settings.ProfileLock',return_value=nullcontext()),\
                  patch.object(maintenance,'verify_build_kit',return_value={'source_revision':'a'*40}),\
-                 patch.object(maintenance,'run_build_command',side_effect=worker),patch.object(maintenance,'install_candidate'):
+                 patch.object(maintenance,'run_build_command',side_effect=worker),patch.object(maintenance,'install_candidate',return_value={'invalidated':list(maintenance.INVALIDATED),'removed_existing':[],'cache_absence_verified':True,'transaction_removed':True}):
                 result=maintenance.rebuild_runtime(root,kit,force=True,generation_cache_root=root/'cache')
             self.assertEqual(result['generation_cache'],expected)
             self.assertEqual(json.loads((data/'logs/generation-cache.json').read_text()),expected)

@@ -396,3 +396,135 @@ class RecoveryCleanupTests(OwnerRuntimeFixture, TestCase):
         self.assertFalse((transaction/'journal.json').exists())
         self.assertTrue(m.recover_runtime(self.root))
         self.assertFalse(transaction.exists())
+
+
+class VerifiedReplacementTests(OwnerRuntimeFixture, TestCase):
+    def test_switch_returns_verified_cache_absence_and_leaves_no_old_runtime(self):
+        for name in m.INVALIDATED:
+            path=self.data/name
+            if name=='shader-cache':path.mkdir();(path/'old.spv').write_bytes(b'old cache')
+            else:path.write_bytes(b'old cache')
+        (self.data/'shader-programs.bin').write_bytes(b'observed programs')
+        report=m.install_candidate(self.root,self.candidate())
+        self.assertIsInstance(report,dict)
+        self.assertEqual(set(report['invalidated']),set(m.INVALIDATED))
+        self.assertTrue(report['cache_absence_verified'])
+        self.assertTrue(report['transaction_removed'])
+        self.assertEqual(report['runtime_sha256'],m.digest(self.data/'newsnap.exe'))
+        self.assertFalse((self.data/m.TRANSACTION).exists())
+        self.assertEqual((self.data/'shader-programs.bin').read_bytes(),b'observed programs')
+        self.assertFalse(any((self.data/name).exists() for name in m.INVALIDATED))
+
+    def test_silent_cache_removal_failure_rolls_back_before_commit(self):
+        stale=self.data/'pipeline-cache.bin';stale.write_bytes(b'stale pipeline')
+        remove=m._remove
+        def keep_one(path):
+            if path==stale:return
+            return remove(path)
+        with patch.object(m,'_remove',side_effect=keep_one):
+            with self.assertRaisesRegex(ValueError,'cache|caché'):
+                m.install_candidate(self.root,self.candidate())
+        self.assertEqual((self.data/'newsnap.exe').read_bytes(),b'old executable')
+        self.assertEqual(stale.read_bytes(),b'stale pipeline')
+        self.assertFalse((self.data/m.TRANSACTION).exists())
+
+    def test_post_replace_corruption_is_detected_and_restores_previous_runtime(self):
+        candidate=self.candidate();replace=Path.replace
+        def corrupt(source,target):
+            result=replace(source,target)
+            if source==candidate/'newsnap.exe':Path(target).write_bytes(b'corrupted after move')
+            return result
+        with patch.object(Path,'replace',corrupt):
+            with self.assertRaisesRegex(ValueError,'integrity|hash|integridad'):
+                m.install_candidate(self.root,candidate)
+        self.assertEqual((self.data/'newsnap.exe').read_bytes(),b'old executable')
+        self.assertFalse((self.data/m.TRANSACTION).exists())
+
+    def test_repeated_switches_do_not_accumulate_backups_or_temporary_outputs(self):
+        (self.data/'profile').mkdir();(self.data/'profile/save').write_bytes(b'preserve save')
+        for _ in range(3):
+            candidate=self.candidate();report=m.install_candidate(self.root,candidate)
+            candidate.rmdir()
+            self.assertTrue(report['transaction_removed'])
+            self.assertEqual({p.name for p in self.data.iterdir()}, {'profile','newsnap.exe','newsnap-game.json'})
+            self.assertEqual((self.data/'profile/save').read_bytes(),b'preserve save')
+
+    def test_cleanup_failure_does_not_report_success_or_restore_committed_generation(self):
+        remove_tree=m.shutil.rmtree
+        transaction=self.data/m.TRANSACTION
+        def keep_backup(path,*args,**kwargs):
+            if Path(path)==transaction:return
+            return remove_tree(path,*args,**kwargs)
+        with patch.object(m.shutil,'rmtree',side_effect=keep_backup):
+            with self.assertRaisesRegex(ValueError,'cleanup incomplete'):
+                m.install_candidate(self.root,self.candidate())
+        self.assertEqual((self.data/'newsnap.exe').read_bytes(),b'new executable')
+        self.assertTrue(transaction.exists())
+        self.assertFalse((transaction/'journal.json').exists())
+        self.assertTrue(m.recover_runtime(self.root))
+        self.assertFalse(transaction.exists())
+        self.assertEqual((self.data/'newsnap.exe').read_bytes(),b'new executable')
+
+
+class VerifiedRecoveryTests(BackupDurabilityTests):
+    def test_corrupt_restore_retains_good_backup_and_journal_for_retry(self):
+        transaction, backup = self.interrupted()
+        replace = Path.replace
+        def corrupt(source, target):
+            result = replace(source, target)
+            if source == transaction / 'restore-newsnap.exe':
+                Path(target).write_bytes(b'corrupt restore')
+            return result
+        with patch.object(Path, 'replace', corrupt):
+            with self.assertRaisesRegex(ValueError, 'restor.*integrity'):
+                m.recover_runtime(self.root)
+        self.assertTrue((transaction / 'journal.json').is_file())
+        self.assertEqual((backup / 'newsnap.exe').read_bytes(), b'old executable')
+        self.assertTrue(m.recover_runtime(self.root))
+        self.assertEqual((self.data / 'newsnap.exe').read_bytes(), b'old executable')
+        self.assertFalse(transaction.exists())
+
+    def test_nested_cache_junction_is_rejected_without_copying_profile(self):
+        import os, subprocess
+        profile = self.data / 'profile'
+        profile.mkdir()
+        (profile / 'save').write_bytes(b'private save')
+        cache = self.data / 'shader-cache'
+        cache.mkdir()
+        link = cache / 'nested'
+        if os.name == 'nt':
+            result = subprocess.run(['cmd', '/c', 'mklink', '/J', str(link), str(profile)],
+                                    capture_output=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.addCleanup(lambda: link.rmdir() if link.exists() else None)
+        else:
+            link.symlink_to(profile, target_is_directory=True)
+        with self.assertRaisesRegex(ValueError, 'link'):
+            m.install_candidate(self.root, self.candidate())
+        self.assertEqual((profile / 'save').read_bytes(), b'private save')
+        self.assertEqual((self.data / 'newsnap.exe').read_bytes(), b'old executable')
+        self.assertFalse((self.data / m.TRANSACTION).exists())
+
+
+class BuildWorkspaceCleanupTests(TestCase):
+    def test_silent_cleanup_failure_is_reported(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            data = Path(temporary)
+            work = data / '.runtime-build-test'
+            work.mkdir()
+            with patch.object(m.shutil, 'rmtree', return_value=None):
+                with self.assertRaisesRegex(ValueError, 'build cleanup incomplete'):
+                    m._cleanup_build_workspace(data, work)
+            self.assertTrue(work.is_dir())
+
+    def test_cleanup_rejects_external_workspace_and_ordinary_directory(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            data = root / 'GameData'
+            data.mkdir()
+            for work in (root / '.runtime-build-external', data / 'profile'):
+                work.mkdir()
+                (work / 'save').write_bytes(b'preserve')
+                with self.assertRaisesRegex(ValueError, 'Unsafe runtime build'):
+                    m._cleanup_build_workspace(data, work)
+                self.assertEqual((work / 'save').read_bytes(), b'preserve')

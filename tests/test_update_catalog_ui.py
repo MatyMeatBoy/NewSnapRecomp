@@ -181,3 +181,28 @@ class CatalogSelectionOwnershipTests(TestCase):
         self.assertEqual(value.status.options['text'],'Versión elegida: v0.7.0-alpha')
         self.assertIs(value.release,chosen)
         value.launcher.notify_update.assert_called_once()
+
+
+class MaintenanceCompletionTests(TestCase):
+    def test_verified_cleanup_reports_checked_routes_and_actual_removed_count(self):
+        result={'rebuilt':True,'replacement':{'cache_absence_verified':True,
+            'transaction_removed':True,'build_temporaries_removed':True,
+            'invalidated':['a','b','c','d','e'],'removed_existing':['a','b'],'log_recorded':True}}
+        message=maintenance_ui.completion_message(result)
+        self.assertIn('5/5',message)
+        self.assertIn('2 retiradas',message)
+        self.assertIn('sin copias temporales',message)
+
+    def test_absent_or_incomplete_receipt_never_claims_cleanup(self):
+        for replacement in ({},{'cache_absence_verified':True,'transaction_removed':False}):
+            message=maintenance_ui.completion_message({'rebuilt':True,'replacement':replacement})
+            self.assertIn('sin comprobante de limpieza',message)
+            self.assertNotIn('5/5',message)
+
+    def test_log_write_failure_does_not_hide_successful_runtime_activation(self):
+        result={'rebuilt':True,'replacement':{'cache_absence_verified':True,
+            'transaction_removed':True,'build_temporaries_removed':True,
+            'invalidated':['a'],'removed_existing':[],'log_recorded':False}}
+        message=maintenance_ui.completion_message(result)
+        self.assertIn('verificado',message)
+        self.assertIn('no se pudo guardar',message)
