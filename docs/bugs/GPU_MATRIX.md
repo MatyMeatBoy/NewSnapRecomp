@@ -1,121 +1,114 @@
-# Matriz de evidencia gráfica y de entrada · 0.5
+# Graphics and input evidence matrix · 0.5
 
-Fecha: 2026-11-13. Documento de revisión; no autoriza publicación de 0.5 ni
-cambia el estado de aceptación del propietario. La release 0.4 es inmutable.
+Date: 2026-11-13. A review document; it does not authorise publishing 0.5 or change the owner's
+acceptance status. The 0.4 release is immutable.
 
-## Cómo interpretar los estados
+## How to read the states
 
-- **Observado**: resultado registrado en una ejecución/captura identificada.
-- **Inferido**: explicación plausible que todavía requiere el control causal.
-- **Corregido en código**: cambio implementado; no equivale a validación física.
-- **Verificado CPU**: funciones nativas reales con dependencias controladas.
-- **Verificado GPU**: solo el dispositivo, binario, modo y recorrido indicados.
-- **Pendiente**: falta ese ensayo; no se sustituye por otra GPU o un fixture.
+- **Observed**: a result recorded in an identified run/screenshot.
+- **Inferred**: a plausible explanation that still needs the causal control.
+- **Fixed in code**: a change implemented; not equivalent to physical validation.
+- **CPU verified**: real native functions with controlled dependencies.
+- **GPU verified**: only the stated device, binary, mode and route.
+- **Pending**: that test is missing; it is not replaced by another GPU or a fixture.
 
-El equipo local es **NVIDIA GeForce RTX 4060 Laptop GPU**; el A/B normal registra
-driver **616.92**. El propietario reportó fallos en **AMD RX 6900 XT**, modo
-**Original**, monitor FreeSync. No inferir un driver AMD, estado HDR o VRR real
-sin su registro. Otros modelos de GPU no están validados por estos resultados.
+The local machine is an **NVIDIA GeForce RTX 4060 Laptop GPU**; the normal A/B records driver
+**616.92**. The owner reported failures on an **AMD RX 6900 XT**, **Original** mode, FreeSync
+monitor. Do not infer an AMD driver, HDR state or real VRR without their record. Other GPU
+models are not validated by these results.
 
-## Contratos y cobertura
+## Contracts and coverage
 
-| Contrato | Causa/estado del cambio | CPU/control nativo | RTX 4060 local | RX 6900 XT del propietario |
+| Contract | Cause/state of the change | CPU/native control | Local RTX 4060 | Owner's RX 6900 XT |
 | --- | --- | --- | --- | --- |
-| Color SDR de presentación | **Corregido**: el formato base sRGB no describe por sí solo la transferencia usada al escribir los bytes finales. Elegir vista compatible según fuente **y destino**, sin tocar el grade del juego. | Matriz RGBA/BGRA × UNORM/sRGB; pares equivalentes sin copia, float/desconocidos conservan semántica. | **Observado**: a 1920×1080 exactos, `f01114` frente a presentación tiene MAE=0 y máximo=0 en `v05-final-color-coherence-1to1`. Binario `f6d92250…`. Los cuadros vecinos difieren temporalmente; no todos son coincidencias exactas. | **Pendiente**: la sobresaturación/contraste reportados no quedan físicamente corregidos por una comparación NVIDIA. |
-| Importación de memoria host | **Corregido**: la selección del donor puede devolver un tipo compatible que no cumple las propiedades solicitadas. La ruta de importación directa requiere `HOST_VISIBLE` y `HOST_COHERENT`; sin ambas elige almacenamiento gestionado existente. Sus rutas de flush/barreras/fences se auditaron en fuente; no se validó ese fallback en GPU. Sin excepción por vendor. | Negativo: tipo visible/cacheado no coherente elegido por el selector anterior. Positivos: flags elegidos, import coherente conservado, fallback por pool/tracking y llamada invalidate controlada. `shadow_sync_pool` es un stub contador: no prueba flush, visibilidad GPU ni finalización. | **Observado**: ensayo final normal registra tipo 2, propiedades `0x6` (visible/coherente), conservando la ruta directa. No ejecuta ni valida el fallback físico de AMD. | **Pendiente**: ni el tipo de memoria realmente seleccionado ni la causa de sus franjas están establecidos con bytes/traza AMD. |
-| Dibujos gráficos con escrituras storage | **Corregido**: omitir por pipeline pendiente un draw con SSBO escrito/image store omite una operación funcional, aunque su render target sea reciente. Se espera traducción/reflection y pipeline para esos efectos. | Donor falla el negativo; pruebas VS/PS, SSBO/image store, lectura sola, traducción desconocida, varias esperas y fallo real. | Runtime integrado `06a8d9df…` compilado y ejecutado en A/B normal; ese recorrido caliente no tuvo skips. Eso no demuestra qué draw causaba las franjas/retícula. | **Pendiente**: la reflexión local de un shader con storage demuestra uso de la clase, no causalidad del reporte AMD. |
-| Dispatch compute | **Observado en fuente**: `op_dispatch`/`op_dispatch_ind` solicitan traducción sin pending y pipeline compute síncrono. | Hipótesis de que pasan por el skip gráfico **descartada**. No se añadió un parche compute basado en esa suposición. | No es una aceptación independiente de todos los dispatches. | Sin ensayo específico; no atribuir el defecto a compute por el aspecto de las bandas. |
-| Captura → buffer → JPEG → miniatura → evaluación | Diagnóstico opt-in acotado compara transferencias conservando pitch/formato/lifetime. La lógica original de selección/evaluación/tutorial se mantiene. | Fixtures instrumentan transferencias reales con APIs controladas; auditoría CPU independiente del banco/JPEG tiene su propia revisión pendiente. | **Observado**: controles normales separados de 540 s con `f6d92250…` y `06a8d9df…`, cada uno exit 0, dos fotos nuevas y dos miniaturas sin filas negras, cuatro transferencias GPU fuente/buffer idénticas y progreso de tutorial registrado. El anterior además identifica captura de primera expedición. La evidencia final es propia, no heredada del anterior. | **Pendiente**: captura del propietario muestra franjas y rechazo de selección; no prueba que las franjas causen ese rechazo ni dónde nacen. Faltan bytes AMD. |
-| Ratón, foco y sensores | **Corregido**: epoch de captura; reinicio de fusión al cambiar/perder fuente; no habilitar sensores con movimiento apagado; rollback parcial; eliminar caché compartida no atómica del ajuste live. | 19 escenarios nativos; donor presenta once fallos. Dos hilos Win32 reproducen lectura vieja que contaminaba el ajuste nuevo. Tres unidades completas pasan sintaxis. | Binario integrado compilado; fixtures no activan hardware. No equivalen a aceptación del mouse/mando físico. | **Pendiente**: la cámara que apunta sola puede tener otras causas, incluido drift físico no medido. No alterar sensibilidad/deadzone para ocultarlo. |
-| VRR | La sonda separa observación/capacidad/estado desconocido. FIFO/mailbox no certifican VRR. | Contratos y parser específicos, separados del hardware. | A/B usó mailbox y swapchain 1920×1055; eso **no demuestra VRR**. | FreeSync del monitor es contexto del reporte, no una medición de cadencia variable del swapchain. |
+| Presentation SDR colour | **Fixed**: the sRGB base format alone does not describe the transfer used when writing the final bytes. Choose a compatible view by source **and target**, without touching the game's grade. | RGBA/BGRA × UNORM/sRGB matrix; equivalent pairs without a copy, float/unknown keep their semantics. | **Observed**: at exactly 1920×1080, `f01114` against the presentation has MAE=0 and max=0 in `v05-final-color-coherence-1to1`. Binary `f6d92250…`. Neighbouring frames differ in time; not all are exact matches. | **Pending**: the reported oversaturation/contrast is not physically fixed by an NVIDIA comparison. |
+| Host memory import | **Fixed**: the donor's selection can return a compatible type that lacks the requested properties. The direct import path requires `HOST_VISIBLE` and `HOST_COHERENT`; without both it picks existing managed storage. Its flush/barrier/fence paths were audited in source; that fallback was not validated on GPU. No per-vendor exception. | Negative: a visible/cached non-coherent type picked by the old selector. Positives: chosen flags, coherent import kept, fallback by pool/tracking and a controlled invalidate call. `shadow_sync_pool` is a counting stub: it does not test flush, GPU visibility or completion. | **Observed**: the final normal run records type 2, properties `0x6` (visible/coherent), keeping the direct path. It does not run or validate AMD's physical fallback. | **Pending**: neither the memory type actually selected nor the cause of its bands is established with AMD bytes/trace. |
+| Graphics draws with storage writes | **Fixed**: skipping a draw with a written SSBO/image store because its pipeline is pending skips a functional operation, even if its render target is recent. Translation/reflection and pipeline are awaited for those effects. | The donor fails the negative; VS/PS, SSBO/image store, read-only, unknown translation, several waits and real failure tests. | Integrated runtime `06a8d9df…` built and run in the normal A/B; that warm route had no skips. This does not show which draw caused the bands/reticle. | **Pending**: the local reflection of a storage shader shows the class is used, not the AMD report's causality. |
+| Compute dispatch | **Observed in source**: `op_dispatch`/`op_dispatch_ind` request translation without pending and a synchronous compute pipeline. | The hypothesis that they go through the graphics skip is **ruled out**. No compute patch based on that assumption was added. | Not an independent acceptance of every dispatch. | No specific test; do not attribute the defect to compute from the look of the bands. |
+| Capture → buffer → JPEG → thumbnail → evaluation | Bounded opt-in diagnostics compare transfers keeping pitch/format/lifetime. The original selection/evaluation/tutorial logic is kept. | Fixtures instrument real transfers with controlled APIs; the independent CPU audit of the bank/JPEG has its own pending review. | **Observed**: separate normal 540 s controls with `f6d92250…` and `06a8d9df…`, each exit 0, two new photos and two thumbnails without black rows, four identical GPU source/buffer transfers and tutorial progress recorded. The earlier one also identifies a first-expedition capture. The final evidence is its own, not inherited from the earlier one. | **Pending**: the owner's screenshot shows bands and a selection rejection; it does not prove the bands cause that rejection or where they come from. AMD bytes are missing. |
+| Mouse, focus and sensors | **Fixed**: capture epoch; fusion reset when the source changes/is lost; no enabling sensors with motion off; partial rollback; removal of the non-atomic shared cache of the live setting. | 19 native scenarios; the donor shows eleven failures. Two Win32 threads reproduce an old read that contaminated the new setting. Three complete units pass syntax. | Integrated binary built; fixtures do not activate hardware. Not equivalent to acceptance of the physical mouse/controller. | **Pending**: a camera that aims by itself can have other causes, including unmeasured physical drift. Do not change sensitivity/deadzone to hide it. |
+| VRR | The probe separates observation/capability/unknown state. FIFO/mailbox do not certify VRR. | Specific contracts and parser, separated from hardware. | The A/B used mailbox and a 1920×1055 swapchain; this **does not show VRR**. | The monitor's FreeSync is the report's context, not a measurement of the swapchain's variable cadence. |
 
-## Evidencia local reproducible
+## Reproducible local evidence
 
-Los enlaces bajo `build/` apuntan a artefactos privados ya existentes. No subir
-capturas, fotos, partidas, imports, claves, cachés derivadas o ejecutables.
+Links under `build/` point to existing private artifacts. Do not upload screenshots, photos,
+saves, imports, keys, derived caches or executables.
 
-| Evidencia | Alcance y límite |
+| Evidence | Scope and limit |
 | --- | --- |
-| `build/v05-original-color-fixed-1to1/pixel-comparison.json` | Primer par digital exacto `f01108`: MAE/máximo/RMS=0; decodificación sRGB incorrecta ≈49,47 MAE. |
-| `build/v05-final-color-coherence-1to1/{run.json,pixel-comparison.json}` | Corrección con matriz fuente/destino; mejor par `f01114`, 1920×1080, MAE/máximo=0, binario `f6d92250c57917e37ac8ab0bfc02792896feeb56df69ccceca6265019f034eba`. No es una validación física HDR ni fallback sRGB-only. |
-| `build/v05-import-coherence-proof/proof.c` | Prueba mínima del selector que acepta tipo no coherente; complementar con `tests/test_photo_readback.py` y el adaptador, no confundir con traza AMD. |
-| [Efectos gráficos](graphics-side-effects.md) | Causa, cambios, negativo/positivo y límites de `tests/test_graphics_effects.py`. |
-| `build/v05-positive-control-normal540/{run.json,photo-evidence.json}` | Binario `f6d92250…`, exit 0, frame final 32272; fotos 1080×720, miniaturas 240×200. Las copias `save`/`save-tx` no son fotos independientes. Hubo actividad async real: no confundir con un benchmark caliente sin skips. |
-| `build/v05-final-positive-control-normal540/{run.json,photo-evidence.json}` | Ensayo distinto con binario `06a8d9dfee5d8ee5c6d3cfe72beccf3d4e5d3f1d553ea7187cd7231be52b722d`: exit 0, frame final 32252, originales/perfil/backups intactos, cuatro transferencias con cero diferencias y dos fotos/dos miniaturas nuevas sin filas negras. Registra 98 skips de pipeline pendiente y cero skips por traducción shader; no prueba que se omitiera un draw con efectos storage. PyInstaller/tests concurrentes: no es benchmark limpio. |
-| [Auditoría de bancos](photo-bands-cpu.md), [revisión](photo-audit-review.md) | Los 150 bancos históricos contienen duplicados: solo dos fotos únicas de una ruta. Un parser/veredicto de auditoría también necesita pruebas de daños y protección de fuentes. |
-| [Entrada](camera-input.md), `build/v05-camera-input-results.json` | CPU/threads y compilación; aceptación física pendiente. |
+| `build/v05-original-color-fixed-1to1/pixel-comparison.json` | First exact digital pair `f01108`: MAE/max/RMS=0; wrong sRGB decoding ≈49.47 MAE. |
+| `build/v05-final-color-coherence-1to1/{run.json,pixel-comparison.json}` | Fix with a source/target matrix; best pair `f01114`, 1920×1080, MAE/max=0, binary `f6d92250c57917e37ac8ab0bfc02792896feeb56df69ccceca6265019f034eba`. Not a physical HDR validation or an sRGB-only fallback. |
+| `build/v05-import-coherence-proof/proof.c` | Minimal proof of the selector accepting a non-coherent type; complement with `tests/test_photo_readback.py` and the adapter, do not confuse with an AMD trace. |
+| [Graphics effects](graphics-side-effects.md) | Cause, changes, negative/positive and limits of `tests/test_graphics_effects.py`. |
+| `build/v05-positive-control-normal540/{run.json,photo-evidence.json}` | Binary `f6d92250…`, exit 0, final frame 32272; 1080×720 photos, 240×200 thumbnails. The `save`/`save-tx` copies are not independent photos. There was real async activity: do not confuse with a warm benchmark without skips. |
+| `build/v05-final-positive-control-normal540/{run.json,photo-evidence.json}` | A different run with binary `06a8d9dfee5d8ee5c6d3cfe72beccf3d4e5d3f1d553ea7187cd7231be52b722d`: exit 0, final frame 32252, originals/profile/backups intact, four transfers with zero differences and two new photos/two thumbnails without black rows. Records 98 pending-pipeline skips and zero shader-translation skips; it does not prove a draw with storage effects was skipped. Concurrent PyInstaller/tests: not a clean benchmark. |
+| [Bank audit](photo-bands-cpu.md), [review](photo-audit-review.md) | The 150 historical banks contain duplicates: only two unique photos from one route. An audit parser/verdict also needs damage and source-protection tests. |
+| [Input](camera-input.md), `build/v05-camera-input-results.json` | CPU/threads and build; physical acceptance pending. |
 
-## Rendimiento: resultados separados
+## Performance: separate results
 
-[El A/B normal](../../build/v05-normal-pacing-ab/REPORT.md) compara una corrida
-medida de 40 s por binario, cada una tras 40 s de calentamiento, con GPU
-serializada, mismo seed de perfil/caché, Original, cap 60, render 100 % y mismo
-swapchain efectivo 1920×1055. No utiliza `--shot` ni capturas de vuelo activas.
+[The normal A/B](../../build/v05-normal-pacing-ab/REPORT.md) compares one measured 40 s run per
+binary, each after 40 s of warm-up, with a serialised GPU, the same profile/cache seed,
+Original, cap 60, render 100 % and the same effective 1920×1055 swapchain. It uses neither
+`--shot` nor active flight captures.
 
-| Intervalo de juego completo | 0.4 | Integrado `06a8d9df…` |
+| Whole game interval | 0.4 | Integrated `06a8d9df…` |
 | --- | ---: | ---: |
-| Muestras | 2355 | 2354 |
-| Media, ms | 17,003 | 17,004 |
-| p50, ms | 16,654 | 16,662 |
-| p95, ms | 19,661 | 19,301 |
-| p99, ms | 34,781 | 42,523 |
-| Máximo, ms | 104,370 | 110,373 |
+| Samples | 2355 | 2354 |
+| Mean, ms | 17.003 | 17.004 |
+| p50, ms | 16.654 | 16.662 |
+| p95, ms | 19.661 | 19.301 |
+| p99, ms | 34.781 | 42.523 |
+| Max, ms | 104.370 | 110.373 |
 
-**No hay ganancia global de pacing demostrada.** Media/mediana son equivalentes
-y las colas son mixtas. El segmento posterior mejora algunas colas, pero no
-reemplaza el resultado completo. Cero traducciones/skips/esperas runtime en esta
-ventana no atribuye los picos restantes a un mecanismo concreto. Inicio/prewarm
-se mide por separado; una única corrida no establece repetibilidad ni regresión
-causal. Las corridas fotográficas tuvieron concurrencia CPU declarada y no sirven
-como comparación limpia de pacing.
+**No global pacing gain is shown.** Mean/median are equivalent and the tails are mixed. The
+later segment improves some tails, but it does not replace the complete result. Zero runtime
+translations/skips/waits in this window does not attribute the remaining spikes to a specific
+mechanism. Start-up/prewarm is measured separately; a single run does not establish
+repeatability or causal regression. The photo runs had declared CPU concurrency and are no use
+as a clean pacing comparison.
 
-La caché de generación es otro coste: `build/v05-generation-cache-real/evidence.json`
-registra generación + recibo **86,820 s**, publicación **3,351 s**, restauración
-**3,044 s** y verificación **0,265 s**; 150 salidas/287.542.127 bytes idénticos,
-copias independientes y misma ruta owner. Se verificaron originales en ambos
-recorridos. No se compiló código nativo ni se usó GPU en ese ensayo: **no mide FPS**.
+The generation cache is another cost: `build/v05-generation-cache-real/evidence.json` records
+generation + receipt **86.820 s**, publication **3.351 s**, restore **3.044 s** and
+verification **0.265 s**; 150 outputs/287,542,127 identical bytes, independent copies and the
+same owner path. Originals were verified on both runs. No native code was compiled and no GPU
+was used in that test: **it does not measure FPS**.
 
-## Puertas pendientes
+## Pending gates
 
-### Actualizaciones de revisión y medición
+### Review and measurement updates
 
-- PR #1 de MatyMeatBoy integrado en `4f421cf`: la auditoría CPU de bancos/fotos y sus
-  tres correcciones de revisión están aprobadas (25 pruebas). Sigue pendiente
-  auditar bytes de las fotos afectadas en AMD; el estado de implementación no
-  sustituye esa evidencia. Ver `photo-audit-review.md`.
-- `build/v05-managed-shadow-positive-control/` añade un ensayo real de 540 s
-  con `AC_SHADOW=1`, binario `06a8d9df…`: cuatro pares GPU exactos, dos fotos y
-  dos miniaturas limpias, tutorial/primera expedición y 75 archivos protegidos
-  intactos. Ejecuta la ruta gestionada real en RTX; no valida la elección
-  automática de fallback por pool ni un flush físico no coherente en AMD.
-- `build/v05-rng-pacing-ab/comparison.json` compara el puente entero verificado
-  activado/desactivado en el **mismo** binario `5b6671c9…`, con dos pares de 40 s
-  en orden inverso, calentamiento separado, misma semilla/caché restaurada,
-  Original y swapchain 1920×1055. El p99 agrupado baja de **42,970 a 25,469 ms**;
-  ambos pares mejoran esa cola. Media 17,088→16,736 ms, mediana ≈16,67 ms;
-  cuadros >50 ms: 40→14. Aún hay un pico de 107,692 ms con el puente activado.
-  GPU ocupada ≈1,1 ms en ambos. Esto es una mejora local acotada de ese recorrido
-  RTX, no la eliminación de todos los tirones ni una medición AMD. La evidencia
-  anterior 0.4→`06a8d9df…` sigue siendo válida para esos binarios: no se reemplaza
-  retrospectivamente por esta comparación de un cambio posterior.
-- El candidato privado se identifica como `0.5.0-dev.1`; esa identidad no es
-  una publicación. Su aceptación usa su propio hash final, sin heredar la
-  aceptación fotográfica de los binarios anteriores. Protocolo físico en
-  `v05-owner-validation.md`.
-- El ejecutable final `76f08005…`, productor `555d6258…`, completó su propio
-  ensayo normal de 540 s: dos fotos y dos miniaturas limpias, cuatro pares GPU
-  exactos, evaluación/tutorial y primera expedición. Los 75 archivos protegidos
-  de perfil/respaldo siguen intactos. Fuente de evidencia y límites en
-  `v05-dev1-acceptance.md`; aceptación AMD/mando/FreeSync todavía pendiente.
-- `v0.5.0-alpha` quedó publicada con productor `e314751d…`. La reconstrucción
-  real de su kit público produjo `e0dcac87…`, que completó un nuevo control de
-  540 s, fotos/miniaturas y tutorial/primera expedición. Descarga, instalación,
-  reparación y adquisición del kit se comprobaron desde la release publicada.
-  Ver `v05-alpha-acceptance.md`; no heredar aceptación física AMD ni declarar
-  eliminados los picos de pacing pendientes por cerrar esta alpha limitada.
+- PR #1 integrated in `4f421cf`: the CPU audit of banks/photos and its three review
+  fixes are approved (25 tests). Auditing the bytes of the affected photos on AMD is still
+  pending; the implementation state does not replace that evidence. See
+  `photo-audit-review.md`.
+- `build/v05-managed-shadow-positive-control/` adds a real 540 s run with `AC_SHADOW=1`, binary
+  `06a8d9df…`: four exact GPU pairs, two clean photos and two clean thumbnails,
+  tutorial/first expedition and 75 protected files intact. It runs the real managed path on
+  RTX; it does not validate the automatic fallback choice by pool or a non-coherent physical
+  flush on AMD.
+- `build/v05-rng-pacing-ab/comparison.json` compares the verified integer bridge on/off in the
+  **same** binary `5b6671c9…`, with two reversed 40 s pairs, separate warm-up, the same
+  seed/restored cache, Original and a 1920×1055 swapchain. The pooled p99 drops from **42.970
+  to 25.469 ms**; both pairs improve that tail. Mean 17.088→16.736 ms, median ≈16.67 ms;
+  frames >50 ms: 40→14. There is still a 107.692 ms spike with the bridge on. GPU busy ≈1.1 ms
+  in both. This is a bounded local improvement on that RTX route, not the removal of every
+  hitch or an AMD measurement. The earlier 0.4→`06a8d9df…` evidence is still valid for those
+  binaries: it is not retroactively replaced by this comparison of a later change.
+- The private candidate is identified as `0.5.0-dev.1`; that identity is not a release. Its
+  acceptance uses its own final hash, without inheriting the photo acceptance of earlier
+  binaries. Physical protocol in `v05-owner-validation.md`.
+- The final executable `76f08005…`, producer `555d6258…`, completed its own normal 540 s run:
+  two clean photos and two clean thumbnails, four exact GPU pairs, evaluation/tutorial and the
+  first expedition. The 75 protected profile/backup files stay intact. Evidence source and
+  limits in `v05-dev1-acceptance.md`; AMD/controller/FreeSync acceptance still pending.
+- `v0.5.0-alpha` was published with producer `e314751d…`. The real rebuild of its public kit
+  produced `e0dcac87…`, which completed a new 540 s control, photos/thumbnails and
+  tutorial/first expedition. Download, install, repair and kit acquisition were checked from
+  the published release. See `v05-alpha-acceptance.md`; do not inherit physical AMD acceptance
+  or declare the pending pacing spikes gone by closing this limited alpha.
 
-Conservar pendientes AMD, aceptación física de entrada, retícula/foco y escenarios
-fotográficos no cubiertos. El ensayo final de 540 s aporta aceptación local
-acotada de esa ruta; un fixture verde o una corrección de contrato no permite
-marcar resuelto todo el reporte.
-No saltar validaciones, cambiar flags de progreso ni fabricar puntuaciones.
+Keep the AMD items, physical input acceptance, reticle/focus and uncovered photo scenarios
+pending. The final 540 s run gives bounded local acceptance of that route; a green fixture or a
+contract fix does not allow marking the whole report solved. Do not skip validation, change
+progress flags or fabricate scores.

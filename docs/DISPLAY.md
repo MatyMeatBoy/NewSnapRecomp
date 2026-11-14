@@ -110,3 +110,22 @@ GeForce RTX 4060 Laptop GPU advertised `VK_EXT_present_timing` revision 3,
 This inventory created no swapchain or rendering workload and does not establish
 an observed VRR mode. Actual game observations, AMD target-device behavior,
 monitor transitions and hardware VRR acceptance are separate evidence.
+
+## VRR in practice (0.8.6, VRR-01 / PACE-AMD-01)
+
+Windows drivers turn FreeSync/G-SYNC on for a game; a Vulkan program cannot request it. The
+runtime's fullscreen is a borderless window covering the monitor, which the driver can
+flip independently, so VRR engages there when it is enabled in the driver (AMD Adrenalin:
+FreeSync on; NVIDIA: G-SYNC for full screen) and the frame rate is inside the monitor's
+range. With VRR active, keep a normal cap (60, 90, 120…): frames are shown as they come and
+there is no 2/3-refresh judder.
+
+Without VRR, a 60 cap on a 144 Hz monitor alternates 2 and 3 refreshes per frame. Use
+**«Según la pantalla»** (`AC_FPS=display`): it caps at an exact fraction of the refresh (72 at
+144 Hz, 100 at 100 Hz, 60 at 120 Hz) and presents in the middle of each refresh interval
+(`newsnap/overlays/snap_latent_sync.h`, DWM vblank timing, as Special K's Latent Sync). Do
+not combine it with VRR: there it only adds latency.
+
+AMD's Vulkan driver on the owner's RX 6900 XT does not expose `VK_EXT_present_timing`, so the
+display status stays `unknown`; whether FreeSync engaged must be checked on the monitor's
+own OSD (refresh counter following the frame rate).

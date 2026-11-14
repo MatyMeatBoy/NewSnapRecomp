@@ -1,51 +1,50 @@
-# Reportes del propietario tras publicar 0.5 alpha
+# Owner reports after publishing 0.5 alpha
 
-Equipo confirmado por el propietario: RX 6900 XT. Usa el ZIP público 0.5 de
-GitHub, no el paquete privado dev1. La versión/hash del ejecutable realmente
-iniciado todavía debe vincularse: hay error 404 del launcher y lanzamiento forzado.
-No asumir que la versión del launcher certifica la del runtime.
+Hardware confirmed by the owner: RX 6900 XT. Uses the public 0.5 ZIP from GitHub, not the
+private dev1 package. The version/hash of the executable actually started still has to be
+bound: the launcher gives a 404 error and the start has to be forced. Do not assume that the
+launcher's version certifies the runtime's.
 
-## Pendientes críticos y reparto
+## Critical items and split
 
-| ID | Observación concreta | Trabajo siguiente |
+| ID | Concrete observation | Next work |
 | --- | --- | --- |
-| LAUNCH-404 | Correr devuelve 404 y debe forzarse el inicio. | RTX tester: adquisición/kit local/autenticación del repo privado, sin saltar validaciones. |
-| AUTO-DATA | GameData está en la carpeta del port y no se detecta automáticamente. | RTX tester: rutas portables, preferencias antiguas y presencia sin marcador. |
-| FOTO-01/02 | Selección: foto grande y ambas miniaturas tienen bandas negras. Evaluación posterior: una foto de Pikachu sí se ve completa. | RTX tester/MatyMeatBoy: comparar rutas, slots, buffers y JPEG guardado. La vista correcta no prueba que todos los bytes persistidos sean válidos. |
-| KEYBOARD-CRASH | Justo después del registro/evaluación mostrados, abre el teclado de Windows y el juego se cierra. | **Libre para MatyMeatBoy**: applet/entrada de nombre/callback/retorno; distinguir excepción de salida normal con los logs. No omitir pasos del juego. |
-| COLOR-01 | El propietario sigue viendo los colores excesivamente saturados. | Verificar runtime, datos/configuración efectiva y transferencia en AMD; no compensar alterando el grade del juego. |
-| HEAD-INTRO | Stutter localizado en la cabeza al entrar caminando antes del logo. | **Libre para MatyMeatBoy**: analizar animación/transformaciones y cadencia; no atribuirlo sin prueba al pacing general. |
-| CONSOLE-01 | Sigue un CMD corriendo en segundo plano. | RTX tester: identificar proceso propio/origen y flags de creación; conservar diagnóstico. |
-| HOME-PROFILE | Solicita quitar «Elegir perfil» de Home. | RTX tester: mover la selección avanzada a Opciones, conservar perfil y defaults. |
+| LAUNCH-404 | Running returns 404 and the start must be forced. | RTX tester: acquisition/local kit/private repository authentication, without skipping validation. |
+| AUTO-DATA | GameData is in the port's folder and is not detected automatically. | RTX tester: portable paths, old preferences and presence without a marker. |
+| FOTO-01/02 | Selection: the big photo and both thumbnails have black bands. Later evaluation: a Pikachu photo does show complete. | RTX tester/MatyMeatBoy: compare paths, slots, buffers and the saved JPEG. A correct view does not prove that every persisted byte is valid. |
+| KEYBOARD-CRASH | Right after the shown registration/evaluation, the Windows keyboard opens and the game closes. | **Free for MatyMeatBoy**: applet/name entry/callback/return; tell an exception from a normal exit with the logs. Do not skip game steps. |
+| COLOR-01 | The owner still sees overly saturated colours. | Check runtime, effective data/configuration and transfer on AMD; do not compensate by changing the game's grade. |
+| HEAD-INTRO | Stutter localised on the head when walking in before the logo. | **Free for MatyMeatBoy**: analyse animation/transforms and cadence; do not blame general pacing without proof. |
+| CONSOLE-01 | A CMD keeps running in the background. | RTX tester: identify our own process/origin and creation flags; keep diagnostics. |
+| HOME-PROFILE | Asks to remove «Elegir perfil» (Choose profile) from Home. | RTX tester: move advanced selection to Options, keep profile and defaults. |
 
-El repo es privado (consulta de GitHub confirmada). Que una descarga funcione en
-el PC de desarrollo con gh autenticado no acredita un PC sin esas credenciales.
-No incluir tokens/credenciales en paquetes ni cambiar visibilidad del repo.
+The repository is private (GitHub query confirmed). A download working on the development
+PC with an authenticated gh does not vouch for a PC without those credentials. Do not put
+tokens/credentials in packages or change the repository's visibility.
 
-El propietario también observa diferente suavidad entre la prueba local y la
-6900 XT/FreeSync; Astral Chain es su referencia. Seguimiento y comparación:
-`docs/bugs/presentation-amd-nvidia.md`. Comparar cadencia efectiva, no solo FPS.
+The owner also notices different smoothness between the local test and the 6900
+XT/FreeSync; Astral Chain is their reference. Follow-up and comparison:
+`docs/bugs/presentation-amd-nvidia.md`. Compare effective cadence, not just FPS.
 
-## Capturas y límites de inferencia
+## Screenshots and limits of inference
 
-Copias privadas en `build/user-reports/rx6900xt-0.5/`, con SHA256 y ruta original
-en `evidence.json`: `album-bands-amd.png` y `evaluation-good-amd.png`. No subir las
-imágenes, bancos, fotos ni otros datos del juego a GitHub.
+Private copies in `build/user-reports/rx6900xt-0.5/`, with SHA256 and original path in
+`evidence.json`: `album-bands-amd.png` and `evaluation-good-amd.png`. Do not upload the
+images, banks, photos or other game data to GitHub.
 
-El HUD muestra RX 6900 XT / i9-10850K, ventana 2560×1440, imagen 1920×1080,
-escena 1600×900 y «AMD FSR 1, sharpness 80%». Es una pista para identificar
-runtime/configuración efectivos; no demuestra por sí sola qué versión ejecutó
-ni que ese filtro explique las bandas. No declarar las fotos arregladas por la
-imagen correcta de una sola pantalla.
+The HUD shows RX 6900 XT / i9-10850K, a 2560×1440 window, a 1920×1080 image, a 1600×900
+scene and «AMD FSR 1, sharpness 80%». It is a hint to identify the effective
+runtime/configuration; by itself it does not show which version ran or that this filter
+explains the bands. Do not declare photos fixed from one screen's correct image.
 
-**Confirmación positiva independiente:** el propietario dice que el cuadrado de
-foto ya se ve bien en la 6900 XT. Eso cierra el defecto visual reportado de ese
-recuadro; no cierra fotos guardadas, color, animación ni teclado.
+**Independent positive confirmation:** the owner says the photo square now looks right on
+the 6900 XT. That closes the reported visual defect of that box; it does not close saved
+photos, colour, animation or the keyboard.
 
-Pudo seleccionar las carpetas de Pikachu/Vivillon y avanzar. No recuperar el
-perfil anterior: el propietario lo excluyó expresamente. Mantener la lógica de
-sujetos, evaluación, tutorial y guardados; no fabricar progresos o puntuaciones.
+They could select the Pikachu/Vivillon folders and continue. Do not recover the previous
+profile: the owner explicitly excluded it. Keep the subject, evaluation, tutorial and save
+logic; do not fabricate progress or scores.
 
-Tomar tareas y reservar archivos en `docs/PENDIENTES.md` antes de editar. Entregar
-PR temático desde worktree aislado; RTX tester integra y prueba. La release 0.5 alpha
-publicada permanece inmutable; estas observaciones reabren los casos afectados.
+Take tasks and reserve files in `docs/PENDIENTES.md` before editing. Deliver a themed PR
+from an isolated worktree; RTX tester integrates and tests. The published 0.5 alpha release stays
+immutable; these observations reopen the affected cases.

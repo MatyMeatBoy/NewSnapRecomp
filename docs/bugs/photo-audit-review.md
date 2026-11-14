@@ -1,38 +1,33 @@
-# Revisión independiente de FOTO-02
+# Independent review of FOTO-02
 
-2026-11-13 · RTX tester · **Correcciones aprobadas e integradas en el PR #1**.
+2026-11-13 · RTX tester · **Fixes approved and integrated in PR #1**.
 
-La revisión del commit `23f9d79` confirmó la protección de entradas, el manejo de
-JPEG malformados y el veredicto incompleto ante datos no verificables. Las
-20 pruebas de auditoría y 5 de fotografías pasan. La evidencia AMD sigue
-pendiente; aprobar la herramienta no atribuye la causa de las franjas.
+The review of commit `23f9d79` confirmed input protection, handling of malformed JPEGs and the
+incomplete verdict on unverifiable data. The 20 audit tests and 5 photo tests pass. The AMD
+evidence is still pending; approving the tool does not attribute the cause of the bands.
 
-Los hallazgos iniciales se conservan a continuación para trazabilidad.
+The initial findings are kept below for traceability.
 
-Las 17 pruebas existentes pasan, pero tres reproducciones sintéticas encontraron:
+The 17 existing tests passed, but three synthetic reproductions found:
 
-1. **P1 — Salida sobre entrada:** `main([bank, '--out', bank])` devuelve 0 y
-   sustituye el banco por JSON cuando la copia está en una carpeta sin los nombres
-   protegidos. Comparar todas las salidas con todas las entradas descubiertas antes
-   de escribir; considerar enlaces/hardlinks y exportaciones. Nunca sobrescribir
-   un banco de entrada, independientemente de su carpeta.
-2. **P2 — JPEG malformado aborta auditoría:** SOI + SOF C0 de longitud 2 + EOI,
-   y DRI de longitud 2, lanzan `struct.error`. `audit_jpeg` llama al analizador
-   fuera del bloque de decodificación y `audit` solo captura `ValueError`.
-   Validar longitudes mínimas y conservar errores por entrada para seguir con el
-   resto del banco. Añadir ambos casos de regresión.
-3. **P1 — Veredicto limpio con JPEG ilegible:** un banco con checksum válido y
-   JPEG `FF D8 FF E0 00 10`, catorce ceros y `FF D9` produce `bytes-limpios`
-   aunque `decodificación_fallida=1` y `estructura_con_problemas=1`.
-   Emitir resultado incompleto/dañado; solo declarar limpio con evidencia
-   completa de decodificación y checksums válidos.
+1. **P1 — Output over input:** `main([bank, '--out', bank])` returns 0 and replaces the bank with
+   JSON when the copy is in a folder without the protected names. Compare every output with every
+   input discovered before writing; consider links/hardlinks and exports. Never overwrite an input
+   bank, whatever its folder.
+2. **P2 — A malformed JPEG aborts the audit:** SOI + SOF C0 of length 2 + EOI, and DRI of length
+   2, raise `struct.error`. `audit_jpeg` calls the parser outside the decode block and `audit`
+   only catches `ValueError`. Validate minimum lengths and keep errors per entry to carry on with
+   the rest of the bank. Add both regression cases.
+3. **P1 — Clean verdict with an unreadable JPEG:** a bank with a valid checksum and the JPEG `FF D8
+   FF E0 00 10`, fourteen zeros and `FF D9` produces `bytes-limpios` even though
+   `decodificación_fallida=1` and `estructura_con_problemas=1`. Emit an incomplete/damaged result;
+   only declare clean with complete decoding evidence and valid checksums.
 
-El informe distingue correctamente que los 150 bancos incluyen copias y solo
-dos fotos únicas de una ruta NVIDIA. Revisar la fuerza de sus inferencias: la
-coincidencia de franjas y rechazo del sujeto no demuestra por sí sola que la
-evaluación lea esos píxeles, ni excluye presentación, pitch o JPEG. La geometría
-medida en una captura reescalada orienta pruebas; no determina la causa.
+The report correctly notes that the 150 banks include copies and only two unique photos from one
+NVIDIA route. Review the strength of its inferences: the bands coinciding with the subject
+rejection does not by itself show that the evaluation reads those pixels, nor exclude
+presentation, pitch or JPEG. Geometry measured on a rescaled screenshot guides tests; it does not
+determine the cause.
 
-Los tres casos se reprodujeron con datos sintéticos y ahora tienen regresiones.
-La validación con bytes reales AMD deberá hacerse sobre una copia del perfil,
-sin modificar el guardado del propietario.
+The three cases were reproduced with synthetic data and now have regressions. Validation with real
+AMD bytes must be done on a copy of the profile, without modifying the owner's save.

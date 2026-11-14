@@ -1,50 +1,46 @@
-# Revisión de PR #2: applets y triaje del cierre
+# PR #2 review: applets and close triage
 
-Revisión de `732671b35668b4ed0d275e3c6e6da217107e64bb`.
+Review of `732671b35668b4ed0d275e3c6e6da217107e64bb`.
 PR: https://github.com/MatyMeatBoy/NewSnapRecomp/pull/2
-CI Source checks pasa. Esta revisión describe la propuesta original y los
-contratos que bloquearon su integración. Se resolvieron antes del merge: bool
-canónico false, retirada de cuatro overrides especulativos de cuenta y lectura
-acotada de ErrorResultVariant. Estado y pruebas actuales en
-[contratos revisados](pr2-applet-contracts.md). Las observaciones siguientes se
-conservan como evidencia histórica, no como defectos presentes del overlay.
+CI Source checks pass. This review describes the original proposal and the contracts that
+blocked its integration. They were resolved before the merge: canonical bool false, removal
+of four speculative account overrides and a bounded read of ErrorResultVariant. Current
+status and tests in [reviewed contracts](pr2-applet-contracts.md). The observations below
+are kept as historical evidence, not as present defects of the overlay.
 
-## Retorno booleano
+## Boolean return
 
-`nn::nifm::HandleNetworkRequestErrorResult()` retorna bool, no Result.
-El SDK fijado, `sdk+0x32e950`, normaliza el retorno con `and w0,w0,#1`.
-Los tres callers observados (`main+0x537a04`, `main+0x537a30`,
-`main+0x53b7f0`) usan `tbz w0,#0`. El overlay retorna RT_RESULT(110,1),
-622: bit cero falso, valor completo no cero. Corregir a `false` (0) y
-comprobar el valor canónico y la coherencia de ambas formas de probar bool.
-Los callers actuales toman la misma rama falsa con 622; no se demostró una
-rama de juego incorrecta en ese dump. El contrato ABI sí está incumplido.
+`nn::nifm::HandleNetworkRequestErrorResult()` returns bool, not Result. The pinned SDK,
+`sdk+0x32e950`, normalises the return with `and w0,w0,#1`. The three observed callers
+(`main+0x537a04`, `main+0x537a30`, `main+0x53b7f0`) use `tbz w0,#0`. The overlay returns
+RT_RESULT(110,1), 622: bit zero false, full value non-zero. Fix to `false` (0) and check the
+canonical value and that both ways of testing a bool agree. The current callers take the
+same false branch with 622; a wrong game branch was not shown in that dump. The ABI contract
+is broken all the same.
 
-Cuatro pruebas originales pasan porque esperan el módulo de un Result.
-Un fixture nativo independiente con la aserción de bool falla en el código
-propuesto: evidencia privada `build/pr2-applet-review/bool-contract/`.
+Four original tests pass because they expect a Result's module. An independent native
+fixture with the bool assertion fails on the proposed code: private evidence
+`build/pr2-applet-review/bool-contract/`.
 
-## Errores de cuenta
+## Account errors
 
-El comentario «el juego solo comprueba éxito» no es correcto. Los callers en
-`main+0x538cac..0x538cc4`, `+0x538d50..0x538d68`,
-`+0x538e34..0x538e5c` y `+0x1f2b10..0x1f2b28` distinguen el módulo 124
-y rangos de descripciones 200–269 y/o 430–499. El error sintético 124/100
-queda fuera. Antes de prometer equivalencia con una consola offline hace falta
-justificar el contrato elegido y comprobar su rama consumidora. No sustituir
-por otra descripción adivinada ni modificar progreso para ocultar fallos.
+The comment «the game only checks success» is wrong. The callers at
+`main+0x538cac..0x538cc4`, `+0x538d50..0x538d68`, `+0x538e34..0x538e5c` and
+`+0x1f2b10..0x1f2b28` distinguish module 124 and description ranges 200–269 and/or
+430–499. The synthetic error 124/100 falls outside. Before promising equivalence with an
+offline console, the chosen contract must be justified and its consuming branch checked.
+Do not substitute another guessed description or change progress to hide failures.
 
-## Log del propietario
+## Owner's log
 
-SHA256 BDBB38B767C3295FFB06BE0C3EB611F20444BBE6AE744BDFDF438D5F39D8680B.
-El fatal observado es `rt_dispatch sdk+0x273060`; la inferencia de generación
-por líneas/parches del log es útil, pero no identifica criptográficamente el
-ejecutable ni demuestra qué abrió el teclado del sistema. El paquete que el
-propietario descargó fue el ZIP de GitHub; investigar automáticamente el
-ejecutable que pudo iniciar tras el 404 del launcher. No volver a pedirle
-que determine versiones manualmente ni cerrar fotos/color/AMD sin validación.
+SHA256 BDBB38B767C3295FFB06BE0C3EB611F20444BBE6AE744BDFDF438D5F39D8680B. The observed fatal
+is `rt_dispatch sdk+0x273060`; inferring the generation from the log's lines/patches is
+useful, but it does not cryptographically identify the executable or show what opened the
+system keyboard. The package the owner downloaded was the GitHub ZIP; automatically
+investigate the executable that may have started after the launcher's 404. Do not ask them
+again to work out versions by hand, and do not close photos/colour/AMD without validation.
 
-El nuevo exportador del launcher incluye hash e identidad para futuras sesiones.
-La integración posterior conserva el triaje más reciente de main. El recorrido
-integrado y la aceptación física AMD se registran por separado; integrar el PR
-no acredita por sí solo la causa del teclado ni el cierre del propietario.
+The launcher's new exporter includes hash and identity for future sessions. The later
+integration keeps main's most recent triage. The integrated route and the physical AMD
+acceptance are recorded separately; integrating the PR does not by itself establish the
+keyboard's cause or the owner's sign-off.

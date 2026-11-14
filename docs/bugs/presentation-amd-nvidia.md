@@ -1,39 +1,46 @@
-# Suavidad de presentación: RX 6900 XT y RTX 4060
+# Presentation smoothness: RX 6900 XT and RTX 4060
 
-Estado: abierto, asociado a PACE-01 / QA-AMD-01. Reporte del propietario del
-13/11/2026: la prueba local se siente distinta al ZIP de GitHub ejecutado en la
-RX 6900 XT con monitor FreeSync. Astral Chain es su referencia de suavidad.
+Status: open, linked to PACE-01 / QA-AMD-01. Owner report of 13/11/2026: the local test
+feels different from the GitHub ZIP run on the RX 6900 XT with a FreeSync monitor. Astral
+Chain is their smoothness reference.
 
-## Lo comprobado en código y capturas
+## What was checked in code and screenshots
 
-- El launcher tiene `mailbox` como valor inicial; la captura AMD muestra VSync.
-  No son prueba de una configuración ni una presentación efectiva idénticas.
-- `vrr_adapt.py` consulta y publica estado cuando la extensión está disponible;
-  no cambia la política de colas ni activa FreeSync por sí mismo. El nombre
-  VSync del HUD tampoco certifica VRR activo en el monitor.
-- El pacer heredado calcula slots y disponibilidad en `nvn_api_obj.c`; el overlay
-  de Snap conserva el intervalo original y aplica el límite del host sin usar
-  los parches de simulación específicos de Astral Chain.
-- Un promedio de 60 FPS o un intervalo de 16,7 ms no identifica duplicados,
-  fotogramas perdidos ni la cadencia real de salida del compositor/monitor.
+- The launcher starts with `mailbox`; the AMD screenshot shows VSync. Neither proves an
+  identical configuration or effective presentation.
+- `vrr_adapt.py` queries and publishes status when the extension is available; it does not
+  change the queue policy or turn FreeSync on by itself. The HUD's VSync name does not
+  certify active VRR on the monitor either.
+- The inherited pacer computes slots and availability in `nvn_api_obj.c`; Snap's overlay
+  keeps the original interval and applies the host cap without Astral Chain's
+  simulation-specific patches.
+- A 60 FPS average or a 16.7 ms interval does not identify duplicates, dropped frames or the
+  real output cadence of the compositor/monitor.
 
-## Comparación necesaria para cerrar
+## Comparison needed to close
 
-Usar el mismo recorrido, versión de runtime identificada automáticamente,
-resolución, escala, preset nativo, estado de caché y límite en ambos equipos.
-Registrar modo solicitado y efectivo de swapchain, monitor/refresco, estado VRR
-observado o desconocido, modo ventana/pantalla completa y cambios de monitor.
-Comparar FIFO/mailbox donde estén soportados, sin cambiar simultáneamente otros
-ajustes. Conservar p50/p95/p99, máximo y número/duración de picos del host;
-complementar con tiempos de presentación observados cuando estén disponibles.
-Separar trabajo CPU/GPU, espera del pacer, bloqueo de acquire/present y cargas.
+Use the same route, automatically identified runtime version, resolution, scale, native
+preset, cache state and cap on both machines. Record the requested and effective swapchain
+mode, monitor/refresh, observed or unknown VRR state, window/fullscreen mode and monitor
+changes. Compare FIFO/mailbox where supported, without changing other settings at the same
+time. Keep the host's p50/p95/p99, maximum and number/duration of spikes; complement with
+observed presentation times when available. Separate CPU/GPU work, pacer wait,
+acquire/present blocking and loads.
 
-La cabeza de la intro tiene tarea independiente HEAD-INTRO: un defecto localizado
-de animación no queda explicado por un pico global sin correlación de evidencia.
-No copiar direcciones/parches de animación de Astral Chain ni alterar velocidad,
-lógica, fotogramas de simulación o colores para disimular diferencias.
+The intro head has its own task, HEAD-INTRO: a localised animation defect is not explained
+by a global spike without correlated evidence. Do not copy Astral Chain's animation
+addresses/patches or change speed, logic, simulation frames or colours to hide differences.
 
-No se ha ejecutado una comparación física AMD/NVIDIA en esta revisión. No
-declarar mejorada la suavidad AMD hasta disponer de una medición comparable y
-confirmación del propietario. Las pruebas GPU del checkout se serializan con
-las reproducciones de teclado/fotos en curso.
+No physical AMD/NVIDIA comparison has been run in this review. Do not declare AMD
+smoothness improved until there is a comparable measurement and the owner's confirmation.
+GPU tests in the checkout are serialised with the keyboard/photo reproductions in progress.
+
+## Update 0.8.6 (PACE-AMD-01)
+
+The owner's monitor (Samsung C27HG7x) runs at 144 Hz. At 60 fps with FIFO and no active
+VRR, frames alternate 2 and 3 refreshes (13.9/20.8 ms), which is the camera-turn judder.
+The AMD driver does not expose `VK_EXT_present_timing`, so the game cannot tell whether
+FreeSync is active. `AC_FPS=display` (launcher «Según la pantalla») caps at an exact
+fraction of the refresh (72 at 144 Hz) and moves each present to the middle of its refresh
+interval (DWM vblank timing, like Special K's Latent Sync). Measured: 100 % of presents
+13.9 ms apart at 72 fps; the panel itself was not measured.
