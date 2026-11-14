@@ -8,23 +8,23 @@
 // functions for its error dialogs, the network request, the Nintendo account
 // link, the friend profile and the console album.
 //
-// Each override gives the answer an offline console gives after the player
-// dismisses the system dialog, and logs what the game asked for.  Nothing here
-// touches game state, progress, photographs or saves: the game's own handling
-// of "dialog closed / no network / no linked account" runs unchanged.
-// err::ShowError(Result) already works this way upstream (ov_system.c).
+// This is explicit host policy, not a claim to reproduce every console result:
+// error dialogs are logged without UI, the network remains unavailable, the
+// local account has no linked network account and the console album is absent.
+// No guest progress, photographs or saves are written. The actual reported
+// JPEG longjmp fatal was corrected separately in 0.3; these paths do not fix it.
+// err::ShowError(Result) already follows a log-only policy upstream (ov_system.c).
 #include <stdint.h>
 #include <string.h>
 
 #include "host.h"
 #include "platform/platform.h"
 
-// Failure values.  The game only tests success, so the module is what matters
-// for its own error text; descriptions are the SDK's as far as they are known.
-#define SNAP_R_ACCOUNT_CANCELLED RT_RESULT(124, 0)      // 2124-0000: the player closed the account dialog
-#define SNAP_R_ACCOUNT_NO_NSA RT_RESULT(124, 100)       // 2124-0100: no linked Nintendo Account
-#define SNAP_R_NETWORK_UNRESOLVED RT_RESULT(110, 1)     // nifm: the request stays rejected (description not from SDK tables)
-#define SNAP_R_ALBUM_UNAVAILABLE RT_RESULT(206, 1)      // capsrv: no console album on this host (description not from SDK tables)
+// Synthetic host failures for unsupported network/console-album operations.
+// The exact console descriptions are not derived. Reviewed Snap callers take
+// their failure branches; these are NOT console-equivalent Result definitions.
+#define SNAP_R_NETWORK_UNRESOLVED RT_RESULT(110, 1)
+#define SNAP_R_ALBUM_UNAVAILABLE RT_RESULT(206, 1)
 
 // nn::err::ApplicationErrorArg as the SDK constructor fills it (sdk+0x15c6xx):
 // number at +8, dialog text at +0x14, full-screen text at +0x814, each a
@@ -59,7 +59,7 @@ static void snap_show_application_error(Cpu *c) {
         snap_applet_text(arg + APP_ERROR_FULLSCREEN, APP_ERROR_TEXT, full, sizeof full);
     }
     if (snap_applet_log_budget(&shown))
-        rt_log("err: game application error dialog %u from %s: \"%s\" / \"%s\" (shown as dismissed; no system applet)",
+        rt_log("err: game application error dialog %u from %s: \"%s\" / \"%s\" (logged only; no system applet)",
                number, snap_applet_caller(c, from, sizeof from), dialog, full);
 }
 HOST_OVERRIDE("_ZN2nn3err20ShowApplicationErrorERKNS0_19ApplicationErrorArgE", snap_show_application_error);
@@ -69,11 +69,12 @@ static void snap_show_error_variant(Cpu *c) {
     static volatile int32_t shown;
     const uint8_t *arg = arg_p(c, 0);
     char from[96];
-    uint32_t words[4] = {0};
+    // Only the tag and largest payload verified in SDK +15ca00/+15ca20.
+    uint32_t words[3] = {0};
     if (arg && plat_mem_readable((uint64_t)(uintptr_t)arg, sizeof words)) memcpy(words, arg, sizeof words);
     if (snap_applet_log_budget(&shown))
-        rt_log("err: game error dialog (variant %08x %08x %08x %08x) from %s (shown as dismissed; no system applet)",
-               words[0], words[1], words[2], words[3], snap_applet_caller(c, from, sizeof from));
+        rt_log("err: game error dialog (variant %08x %08x %08x) from %s (logged only; no system applet)",
+               words[0], words[1], words[2], snap_applet_caller(c, from, sizeof from));
 }
 HOST_OVERRIDE("_ZN2nn3err9ShowErrorERKNS0_18ErrorResultVariantE", snap_show_error_variant);
 
@@ -87,14 +88,17 @@ static void snap_network_request(Cpu *c) {
 }
 HOST_OVERRIDE("_ZN2nn4nifm27SubmitNetworkRequestAndWaitEv", snap_network_request);
 
-// Result nn::nifm::HandleNetworkRequestErrorResult(): the console shows why the request failed; it stays failed
+// bool nn::nifm::HandleNetworkRequestErrorResult(): false means no retry.
+// Pinned SDK +0x32e950 normalizes w0 to bit0. Its member implementation at
+// +0x330170 returns false on failure; main +0x537a04/+0x537a30/+0x53b7f0
+// all test bit0. Return an actual bool, not a nonzero Result with bit0 clear.
 static void snap_network_error_dialog(Cpu *c) {
     static volatile int32_t shown;
     char from[96];
     if (snap_applet_log_budget(&shown))
-        rt_log("nifm: network error dialog from %s (shown as dismissed, still offline)",
+        rt_log("nifm: network error dialog from %s (not handled; no retry on this host)",
                snap_applet_caller(c, from, sizeof from));
-    ret_x(c, SNAP_R_NETWORK_UNRESOLVED);
+    ret_x(c, 0);
 }
 HOST_OVERRIDE("_ZN2nn4nifm31HandleNetworkRequestErrorResultEv", snap_network_error_dialog);
 
@@ -123,24 +127,11 @@ static void snap_account_linked(Cpu *c) {
 }
 HOST_OVERRIDE("_ZN2nn7account32IsNetworkServiceAccountAvailableEPbRKNS0_10UserHandleE", snap_account_linked);
 
-// Result nn::account::EnsureNetworkServiceAccountAvailable(const UserHandle &): the console offers to link one
-static void snap_account_ensure(Cpu *c) {
-    static volatile int32_t shown;
-    char from[96];
-    if (snap_applet_log_budget(&shown))
-        rt_log("account: Nintendo Account link dialog from %s (shown as cancelled; local account only)",
-               snap_applet_caller(c, from, sizeof from));
-    ret_x(c, SNAP_R_ACCOUNT_CANCELLED);
-}
-HOST_OVERRIDE("_ZN2nn7account36EnsureNetworkServiceAccountAvailableERKNS0_10UserHandleE", snap_account_ensure);
-
-static void snap_account_unavailable(Cpu *c) { ret_x(c, SNAP_R_ACCOUNT_NO_NSA); }
-HOST_OVERRIDE("_ZN2nn7account26GetNetworkServiceAccountIdEPNS0_23NetworkServiceAccountIdERKNS0_10UserHandleE",
-              snap_account_unavailable);
-HOST_OVERRIDE("_ZN2nn7account44EnsureNetworkServiceAccountIdTokenCacheAsyncEPNS0_12AsyncContextERKNS0_10UserHandleE",
-              snap_account_unavailable);
-HOST_OVERRIDE("_ZN2nn7account37LoadNetworkServiceAccountIdTokenCacheEPmPcmRKNS0_10UserHandleE",
-              snap_account_unavailable);
+// EnsureNetworkServiceAccountAvailable / GetNetworkServiceAccountId /
+// EnsureNetworkServiceAccountIdTokenCacheAsync / LoadNetworkServiceAccountIdTokenCache
+// intentionally retain the guest SDK implementation. Their exact offline or
+// cancellation Result descriptions were not derived; module-only stand-ins
+// alter Snap's description-range classification and are not safe substitutes.
 
 // ---- friends: no friend service; the profile page is a system applet
 static void snap_friends_initialize(Cpu *c) { (void)c; }
@@ -151,7 +142,7 @@ static void snap_friends_profile(Cpu *c) {
     static volatile int32_t shown;
     char from[96];
     if (snap_applet_log_budget(&shown))
-        rt_log("friends: user profile applet from %s (shown as closed; no friend service)",
+        rt_log("friends: user profile applet from %s (host profile action closed; no friend service)",
                snap_applet_caller(c, from, sizeof from));
     ret_x(c, 0);
 }

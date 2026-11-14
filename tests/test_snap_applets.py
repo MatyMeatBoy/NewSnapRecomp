@@ -18,10 +18,6 @@ EXPECTED = {
     '_ZN2nn4nifm26GetCurrentPrimaryIpAddressEP7in_addr',
     '_ZN2nn4nifm22GetCurrentProxySettingEPNS0_12ProxySettingE',
     '_ZN2nn7account32IsNetworkServiceAccountAvailableEPbRKNS0_10UserHandleE',
-    '_ZN2nn7account36EnsureNetworkServiceAccountAvailableERKNS0_10UserHandleE',
-    '_ZN2nn7account26GetNetworkServiceAccountIdEPNS0_23NetworkServiceAccountIdERKNS0_10UserHandleE',
-    '_ZN2nn7account44EnsureNetworkServiceAccountIdTokenCacheAsyncEPNS0_12AsyncContextERKNS0_10UserHandleE',
-    '_ZN2nn7account37LoadNetworkServiceAccountIdTokenCacheEPmPcmRKNS0_10UserHandleE',
     '_ZN2nn7friends10InitializeEv',
     '_ZN2nn7friends18ShowUserDetailInfoERKNS_7account3UidERKNS1_23NetworkServiceAccountIdERKNS0_15InAppScreenNameESA_',
     '_ZN2nn5album10InitializeEv',
@@ -56,6 +52,7 @@ TEST_C = r'''#include <stdarg.h>
 
 static struct { const char *name; GuestFn fn; } table[64];
 static int entries, logs, unreadable;
+static uint64_t readable_limit = UINT64_MAX;
 static char last[2048];
 void test_register(const char *name, GuestFn fn) {
     for (int i = 0; i < entries; i++) if (!strcmp(table[i].name, name)) exit(10);   // duplicate override
@@ -64,7 +61,7 @@ void test_register(const char *name, GuestFn fn) {
 void rt_log(const char *fmt, ...) { va_list a; va_start(a, fmt); vsnprintf(last, sizeof last, fmt, a); va_end(a); logs++; }
 void rt_fatal(const char *fmt, ...) { (void)fmt; exit(3); }
 const char *ldr_describe(uint64_t a, char *buf, int n) { snprintf(buf, n, "main+%#llx", (unsigned long long)a); return buf; }
-int plat_mem_readable(uint64_t addr, uint64_t n) { (void)addr; (void)n; return !unreadable; }
+int plat_mem_readable(uint64_t addr, uint64_t n) { (void)addr; return !unreadable && n <= readable_limit; }
 static GuestFn find(const char *part) {
     GuestFn fn = NULL;
     for (int i = 0; i < entries; i++) if (strstr(table[i].name, part)) { if (fn) exit(11); fn = table[i].fn; }
@@ -105,10 +102,12 @@ int main(int argc, char **argv) {
     find("ErrorResultVariant")(&c);
     CHECK(strstr(last, "variant 00000000 00000000"));
     unreadable = 0;
-    uint32_t variant[4] = {1, 0x1234, 0, 0};
+    uint32_t variant[3] = {1, 0x1234, 0};
+    readable_limit = sizeof variant;
     c.x[0] = (uint64_t)(uintptr_t)variant;
     find("ErrorResultVariant")(&c);
     CHECK(strstr(last, "variant 00000001 00001234"));
+    readable_limit = UINT64_MAX;
 
     // A dialog repeated every frame is logged 16 times at most.
     int before = logs;
@@ -117,12 +116,18 @@ int main(int argc, char **argv) {
     CHECK(logs - before == 16 - 3);   // three application errors were logged above; the variant counts apart
     c.x[0] = 0;
 
-    // Network: request rejected, error dialog leaves a failure of the network module, address cleared.
+    // Network: bool false means no retry; the address/proxy Result remains a synthetic host failure.
     c.x[0] = 0xabc;
     find("SubmitNetworkRequestAndWait")(&c);
     CHECK(c.x[0] == 0xabc && strstr(last, "rejected"));
     find("HandleNetworkRequestErrorResult")(&c);
-    CHECK(c.x[0] != 0 && (c.x[0] & 0x1ff) == 110);
+    // Pinned SDK sdk+32e950 normalizes this API to bool, and all three
+    // main callers branch on bit0. Require both legal bool value and consistent
+    // control flow for a C nonzero gate and the actual lifted bit gate.
+    CHECK(c.x[0] == 0);
+    int retry_bit_gate = (int)(c.x[0] & 1);
+    int retry_value_gate = c.x[0] != 0;
+    CHECK(!retry_bit_gate && retry_bit_gate == retry_value_gate);
     find("CancelNetworkRequest")(&c);
     uint32_t address = 0x0100007f;
     c.x[0] = (uint64_t)(uintptr_t)&address;
@@ -136,20 +141,12 @@ int main(int argc, char **argv) {
     find("GetCurrentProxySetting")(&c);
     CHECK((c.x[0] & 0x1ff) == 110 && proxy[0] == 9 && proxy[7] == 9);
 
-    // Account: success with "not linked"; the link dialog is cancelled; token paths fail with the account module.
+    // Account query only: one-byte false, success querying the local host state.
+    // Speculative ensure/id/token overrides are intentionally NOT registered.
     uint8_t linked[4] = {1, 7, 7, 7};
     c.x[0] = (uint64_t)(uintptr_t)linked;
     find("IsNetworkServiceAccountAvailable")(&c);
     CHECK(c.x[0] == 0 && linked[0] == 0 && linked[1] == 7);   // one bool written, not an int
-    find("36EnsureNetworkServiceAccountAvailable")(&c);
-    CHECK(c.x[0] == 124);   // 2124-0000
-    find("GetNetworkServiceAccountId")(&c);
-    CHECK(c.x[0] == (124 | 100 << 9));
-    find("TokenCacheAsync")(&c);
-    CHECK((c.x[0] & 0x1ff) == 124 && c.x[0] != 0);
-    find("LoadNetworkServiceAccountIdTokenCache")(&c);
-    CHECK((c.x[0] & 0x1ff) == 124 && c.x[0] != 0);
-
     // Friends and album.
     c.x[0] = 5;
     find("friends10Initialize")(&c);
