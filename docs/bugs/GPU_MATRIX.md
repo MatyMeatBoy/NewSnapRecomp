@@ -107,6 +107,12 @@ recorridos. No se compiló código nativo ni se usó GPU en ese ensayo: **no mid
   exactos, evaluación/tutorial y primera expedición. Los 75 archivos protegidos
   de perfil/respaldo siguen intactos. Fuente de evidencia y límites en
   `v05-dev1-acceptance.md`; aceptación AMD/mando/FreeSync todavía pendiente.
+- `v0.5.0-alpha` quedó publicada con productor `e314751d…`. La reconstrucción
+  real de su kit público produjo `e0dcac87…`, que completó un nuevo control de
+  540 s, fotos/miniaturas y tutorial/primera expedición. Descarga, instalación,
+  reparación y adquisición del kit se comprobaron desde la release publicada.
+  Ver `v05-alpha-acceptance.md`; no heredar aceptación física AMD ni declarar
+  eliminados los picos de pacing pendientes por cerrar esta alpha limitada.
 
 Conservar pendientes AMD, aceptación física de entrada, retícula/foco y escenarios
 fotográficos no cubiertos. El ensayo final de 540 s aporta aceptación local
