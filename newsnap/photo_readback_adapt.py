@@ -1,8 +1,16 @@
-"""Safe host-import coherence plus bounded opt-in GPU/CPU capture evidence.
+"""Safe host-import coherence, always-on photo copy statistics and opt-in images.
 
 Manual imports require visible/coherent memory; incompatible pools use existing
 VMA-managed shadow storage with explicit flush/invalidate. This independently
 proven contract fix does not establish the cause of the owner's AMD photo bands.
+
+Every photo-sized texture-to-buffer copy logs, without any setting, whether the
+source image and the bytes that reached the destination buffer agree and where
+either is black (16-pixel tiles). PNG files are still written only when
+NEWSNAP_PHOTO_TRACE_DIR is set. On AMD's Windows driver CPU-visible pools default
+to the donor's shadow storage (its Linux/Wine default) instead of host-pointer
+imports: a candidate fix for the RX 6900 XT bands and GPU write faults that has
+not been run on that hardware. AC_SHADOW=0 restores imports.
 """
 
 IMPORT_SUPPORT = r'''
@@ -38,17 +46,25 @@ static int snap_photo_format(VkFormat format) {
 static void snap_photo_pair(const char *directory, const char *path, unsigned number, uint64_t frame,
                             uint32_t w, uint32_t h, VkFormat format,
                             const uint8_t *source, size_t source_pitch, const uint8_t *copy, size_t copy_pitch) {
-    if (!directory || !*directory || !w || !h || w > 8192 || h > 8192 ||
+    // directory NULL or empty: statistics in the log only, no files.
+    int files = directory && *directory;
+    if (!w || !h || w > 8192 || h > 8192 ||
             (uint64_t)w * h > 4u * 1024u * 1024u || !snap_photo_format(format)) return;
     size_t row = (size_t)w * 4, bytes = row * h;
     if (source_pitch < row || copy_pitch < row) return;
     uint8_t *rgba = malloc(bytes);
     if (!rgba) return;
+    // 16-pixel tiles with any non-black texel, per image: a band that covers
+    // only part of a row does not show in black_rows.
+    uint32_t tw = (w + 15) / 16, th = (h + 15) / 16;
+    size_t tiles = (size_t)tw * th;
+    uint8_t *lit = calloc(2, tiles);
+    if (!lit) { free(rgba); return; }
     uint64_t mismatch = 0, hash[2] = {14695981039346656037ull, 14695981039346656037ull};
     unsigned black[2] = {0};
     const uint8_t *inputs[2] = {source, copy};
     size_t pitches[2] = {source_pitch, copy_pitch};
-    plat_file_mkdir_p(directory);
+    if (files) plat_file_mkdir_p(directory);
     for (int image = 0; image < 2; image++) {
         for (uint32_t y = 0; y < h; y++) {
             const uint8_t *in = inputs[image] + (size_t)y * pitches[image];
@@ -60,22 +76,67 @@ static void snap_photo_pair(const char *directory, const char *path, unsigned nu
                     uint8_t value = in[(size_t)x * 4 + component];
                     out[c] = c == 3 ? 255 : value;
                     hash[image] = (hash[image] ^ value) * 1099511628211ull;
-                    if (c < 3 && value) empty = 0;
+                    if (c < 3 && value) empty = 0, lit[image * tiles + (size_t)(y / 16) * tw + x / 16] = 1;
                     if (!image && in[(size_t)x * 4 + c] != copy[(size_t)y * copy_pitch + (size_t)x * 4 + c]) mismatch++;
                 }
             }
             black[image] += empty;
         }
+        if (!files) continue;
         char filename[1024];
         int length = snprintf(filename, sizeof filename, "%s/%s-%02u-f%llu-%s.png", directory, path, number,
                               (unsigned long long)frame, image ? "buffer" : "source");
         if (length > 0 && (size_t)length < sizeof filename) rt_write_png(filename, rgba, w, h);
     }
+    // Black tiles per image and the first runs of black tiles in the buffer
+    // (tile row y, pixel columns x0-x1): the geometry of a band, for the log.
+    unsigned dark[2] = {0};
+    char bands[400] = "none";
+    size_t used = 0;
+    unsigned runs = 0;
+    for (int image = 0; image < 2; image++)
+        for (uint32_t ty = 0; ty < th; ty++)
+            for (uint32_t tx = 0; tx < tw; tx++) {
+                if (lit[image * tiles + (size_t)ty * tw + tx]) continue;
+                dark[image]++;
+                if (!image || (tx && !lit[tiles + (size_t)ty * tw + tx - 1])) continue;
+                uint32_t end = tx;
+                while (end + 1 < tw && !lit[tiles + (size_t)ty * tw + end + 1]) end++;
+                if (runs++ < 10 && used < sizeof bands - 40)
+                    used += (size_t)snprintf(bands + used, sizeof bands - used, "%sy%u:x%u-%u", used ? " " : "",
+                                             ty * 16, tx * 16, end * 16 + 15 < w ? end * 16 + 15 : w - 1);
+            }
     rt_log("photo_trace: %s %u frame %llu %ux%u fmt %d pitches %llu/%llu mismatch_bytes=%llu "
-           "black_rows=%u/%u hashes=%016llx/%016llx", path, number, (unsigned long long)frame, w, h, (int)format,
+           "black_rows=%u/%u hashes=%016llx/%016llx black_tiles16=%u/%u of %u buffer_black_runs=%u [%s]%s",
+           path, number, (unsigned long long)frame, w, h, (int)format,
            (unsigned long long)source_pitch, (unsigned long long)copy_pitch, (unsigned long long)mismatch,
-           black[0], black[1], (unsigned long long)hash[0], (unsigned long long)hash[1]);
+           black[0], black[1], (unsigned long long)hash[0], (unsigned long long)hash[1], dark[0], dark[1],
+           (unsigned)tiles, runs, bands, files ? "" : " (log only)");
+    free(lit);
     free(rgba);
+}
+'''
+
+CONTEXT = r'''
+// FOTO-01: what the photo copy reads and where it writes, in the normal log.
+// 24 lines a run at most; reads no guest memory and records no GPU work.
+static void snap_photo_context(const Sub *s, uint64_t address, uint64_t size, const VkMemSpan *before,
+                               const VkMemSpan *picked) {
+    static unsigned lines;
+    if (lines >= 24 || !snap_photo_format(s->img->format) || s->nz != 1 || s->w < 128 || s->h < 96) return;
+    lines++;
+    uint32_t uploads = 0;
+    int last_change = 0, pages_written = 0;
+    vk_texture_debug(s->img, &uploads, &last_change, &pages_written);
+    const char *upscaler = vk_dlaa_running();
+    rt_log("photo_log: copy %u frame %llu source %#llx %ux%u vk_fmt %d gpu_owned %d cpu_storage %d uploads %u "
+           "storage_written_since %d; destination %#llx bytes %llu class %d through %s; upscaler %s", lines - 1,
+           (unsigned long long)__atomic_load_n(&gfx_counters.frames, __ATOMIC_RELAXED),
+           (unsigned long long)s->img->addr, s->w, s->h, (int)s->img->format, s->img->gpu_owned, s->img->mirrored,
+           uploads, pages_written, (unsigned long long)address, (unsigned long long)size, picked->cls,
+           !picked->pool ? "device memory" : picked->buffer != before->buffer ? "a device-local mirror"
+                                                                              : "the pool's own buffer",
+           upscaler ? upscaler : "none");
 }
 '''
 
@@ -106,7 +167,7 @@ static void snap_photo_trace_t2b(VkExec *ex, const Sub *s, uint64_t size,
                                 const VkBufferImageCopy *original, const VkMemSpan *destination) {
     const char *directory = getenv("NEWSNAP_PHOTO_TRACE_DIR");
     static unsigned captures;
-    if (!directory || !*directory || captures >= 8 || !snap_photo_format(s->img->format) ||
+    if (captures >= (directory && *directory ? 8u : 24u) || !snap_photo_format(s->img->format) ||
             s->nz != 1 || s->img->samples != 1 || s->w < 128 || s->h < 96 ||
             s->w > 8192 || s->h > 8192 || (uint64_t)s->w * s->h > 4u * 1024u * 1024u ||
             !size || size > 32u * 1024u * 1024u) return;
@@ -118,7 +179,7 @@ static void snap_photo_trace_t2b(VkExec *ex, const Sub *s, uint64_t size,
     trace->w = s->w, trace->h = s->h, trace->pitch = pitch, trace->format = s->img->format;
     trace->frame = __atomic_load_n(&gfx_counters.frames, __ATOMIC_RELAXED);
     trace->number = captures++;
-    int length = snprintf(trace->directory, sizeof trace->directory, "%s", directory);
+    int length = snprintf(trace->directory, sizeof trace->directory, "%s", directory ? directory : "");
     if (length < 0 || (size_t)length >= sizeof trace->directory) { free(trace); return; }
     trace->source = vk_staging(row * s->h, &trace->source_buffer, &trace->source_alloc);
     trace->copy = vk_staging(size, &trace->copy_buffer, &trace->copy_alloc);
@@ -165,12 +226,20 @@ static void snap_photo_trace_cpu(const Tex *e, const Region *g, const NVNcopyReg
 
 def edits():
     return {'runtime/vk_exec_xfer.c': [
-        ('#include "vk_exec.h"', '#include "vk_exec.h"\n#include "gfx.h"\n#include "platform/platform.h"'),
+        ('#include "vk_exec.h"',
+         '#include "vk_exec.h"\n#include "gfx.h"\n#include "vk_dlaa.h"\n#include "platform/platform.h"'),
         ('static void copy_buffer_image(VkExec *ex, const p_copy_b2t *p, int to_image) {',
-         GPU + '\nstatic void copy_buffer_image(VkExec *ex, const p_copy_b2t *p, int to_image) {'),
+         GPU + CONTEXT + '\nstatic void copy_buffer_image(VkExec *ex, const p_copy_b2t *p, int to_image) {'),
+        ('    VK_MEM_PICK(m);\n    *span = m;',
+         '    VkMemSpan snap_before_pick = m;\n    VK_MEM_PICK(m);\n    *span = m;\n'
+         '    if (c) snap_photo_span_before = snap_before_pick;'),
         ('    else vk_mem_gpu_wrote(&m, size), note_gpu_write(ex, p->src, size);',
          '    else vk_mem_gpu_wrote(&m, size), note_gpu_write(ex, p->src, size);\n'
+         '    if (!to_image) snap_photo_context(&s, p->src, size, &snap_photo_span_before, &m);\n'
          '    if (!to_image) snap_photo_trace_t2b(ex, &s, size, &c, &m);'),
+        ('static VkImageSubresourceLayers sub_layers(const Sub *s) {',
+         'static VkMemSpan snap_photo_span_before;   // replay thread: the span buffer_side resolved, before its mirror pick\n'
+         'static VkImageSubresourceLayers sub_layers(const Sub *s) {'),
     ], 'runtime/vk_texture.c': [
         ('static int image_texels_at(Tex *e, const Region *g, const NVNcopyRegion *r, uint8_t *mem, int write) {',
          CPU + '\nstatic int image_texels_at(Tex *e, const Region *g, const NVNcopyRegion *r, uint8_t *mem, int write) {'),
@@ -198,6 +267,18 @@ def edits():
          '    if (req.size > n) {'),
         ('        if (shadow_on && h->pool && !((PoolRec *)h->pool)->stouched) shadow_touch(h->pool);',
          '        if (h->pool && ((PoolRec *)h->pool)->smap && !((PoolRec *)h->pool)->stouched) shadow_touch(h->pool);'),
+        ('static void mirror_mode(int discrete) {',
+         '// Snap: vendor of the device the memory mode is chosen for (vk_mem_class_log).\n'
+         'static uint32_t snap_memory_vendor;\nstatic void mirror_mode(int discrete) {'),
+        ('    mirror_mode(discrete);\n}', '    snap_memory_vendor = p->vendorID;\n    mirror_mode(discrete);\n}'),
+        ('    shadow_on = sh && *sh ? strcmp(sh, "0") != 0 : plat_is_wine();',
+         '    // FOTO-01: two RX 6900 XT sessions ended in "write invalid" device faults and saved photos with black\n'
+         '    // bands; the photo copy writes host-pointer imports of freshly allocated guest pages. The donor already\n'
+         '    // avoids those imports on Linux and Wine. Candidate fix, not verified on that hardware; AC_SHADOW=0 undoes it.\n'
+         '    int snap_amd_shadow = snap_memory_vendor == 0x1002 && !(sh && *sh);\n'
+         '    shadow_on = sh && *sh ? strcmp(sh, "0") != 0 : plat_is_wine() || snap_amd_shadow;\n'
+         '    if (snap_amd_shadow) rt_log("mem: AMD GPU on Windows: shadow storage instead of host-pointer imports "\n'
+         '                                "(FOTO-01 candidate; AC_SHADOW=0 restores imports)");'),
         ('void vk_mem_shadow_sync(void) {\n    if (!shadow_on) return;',
          'void vk_mem_shadow_sync(void) {\n    if (!snap_shadow_active()) return;'),
         ('void vk_mem_gpu_pending(uint64_t addr, uint64_t size) {\n    if (!shadow_on || !size) return;',
