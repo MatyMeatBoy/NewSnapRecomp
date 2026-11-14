@@ -5,6 +5,50 @@ Estado: **EN CURSO** · Responsable: MatyMeatBoy · 2026-11-14
 siempre activo en el log para acotar la próxima sesión en la RX 6900 XT.
 No cambia el modo de memoria predeterminado de ninguna GPU.
 
+**Actualización, mismo día:** la hipótesis de la importación por puntero de host quedó refutada por la
+prueba del propietario con `shadow = 1`; ver «Segunda ronda». Sigue sin causa acreditada ni corrección.
+
+## Segunda ronda del propietario (RX 6900 XT, 0.6, 2026-11-14)
+
+Capturas locales en `build/user-reports/rx6900xt-0.6/` (`level-*.webp`).
+
+- Con una partida ya guardada no hubo cierre, pero la **miniatura de la foto
+  dentro del nivel** sale con las mismas franjas, antes de guardar nada. El
+  defecto está en la textura de la foto en la GPU, no en la copia al guardar.
+- Con `shadow = 1` en `newsnap.ini` el resultado es el mismo. No se recibió el
+  log de esa sesión, así que falta confirmar la línea `mem: shadow storage…`.
+- El patrón de franjas es **idéntico en fotos distintas**: en orden de memoria,
+  uno de cada cuatro tramos tiene imagen y tres quedan en negro. Geometría fija.
+- También salen con tiras el retrato del profesor, la placa del nombre del
+  Pokémon y el marco del visor. Volvieron los «cuadrados» que GPU-WRITE-01 había
+  corregido en el Pikachu del tutorial.
+- Con presentación `fifo` (en lugar de `fifo_relaxed`) el retrato del profesor
+  se ve bien y el resto sigue mal: al menos una parte depende del ritmo.
+- Con el escalador apagado («Scaling bilinear») la miniatura sigue rota: FSR 4
+  no es necesario para el defecto.
+
+En RTX 4060, en el mismo nivel y con el mismo 0.6, miniatura, retrato y placa
+salen limpios (`build/foto01-fsr3-540/shots/`). Traza `AC_TRACE=gfx` de la
+expedición (`build/foto01-trace-540/`): la foto dentro del nivel **no usa
+copias**; es un pase de dibujo más, y el juego lanza entre 10 y 40 shaders de
+cómputo por fotograma. Nada de esto identifica aún la operación que falla en
+AMD.
+
+### Plan de pruebas en la RX 6900 XT (sin binario nuevo, de una en una)
+
+Cada línea va en `newsnap.ini`; quitar la anterior antes de probar la siguiente.
+
+| Ajuste | Qué separa |
+|---|---|
+| `replay_async = 0` | Carreras entre el juego y la reproducción en su propio hilo (lo sugiere la diferencia `fifo`/`fifo_relaxed`) |
+| `tex_alias = 0` | Imágenes nuevas que heredan el contenido de otra en la misma dirección |
+| `memory = import` | El mirror en VRAM de los pools usados como buffers |
+| `tex_prefetch = 0` | Subidas de texturas adelantadas en un hilo aparte |
+| `dump_key = 1` | No arregla nada: con el defecto en pantalla, F12 vuelca el fotograma (carpeta `dump` junto al ejecutable) con cada pase y cada textura; es el dato que identifica la operación rota |
+
+Desde el PR de la segunda ronda, la línea `amd_diag:` del arranque deja escrito en
+cada log qué combinación se probó.
+
 ## Evidencia del propietario (RX 6900 XT, runtime 0.6 real)
 
 Copias locales en `build/user-reports/rx6900xt-0.6/` (no se suben):
@@ -158,3 +202,24 @@ primer nivel. Para separar FSR 4: repetir además con el escalador en FSR 3.1.
   desconocida.
 - El cierre de la sesión 1 no ocurrió al hacer una foto; no está demostrado que
   comparta causa con el de la sesión 2.
+
+## Pruebas por lotes (`tools/pruebas-amd/`)
+
+Seis `.bat`, en orden de descarte. Cada uno arranca `newsnap.exe` con sus
+ajustes mediante variables de entorno (mandan sobre `newsnap.ini`, que no se
+modifica) y copia el log a `logs\pruebas\<nombre>.log` al cerrar el juego.
+
+| Prueba | Ajustes | Para qué |
+|---|---|---|
+| `1-todo-conservador` | `REPLAY_ASYNC=0`, `PIPE_SKIP=strict`, `ASTC=cpu`, `UPSCALING=off`, `TEX_ALIAS=0`, `TEX_PREFETCH=0`, `MEMORY=import`, `VK_PRESENT=fifo` | Decide: si sigue mal, ninguna de las sospechas es la causa y se pasa a la 6 |
+| `2-replay-sincrono` | `REPLAY_ASYNC=0` | Sospecha principal: carrera con el hilo de reproducción (el retrato cambia con el modo de presentación) |
+| `3-sin-omitir-dibujos` | `PIPE_SKIP=strict` | Camino propio de RDNA 2: dibujos omitidos mientras compila su pipeline |
+| `4-astc-por-cpu` | `ASTC=cpu` | Texturas de interfaz por CPU en vez del shader de cómputo |
+| `5-sin-fsr4` | `UPSCALING=fsr3` | Cierres: los tres logs con fallo de GPU tenían FSR 4 activo |
+| `6-volcado-F12` | `DUMP_KEY=1`, `DUMP_N=2` | Volcado del fotograma con el defecto en pantalla |
+
+El orden de sospecha es una estimación a partir de las capturas, no un
+resultado. Se copian junto a `newsnap.exe`. Comprobado en seco con un
+ejecutable de relleno (variables fijadas, salida y copia del log); no ejecutado
+en AMD. El empaquetado de la versión de prueba debe incluir la carpeta: es
+punto de integración de RTX tester.
