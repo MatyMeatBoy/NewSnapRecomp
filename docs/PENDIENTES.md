@@ -3,14 +3,14 @@
 Read this before taking work. History and the previous Spanish board:
 [PENDIENTES-HECHOS.md](PENDIENTES-HECHOS.md). Rules: [AGENTS.md](../AGENTS.md).
 
-## Current state (2026-11-14, after 0.8.7-tester): read first
+## Current state (2026-11-14, after 0.8.8-tester): read first
 
-- `main` = 0.8.7-tester (HD photo thumbnails and shadow «auto», SS-03; 0.8.6 FPS «display»; 0.8.5 NSP/NSZ/XCI/XCZ import): AMD RDNA 1/2 fixes (FOTO-01, CRISTAL-01), gyro (GYRO-01/02), windowed
+- `main` = 0.8.8-tester (FSR frame generation with a HUD-less image, FG-02; 0.8.7 HD photo thumbnails and shadow «auto», SS-03; 0.8.6 FPS «display»; 0.8.5 NSP/NSZ/XCI/XCZ import): AMD RDNA 1/2 fixes (FOTO-01, CRISTAL-01), gyro (GYRO-01/02), windowed
   present (PRESENT-WIN-01), internal resolution by host scaling (SS-02), high FPS 90/120/144
   (FPS-01, Codex), FSR frame generation off by default with refresh fallback (FG-01/02).
 - Owner hardware: RX 6900 XT, Samsung C27HG7x 144 Hz monitor, FreeSync. Codex: RTX 4060.
 - Open queue: SS-03 RTX check of HD thumbnails, ULTRAWIDE-01 (photo capture and HUD
-  sites, see [ULTRAWIDE.md](ULTRAWIDE.md)), HUD-less image for FSR FG, DLSS-G (needs RTX 40/50),
+  sites, see [ULTRAWIDE.md](ULTRAWIDE.md)), DLSS-G (needs RTX 40/50),
   loading times in the extended modes.
 - Release recipe: bottom of this file.
 
@@ -24,7 +24,7 @@ acceptance), DONE (moved to the history file).
 | SS-03 | P1 | REVIEW | Claude | HD photo thumbnails (`AC_HD_PHOTOS`, on): the 360×240 picture encoded to BC1 is drawn at 1080×720 and a copy replaces the BC1 thumbnail when sampled (`snap_hd_photo.c`, no vendor branch). Folder screen verified on RX 6900 XT; in-level preview and the big selection photo not opened by the route; RTX pending. Shadow option covers every square depth map and has `auto`. |
 | IMPORT-01/02 | P1 | REVIEW | Claude | Launcher "Importar NSP/XCI/NSZ…": base NSP/NSZ/XCI/XCZ + update NSP/NSZ + prod.keys through `newsnap import` on the build kit's Python and a bundled hactool (`tools/build_hactool.py`). NSZ/XCZ/XCI are rebuilt as a temporary NSP by `newsnap/container.py` (nsz's NCZ format, NCA hash check). Synthetic tests only; not tested end to end (no dump on the owner's disk). |
 | PACE-AMD-01 | P1 | REVIEW | Claude | Judder on fixed-refresh displays: 60 fps on the owner's 144 Hz FIFO display alternates 2/3 refreshes. `fps = display` caps at refresh/n (72 at 144 Hz) and presents mid-refresh from DWM vblank timing (`snap_latent_sync.h`, as Special K's Latent Sync). Trace: 100 % of presents 13.9 ms apart; the panel itself not measured (AMD lacks present timing). Owner's eye test pending. |
-| FG-01/02 | P2 | REVIEW | Claude | FSR frame generation (SDK 2.4, no FFX swapchain), `frame_gen = fsr`, off by default, FSR 3.1/4 only; pauses when real fps > 0.55 × refresh. No HUD-less image (HUD trails possible). Not done: DLSS-G, VRR pacing. |
+| FG-01/02 | P2 | REVIEW | Claude | FSR frame generation (SDK 2.4, no FFX swapchain), `frame_gen = fsr`, off by default, FSR 3.1/4 only; pauses when real fps > 0.55 × refresh. HUD-less image from the tonemapped scene before the interface pass (0.8.8). Not done: DLSS-G (needs RTX). |
 | SS-02 | P1 | REVIEW | Claude | Host-scaled internal resolution 125–300 % and "display"; 16:9 chain; `shadow_scale` for Snap's sun maps. RX 6900 XT verified at 60/120 fps. Missing: RTX, photo score comparison. [SUPERSAMPLING.md](SUPERSAMPLING.md). |
 | FPS-01 | P1 | REVIEW | Codex | 90/120/144 FPS caps without timing patches. RTX verified; RX 6900 XT 120 fps at 200 % verified by Claude. [HIGH_FPS.md](HIGH_FPS.md). |
 | VRR-01 | P1 | REVIEW | Codex/Claude | Present-timing status (unknown/fixed/variable). Drivers, not the game, turn VRR on; borderless fullscreen can flip independently. Guidance in [DISPLAY.md](DISPLAY.md). FreeSync physical check pending (owner's monitor OSD). |
@@ -37,8 +37,7 @@ acceptance), DONE (moved to the history file).
 
 ## Ideas after 0.8.6
 
-- DLSS frame generation (needs RTX 40/50 to test). HUD-less image for FSR FG (needs a
-  tone-mapped pre-HUD copy).
+- DLSS frame generation (needs RTX 40/50 to test).
 - Ultrawide: 3D widening works (`main+0x29641c`), backed out because photos are captured from the
   widened frame and the HUD stretches. [ULTRAWIDE.md](ULTRAWIDE.md).
 
