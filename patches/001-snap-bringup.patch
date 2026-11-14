@@ -74,15 +74,19 @@
      case 1016:   // FlushAccessLogOnSdCard
 --- a/runtime/gfx_present.c
 +++ b/runtime/gfx_present.c
-@@ -26,6 +26,7 @@
+@@ -26,6 +26,11 @@
  #include "platform/platform.h"
  #include "ui/menu.h"
  #include "vk.h"
++#include "snap_fsr_fg.h"
++
++int gfx_window_monitor_size(int *w, int *h);   // gfx_window_win.c / gfx_window_sdl.c
++#include "snap_present_trace.h"
 +#include "snap_vrr.h"
  
  #define FRAMES 2
  #define MAX_IMAGES 16
-@@ -82,12 +83,16 @@
+@@ -82,12 +87,16 @@
  // (plat_restart), and the new process waits until this one is gone (main.c) before it moves the log and opens the
  // RomFS and the saves.
  void gfx_window_closed(void) {
@@ -99,7 +103,7 @@
          plat_setenv("AC_REEXEC", NULL);   // the new process counts its own address-space retries (memory.c)
          if (!plat_restart()) rt_log("gfx: the restart could not start the game again");
      }
-@@ -266,7 +271,8 @@
+@@ -266,16 +275,36 @@
  static VkPresentModeKHR pick_present_mode(VkPhysicalDevice pd) {
      const char *e = cfg_value("AC_VK_PRESENT");
      VkPresentModeKHR want = !strcmp(e, "mailbox") ? VK_PRESENT_MODE_MAILBOX_KHR
@@ -109,24 +113,59 @@
      uint32_t n = 0;
      vkGetPhysicalDeviceSurfacePresentModesKHR(pd, g_surface, &n, NULL);
      VkPresentModeKHR m[16];
-@@ -274,7 +280,7 @@
-     vkGetPhysicalDeviceSurfacePresentModesKHR(pd, g_surface, &n, m);
++    uint32_t snap_modes_reported = n;
+     if (n > 16) n = 16;
+-    vkGetPhysicalDeviceSurfacePresentModesKHR(pd, g_surface, &n, m);
++    VkResult snap_modes_result = vkGetPhysicalDeviceSurfacePresentModesKHR(pd, g_surface, &n, m);
      VkPresentModeKHR got = VK_PRESENT_MODE_FIFO_KHR;
      for (uint32_t i = 0; i < n; i++) if (m[i] == want) got = want;
 -    const char *name = got == VK_PRESENT_MODE_MAILBOX_KHR ? "mailbox" : got == VK_PRESENT_MODE_IMMEDIATE_KHR ? "immediate" : "fifo";
++    // NewSnap PRESENT-WIN-01: mailbox asked for but missing (AMD's Windows driver). A window smaller than its monitor is
++    // composited by the desktop, where FIFO blocks to the compositor's rhythm and presents come in pairs, and where an
++    // immediate present cannot tear: take immediate there. Over the whole monitor FIFO stays (it paces cleanly).
++    if (want == VK_PRESENT_MODE_MAILBOX_KHR && got != want && rt_knob("WINDOWED_IMMEDIATE", "1")) {
++        int cw = 0, ch = 0, mw = 0, mh = 0;
++        wsys_client_size(&cw, &ch);
++        if (gfx_window_monitor_size(&mw, &mh) && cw > 0 && ch > 0 && (cw < mw || ch < mh))
++            for (uint32_t i = 0; i < n; i++)
++                if (m[i] == VK_PRESENT_MODE_IMMEDIATE_KHR) got = m[i];
++    }
 +    const char *name = got == VK_PRESENT_MODE_MAILBOX_KHR ? "mailbox" : got == VK_PRESENT_MODE_IMMEDIATE_KHR ? "immediate" : got == VK_PRESENT_MODE_FIFO_RELAXED_KHR ? "fifo_relaxed" : "fifo";
      __atomic_store_n(&g_present_got, name, __ATOMIC_RELEASE);
++    if (snap_present_trace_on) {
++        uint32_t snap_modes[16], snap_count = 0;
++        if (snap_modes_result == VK_SUCCESS || snap_modes_result == VK_INCOMPLETE) {
++            snap_count = n < 16 ? n : 16;
++            for (uint32_t i = 0; i < snap_count; i++) snap_modes[i] = (uint32_t)m[i];
++        }
++        snap_present_trace_modes(e, name, snap_modes_reported, snap_modes, snap_count, snap_modes_result);
++    }
      static int logged = -1;   // the mode last logged: a change from the menu shows in the log
      if ((int)got != logged) {
-@@ -298,6 +304,7 @@
+         logged = (int)got;
+@@ -296,8 +325,12 @@
+                            .pWaitSemaphores = &g_render_done[g_flip_idx], .swapchainCount = 1, .pSwapchains = &g_sc,
+                            .pImageIndices = &g_flip_idx};
      vk_queue_lock();
++    uint64_t snap_present_start = snap_present_trace_begin();
      VkResult r = vkQueuePresentKHR(vk_ctx()->gfx_queue, &pi);
++    uint64_t snap_present_end = snap_present_trace_begin();
      vk_queue_unlock();
++    snap_present_trace_end_at(SNAP_PRESENT_QUEUE, snap_present_start, snap_present_end, r);
 +    snap_vrr_after_present(vk_ctx()->device, g_sc, r); // g_pl held: serialize against swapchain destruction
      vk_device_fault_report(r);
      if (r == VK_ERROR_OUT_OF_DATE_KHR || r == VK_SUBOPTIMAL_KHR) plat_xchg32(&g_dirty, 1);
  }
-@@ -362,6 +369,7 @@
+@@ -312,7 +345,7 @@
+ }
+ 
+ // Returns 1 with a usable swapchain, 0 when the window has no area (minimised). Called with g_pl held.
+-static int create_swapchain(void) {
++static int snap_create_swapchain_impl(void) {
+     flip_locked();   // the acquired image goes out before its swapchain is replaced
+     VkCtx *c = vk_ctx();
+     VkSurfaceCapabilitiesKHR caps;
+@@ -362,6 +395,7 @@
          if (g_sc_view[i]) vkDestroyImageView(c->device, g_sc_view[i], NULL);
          g_sc_view[i] = VK_NULL_HANDLE;
      }
@@ -134,7 +173,87 @@
      if (old) vkDestroySwapchainKHR(c->device, old, NULL);
      g_sc_fmt = sf.format;
      g_sc_hdr = hdr;
-@@ -673,7 +681,7 @@
+@@ -369,8 +403,10 @@
+     if (hdr) vk_hdr_metadata(g_sc, 1);
+     g_sc_ext = ext;
+     res_wide_window(ext.width, ext.height);
++    snap_wide_window(ext.width, ext.height);
+     g_sc_n = MAX_IMAGES;
+-    vkGetSwapchainImagesKHR(c->device, g_sc, &g_sc_n, g_sc_img);
++    VkResult snap_images_result = vkGetSwapchainImagesKHR(c->device, g_sc, &g_sc_n, g_sc_img);
++    snap_present_trace_swapchain(count, snap_images_result == VK_SUCCESS ? g_sc_n : 0, ext.width, ext.height, snap_images_result);
+     static VkExtent2D logged_ext;
+     if (logged_ext.width != ext.width || logged_ext.height != ext.height) {
+         logged_ext = ext;
+@@ -388,6 +424,13 @@
+     vk_queue_unlock();
+     plat_xchg32(&g_dirty, 0);
+     return 1;
++}
++
++static int create_swapchain(void) {
++    uint64_t snap_rebuild_start = snap_present_trace_begin();
++    int snap_rebuild_result = snap_create_swapchain_impl();
++    snap_present_trace_end(SNAP_PRESENT_REBUILD, snap_rebuild_start, snap_rebuild_result);
++    return snap_rebuild_result;
+ }
+ 
+ static void sync_barrier(VkCommandBuffer cb, VkImage img, VkImageLayout from, VkImageLayout to, VkPipelineStageFlags2 s0,
+@@ -575,6 +618,8 @@
+ // wider camera into the game's 16:9 targets has the camera's shape (resolution.c res_wide_tick; the present thread
+ // sets it from the present job, vk_backend.c).
+ static float g_shape;
++void snap_wide_window(unsigned w, unsigned h);
++int snap_aspect_fills(const char *aspect);
+ void vk_present_shape_set(float shape) { g_shape = shape; }
+ 
+ // The rectangle {x, y, w, h} of a dw x dh swapchain image the cw x ch picture goes into: the whole image with
+@@ -583,7 +628,7 @@
+ // picture's own aspect ratio, or the one vk_present_shape_set gave.
+ void gfx_fit_rect(int cw, int ch, int dw, int dh, int out[4]) {
+     out[0] = out[1] = 0, out[2] = dw, out[3] = dh;
+-    if (cw <= 0 || ch <= 0 || !strcmp(cfg_value("AC_ASPECT"), "stretch")) return;
++    if (cw <= 0 || ch <= 0 || snap_aspect_fills(cfg_value("AC_ASPECT"))) return;
+     if (g_shape > 0) {
+         double w = (double)dh * g_shape;                      // the picture's width at the window's height
+         if (w < dw - 0.5) out[2] = (int)(w + 0.5);            // window wider: pillarbox
+@@ -610,16 +655,23 @@
+     if (wsys_minimized() || !g_sc) goto out;
+ 
+     unsigned slot = g_frame % FRAMES;
+-    if (vkWaitForFences(c->device, 1, &g_fence[slot], VK_TRUE, 5000000000ull) != VK_SUCCESS) {
++    uint64_t snap_fence_start = snap_present_trace_begin();
++    VkResult snap_fence_result = vkWaitForFences(c->device, 1, &g_fence[slot], VK_TRUE, 5000000000ull);
++    snap_present_trace_end(SNAP_PRESENT_FENCE, snap_fence_start, snap_fence_result);
++    if (snap_fence_result != VK_SUCCESS) {
+         rt_log("gfx: present fence wait timed out");
+         goto out;
+     }
+     uint32_t idx = 0;
++    uint64_t snap_acquire_start = snap_present_trace_begin();
+     VkResult r = vkAcquireNextImageKHR(c->device, g_sc, 1000000000ull, g_acquire[slot], VK_NULL_HANDLE, &idx);
++    snap_present_trace_end(SNAP_PRESENT_ACQUIRE, snap_acquire_start, r);
+     if (r == VK_ERROR_OUT_OF_DATE_KHR) {
+         plat_xchg32(&g_dirty, 1);
+         if (!create_swapchain()) goto out;
++        snap_acquire_start = snap_present_trace_begin();
+         r = vkAcquireNextImageKHR(c->device, g_sc, 1000000000ull, g_acquire[slot], VK_NULL_HANDLE, &idx);
++        snap_present_trace_end(SNAP_PRESENT_ACQUIRE, snap_acquire_start, r);
+     }
+     vk_device_fault_report(r);
+     if (r != VK_SUCCESS && r != VK_SUBOPTIMAL_KHR) goto out;     // lost, not ready: skip the frame
+@@ -654,6 +706,10 @@
+     VkCommandBufferBeginInfo bi = {.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+                                    .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT};
+     vkBeginCommandBuffer(cb, &bi);
++    if (general) {   // FG-01: an armed present shows the generated frame made from this picture
++        VkImage generated = snap_fg_present_source(cb, src, fmt, w, h);
++        if (generated) src = generated;
++    }
+     uint64_t crumb = __atomic_load_n(&gfx_counters.frames, __ATOMIC_RELAXED);
+     vk_crumb(cb, VK_CRUMB_PRESENT, crumb);
+     VkImage dst = g_sc_img[idx];
+@@ -673,7 +729,7 @@
      // Colour adjustment (AC_COLOR_*, vk_color.c), or on an HDR10 swapchain the PQ encode (vk_hdr.c; the adjustment is
      // for SDR): a copy of the crop takes the game image's place below
      VkImage graded = !general ? VK_NULL_HANDLE : g_sc_hdr ? vk_hdr_encode(cb, slot, src, fmt, rect)
@@ -143,7 +262,26 @@
      const int grect[4] = {0, 0, cw, ch};
      VkImage psrc = graded ? graded : src;
      VkFormat pfmt = graded ? VK_FORMAT_R16G16B16A16_SFLOAT : fmt;
-@@ -826,6 +834,7 @@
+@@ -765,7 +821,9 @@
+     }
+     g_frame++;
+     if (cap) {
+-        vkWaitForFences(c->device, 1, &g_fence[slot], VK_TRUE, 5000000000ull);
++        uint64_t snap_capture_start = snap_present_trace_begin();
++        VkResult snap_capture_result = vkWaitForFences(c->device, 1, &g_fence[slot], VK_TRUE, 5000000000ull);
++        snap_present_trace_end(SNAP_PRESENT_FENCE, snap_capture_start, snap_capture_result);
+         vmaInvalidateAllocation(c->vma, g_cap_alloc, 0, VK_WHOLE_SIZE);
+         g_cap_w = (int)g_sc_ext.width;
+         g_cap_h = (int)g_sc_ext.height;
+@@ -810,6 +868,7 @@
+         g_flip_on = 0;   // its blit is done (device idle); the swapchain goes away unpresented
+         menu_vk_release();
+         vk_fsr_release();
++        snap_fg_release();
+         vk_color_release();
+         vk_hdr_release();
+         vk_contact_release();
+@@ -826,6 +885,7 @@
              g_sc_view[i] = VK_NULL_HANDLE;
          }
          if (g_pool) vkDestroyCommandPool(c->device, g_pool, NULL);
@@ -153,16 +291,22 @@
          g_sc = VK_NULL_HANDLE; g_surface = VK_NULL_HANDLE; g_pool = VK_NULL_HANDLE; g_sc_n = 0;
 --- a/runtime/cpu.h
 +++ b/runtime/cpu.h
-@@ -30,6 +30,8 @@
+@@ -29,7 +29,14 @@
+ _Static_assert(offsetof(Cpu, fpsr) == 328, "fpsr");
  _Static_assert(offsetof(Cpu, v) == 512, "v");
  
++void snap_timer_observe(Cpu *c);
++void snap_rail_observe(Cpu *c);
++void snap_ui_state_observe(Cpu *c);
++void snap_ui_event_observe(Cpu *c);
++void snap_wide_proj_s1(Cpu *c);
  typedef void (*GuestFn)(Cpu *);
 +void snap_render_select(Cpu *c); // Verified Snap render graph selection hook.
 +void snap_supersample_resize(Cpu *c); // Opt-in engine resize prototype.
  
  // ---- runtime services (runtime/*.c)
  void rt_dispatch(Cpu *c);                 // call function at c->pc
-@@ -38,6 +40,8 @@
+@@ -38,6 +45,8 @@
  void rt_brk(Cpu *c, uint32_t imm, uint64_t pc) __attribute__((noreturn));
  void rt_udf(Cpu *c, uint64_t pc) __attribute__((noreturn));
  uint64_t rt_ticks(void);
@@ -211,7 +355,64 @@
  HOST_OVERRIDE("_ZN2nn4time13ClockSnapshotC1Ev", ov_snapshot_init);
 --- a/runtime/cfg.c
 +++ b/runtime/cfg.c
-@@ -113,20 +113,20 @@
+@@ -26,6 +26,8 @@
+ static unsigned version;
+ static PlatMutex set_lock = PLAT_MUTEX_INIT;   // cfg_set, cfg_reset, cfg_save
+ static int save_ok = 1;                         // the last cfg_save_to wrote (or had nothing to write)
++// Legacy settings are a read-only source until the first changed-key save.
++static char snap_legacy_ini[1024], snap_primary_ini[1024];
+ 
+ // Every name the runtime reads (and the patch sets in generated/), without the prefix. A file key outside this list is
+ // logged as unknown. A new variable goes here too, or its ini key logs a harmless "unknown key" line. FXAA stays known
+@@ -36,12 +38,12 @@
+     "BIND_LSTICK_RIGHT", "BIND_LSTICK_UP", "BIND_MINUS",
+     "BIND_PLUS", "BIND_R", "BIND_RCLICK", "BIND_RIGHT", "BIND_RSTICK_DOWN", "BIND_RSTICK_LEFT", "BIND_RSTICK_RIGHT", "BIND_RSTICK_UP",
+     "BIND_SKIP", "BIND_STATS", "BIND_UP", "BIND_X", "BIND_Y",
+-    "BIND_ZL", "BIND_ZR", "BLOCK_VIEWS_3D", "CLOTH_REALTIME", "COLOR_BRIGHTNESS", "COLOR_CONTRAST", "COLOR_GAMMA",
++    "BIND_ZL", "BIND_ZR", "BLOCK_VIEWS", "BLOCK_VIEWS_3D", "CLOTH_REALTIME", "COLOR_BRIGHTNESS", "COLOR_CONTRAST", "COLOR_GAMMA",
+     "COLOR_PRESET", "COLOR_SATURATION", "CONTACT_DEBUG", "CONTACT_SHADOWS", "CORE_DIAG", "CPU_BOOST", "CPU_BOOST_SPIN_US", "CRIT", "CRIT_OUT",
+     "DECK_RES_MIGRATED", "DESC_TEMPLATE", "DEVICE_PROFILE", "DLAA", "DLAA_JITTER", "DLAA_MV", "DLAA_MVDEBUG", "DLAA_OBJMV", "DLAA_TIMES", "DLSS", "DUMP", "DUMP_AUTO", "DUMP_BUF", "DUMP_DIR", "DUMP_DRAWS",
+     "DUMP_KEY", "DUMP_LOG", "DUMP_N", "DUMP_SKIP_RUNS", "DUMP_TEX", "DUMP_UBO", "EXEFS", "FEEDBACK", "FIX_C0", "FIX_ZERO", "FLIGHT", "FLIGHT_AT", "FLIGHT_DIR", "FLIGHT_FRAMES",
+-    "FLIGHT_SPIKE_MS", "FLIGHT_THUMBS", "FOV", "FOV_PATCH", "FPS", "FREEZE_IDLE", "FREE_CORES",
+-    "FULLSCREEN", "FXAA", "GPL", "GPL_DRAW_BUILD", "GPU", "GPU_INDEX", "GPU_NAME", "GPU_PASSES", "HDR", "HDR_GAME_NITS",
++    "FLIGHT_SPIKE_MS", "FLIGHT_THUMBS", "FOV", "FOV_PATCH", "FPS", "FRAME_GEN", "FREEZE_IDLE", "FREE_CORES",
++    "FULLSCREEN", "FXAA", "GPL", "GPL_DRAW_BUILD", "GPU", "GPU_INDEX", "GPU_NAME", "GPU_PASSES", "GYRO_SENS", "HDR", "HDR_GAME_NITS",
+     "HDR_HUE", "HDR_PEAK_NITS", "HDR_UI_NITS", "HIGHFPS_FIX", "HUD", "INPUT", "INPUT_RECORD", "INPUT_SCRIPT", "LANG", "LIB_PREBUILD",
+     "LIB_PREBUILD_KEEP", "LIB_PREBUILD_THREADS", "LOCALE", "LOD_GUARD", "LSTICK_DEADZONE", "MEMORY", "MENU_LANG", "MENU_TEST",
+     "MENU_TEST_DIR", "MENU_TEST_FOCUS", "MENU_TEST_SET", "MINIMAL_LAYOUT", "MIRROR_GAP", "MODS_DIR", "MODS_DISABLED", "MODS_ORDER", "MODS_REBUILD", "MOTION", "MOUSE_SENS", "MOVIE_HOST", "MOVIE_PACE", "MOVIE_TRACK",
+@@ -52,19 +54,19 @@
+     "REPLAY_CHECK", "RES", "RES1062", "RESOLVE_CHECK", "RESTART_WAIT", "ROMFS", "ROMFS_INDEX", "ROMFS_MMAP", "ROMFS_MODS", "ROMFS_PATCHES",
+     "ROMFS_PROOF_DIR", "ROMFS_VERIFY", "RSTICK_DEADZONE", "RUMBLE", "RUMBLE_CURVE", "RUMBLE_STRENGTH", "RUMBLE_TRIGGERS", "SHADER_CACHE",
+     "SHADER_MEMO", "SHADOW_RANGE", "SHADOW_RES", "SHADOW_SCALE", "SHARED_FONTS", "SHARPNESS", "SHOTS", "SHOTS_DIR",
+-    "SHOTS_FULL", "SKIP_FS", "SKIP_VS", "SPEED_PROBE", "SPIN", "SPIN_HANDOFF_US", "SPLIT_DRAWS", "SPLIT_US", "STICK_DEADZONE", "STICK_SENS",
++    "SHOTS_FULL", "SKIP_FS", "SKIP_VS", "SPEED_PROBE", "SPIN", "SPIN_HANDOFF_US", "SPIRV_DOMAIN_CLAMP", "SPIRV_NMINMAX", "SPLIT_DRAWS", "SPLIT_US", "STICK_DEADZONE", "STICK_SENS",
+     "SWKBD_ANSWER",
+     "SWKBD_TEST", "TEST_AUDIO_STALL", "TEST_FREEZE", "TEST_HITCH", "TEST_PAD", "TEST_PREPARE_SHADERS", "TEX_ALIAS", "TEX_CACHE_MB", "TEX_MEMO", "TEX_MIP_SKIP", "TEX_PREFETCH", "TEX_VRAM_PRESSURE", "TIMER_1MS", "TRACE", "UBO_SNAPSHOT", "UPSCALER", "UPSCALING", "UPSCALING_FAIL",
+     "UPSCALING_QUALITY", "VK_DYN_A2C", "VK_DYN_VERTEX", "VK_NO_FLOAT64",
+     "VK_PRESENT", "VK_RECORDER", "VK_SSBO_ALIGN", "VK_SUBGROUP", "VK_SUBGROUP_PIN", "VK_VALIDATION", "VOLUME", "VRAM_HEADROOM", "VS_OUTS",
+-    "WALK_KEY", "WALK_SCALE", "WB_EXACT", "WB_FENCE_LIMIT", "WIDE_PATCH", "WINDOW_SIZE", "XESS", "XESS_JITTER_SCALE", "XESS_MV_SCALE",
++    "WALK_KEY", "WALK_SCALE", "WB_EXACT", "WINDOWED_IMMEDIATE", "WB_FENCE_LIMIT", "WIDE_PATCH", "WINDOW_SIZE", "XESS", "XESS_JITTER_SCALE", "XESS_MV_SCALE",
+     "XLATE", "XLATE_ID", "XLATE_PROCS",
+     "ZSTD_CHECK", "ZSTD_NATIVE",
+ };
+ 
+ // The astralchain.ini section a key cfg_set may write goes to when the file lacks it (astralchain.ini.example's sections).
+ static const struct { const char *key, *section; } sections[] = {
+-    {"FPS", "frame rate"},
++    {"FPS", "frame rate"}, {"FRAME_GEN", "display"},
+     {"REALTIME", "frame rate"}, {"CLOTH_REALTIME", "frame rate"}, {"HIGHFPS_FIX", "frame rate"},
+     {"HUD", "display"},
+     {"FULLSCREEN", "display"}, {"WINDOW_SIZE", "display"}, {"PERF_OVERLAY", "display"}, {"VK_PRESENT", "display"},
+@@ -82,7 +84,7 @@
+     {"MODS_DIR", "mods"}, {"MODS_ORDER", "mods"}, {"MODS_DISABLED", "mods"}, {"MODS_REBUILD", "mods"},
+     {"MENU_LANG", "language"}, {"LANG", "language"}, {"OPERATION_MODE", "language"},
+     {"VOLUME", "audio"},
+-    {"MOTION", "input"}, {"RUMBLE_STRENGTH", "input"}, {"RUMBLE_CURVE", "input"}, {"RUMBLE_TRIGGERS", "input"},
++    {"MOTION", "input"}, {"GYRO_SENS", "input"}, {"RUMBLE_STRENGTH", "input"}, {"RUMBLE_CURVE", "input"}, {"RUMBLE_TRIGGERS", "input"},
+     {"PAD_LAYOUT", "input"}, {"PROMPTS", "input"}, {"STICK_DEADZONE", "input"}, {"LSTICK_DEADZONE", "input"}, {"RSTICK_DEADZONE", "input"},
+     {"STICK_SENS", "input"},
+     {"MOUSE_SENS", "input"}, {"WALK_KEY", "input"}, {"WALK_SCALE", "input"}, {"INPUT_RECORD", "input"},
+@@ -113,20 +115,20 @@
  static const CfgMeta metas[] = {
      // Screen
      {"FULLSCREEN", "1", "0|1", LIVE}, {"WINDOW_SIZE", "1920x1080", NULL, LIVE},
@@ -221,7 +422,7 @@
      // the size the game renders itself (resolution.c: TotK's output set, or on 1.0.1 the res set, res_pick)
 -    {"OUTPUT_RES", "1920x1080", NULL, RESTART}, {"RENDER_SCALE", "game", "game|50|67|75|100|125|150|200", RESTART},
 -    {"UPSCALER", "fsr", "fsr|bilinear", LIVE}, {"SHARPNESS", "80", "0..100", LIVE},
-+    {"OUTPUT_RES", "1920x1080", NULL, RESTART}, {"RENDER_SCALE", "game", "game|50|60|70|80|90|100|125|150|200", RESTART},
++    {"OUTPUT_RES", "1920x1080", NULL, RESTART}, {"RENDER_SCALE", "game", "game|50|60|70|80|90|100|125|133|150|175|200|250|300|display", RESTART},
 +    {"UPSCALER", "bilinear", "fsr|bilinear", LIVE}, {"SHARPNESS", "0", "0..100", LIVE},
      // the scene's temporal upscaler and its mode (vk_dlaa.c taa_pick, resolution.c scene_init), native (DLAA, XeSS or
      // FSR 3 Native AA) first, and the game's anti-aliasing for when none runs. The upscaler is live between what can run
@@ -233,12 +434,12 @@
      {"ANTI_ALIASING", "smaa", "off|smaa", LIVE},
 -    {"ASPECT", "wide", "fit|stretch|wide", LIVE}, {"FOV", "100", "70..140", LIVE},
 -    {"ANISO", "auto", "auto|game|2|4|8|16", RESTART},   // vk_texture.c sampler_features
-+    {"ASPECT", "fit", "fit|stretch", LIVE}, {"FOV", "100", "70..140", LIVE},
++    {"ASPECT", "fit", "fit|stretch|ultrawide", LIVE}, {"FOV", "100", "70..140", LIVE}, {"FRAME_GEN", "off", "off|fsr", RESTART},
 +    {"ANISO", "game", "game|2|4|8|16", RESTART},   // vk_texture.c sampler_features
      // colour adjustment (vk_color.c); the preset is the menu's, the four values are what the present uses
      {"COLOR_PRESET", "default", "default|vivid|clarity|custom", LIVE}, {"COLOR_BRIGHTNESS", "0", "-30..30", LIVE},
      {"COLOR_CONTRAST", "100", "70..150", LIVE}, {"COLOR_SATURATION", "100", "50..200", LIVE},
-@@ -136,7 +136,7 @@
+@@ -136,23 +138,23 @@
      {"HDR_UI_NITS", "203", "80..500", LIVE}, {"HDR_HUE", "80", "0..100", LIVE},
      {"DEVICE_PROFILE", "auto", "auto|desktop|deck", RESTART},
      {"SHADOW_RES", "game", "game|512|768|1024|1536|2048", RESTART},
@@ -247,7 +448,10 @@
      {"SHADOW_RANGE", "100", "50..400", RESTART}, {"CONTACT_SHADOWS", "0", "0..100", RESTART},
      {"PCSS", "0", "0..200", RESTART},
      // ambient occlusion (vk_ao.c): read again at the next present after a change
-@@ -146,7 +146,7 @@
+     {"AO", "off", "off|low|high", LIVE},
+     // Game
+-    {"FPS", "60", "30|60", LIVE},
++    {"FPS", "60", "30|60|90|120|144|display", LIVE},
      {"REALTIME", "1", "0|1", RESTART}, {"CLOTH_REALTIME", "1", "0|1", RESTART},
      {"MODS_REBUILD", "auto", "auto|off", RESTART},
      {"HIGHFPS_FIX", "1", "0|1", RESTART},
@@ -256,7 +460,81 @@
      {"OPERATION_MODE", "docked", "docked|handheld", RESTART},
      {"ASSUME_FOCUS", "1", "0|1", LIVE},   // read on every focus change (ov_system.c)
      {"HUD", "1", "0|1", LIVE},            // the gameplay HUD is drawn (resolution.c res_hud_tick); F12 switches it
-@@ -548,7 +548,11 @@
+     // Sound, Controls, Menu
+     {"VOLUME", "100", "0..100", LIVE},
+-    {"MOTION", "1", "0|1", LIVE}, {"RUMBLE_STRENGTH", "130", "0..300", LIVE}, {"RUMBLE_CURVE", "0.6", "0.2..1.5", LIVE},
++    {"MOTION", "1", "0|1", LIVE}, {"GYRO_SENS", "2.5", "0.1..10", LIVE}, {"RUMBLE_STRENGTH", "130", "0..300", LIVE}, {"RUMBLE_CURVE", "0.6", "0.2..1.5", LIVE},
+     {"RUMBLE_TRIGGERS", "0", "0|1", LIVE}, {"PAD_LAYOUT", "auto", "auto|nintendo|xbox|playstation", LIVE},
+     {"PROMPTS", "auto", "auto|nintendo|xbox|playstation", RESTART},
+     {"STICK_DEADZONE", "8", "0..50", LIVE}, {"STICK_SENS", "1", "0.1..3", RESTART},
+@@ -216,7 +218,7 @@
+     size_t vl = strlen(value);
+     if (vl >= 2 && value[0] == '"' && value[vl - 1] == '"') value[vl - 1] = 0, value++;
+     if (!*key) return;
+-    if (!is_known(key)) rt_log("cfg: astralchain.ini line %d: unknown key '%s'", line, key);
++    if (!is_known(key)) rt_log("cfg: newsnap.ini line %d: unknown key '%s'", line, key);
+     if (!*value) return;   // "key =" leaves the setting at its default
+     for (int i = 0; i < n_entries; i++)
+         if (!strcmp(entries[i].key, key)) {   // a repeated key: the later line wins
+@@ -247,7 +249,7 @@
+     if (!strcmp(v, "1440p") || (strcmp(v, "2160p") && k > 1.01 && k < 1.75)) to = "2560x1440";
+     else if (!strcmp(v, "2160p") || (strcmp(v, "off") && k >= 1.75)) to = "3840x2160";
+     if (!to) return;
+-    rt_log("cfg: astralchain.ini ssaa = %s is read as output_res = %s", v, to);
++    rt_log("cfg: newsnap.ini ssaa = %s is read as output_res = %s", v, to);
+     if (out) {
+         free(out->value);
+         out->value = strdup(to);
+@@ -288,7 +290,7 @@
+     if (entry("ANTI_ALIASING") || !to || n_entries == CFG_MAX_KEYS) return;
+     put_new("ANTI_ALIASING", to);
+     drop(dlaa), drop(xess);
+-    rt_log("cfg: astralchain.ini %s = 1 is read as anti_aliasing = %s", to, to);
++    rt_log("cfg: newsnap.ini %s = 1 is read as anti_aliasing = %s", to, to);
+ #endif
+ }
+ 
+@@ -304,7 +306,7 @@
+ static void migrate_upscaling(void) {
+     CfgEntry *dlss = entry("DLSS");
+     if (dlss) {
+-        rt_log("cfg: astralchain.ini dlss = %s is no longer read: upscaling_quality sets the upscaler's mode", dlss->value);
++        rt_log("cfg: newsnap.ini dlss = %s is no longer read: upscaling_quality sets the upscaler's mode", dlss->value);
+         drop(dlss);
+     }
+     CfgEntry *aa = entry("ANTI_ALIASING");
+@@ -322,10 +324,10 @@
+     if (*up && !entry("UPSCALING")) {
+         put_value("UPSCALING", up);
+         put_value("UPSCALING_QUALITY", "native");
+-        rt_log("cfg: astralchain.ini anti_aliasing = %s is read as upscaling = %s, upscaling_quality = native and "
++        rt_log("cfg: newsnap.ini anti_aliasing = %s is read as upscaling = %s, upscaling_quality = native and "
+                "anti_aliasing = smaa", old, up);
+     } else {
+-        rt_log("cfg: astralchain.ini anti_aliasing = %s is read as anti_aliasing = smaa", old);
++        rt_log("cfg: newsnap.ini anti_aliasing = %s is read as anti_aliasing = smaa", old);
+     }
+     put_value("ANTI_ALIASING", "smaa");
+ }
+@@ -347,7 +349,7 @@
+     layout->value = strdup("nintendo");
+     layout->dirty = 1;
+     if (!prompts && n_entries < CFG_MAX_KEYS) entries[n_entries++] = (CfgEntry){strdup("PROMPTS"), strdup("xbox"), 1, 0};
+-    rt_log("cfg: astralchain.ini pad_layout = xbox_prompts is read as pad_layout = nintendo and prompts = %s",
++    rt_log("cfg: newsnap.ini pad_layout = xbox_prompts is read as pad_layout = nintendo and prompts = %s",
+            prompts ? prompts->value : "xbox");
+ }
+ 
+@@ -364,7 +366,7 @@
+         char *s = trim(p);
+         char *eq = strchr(s, '=');
+         if (*s && *s != '#' && *s != ';' && *s != '[') {
+-            if (!eq) rt_log("cfg: astralchain.ini line %d: no '=' in '%s'", line, s);
++            if (!eq) rt_log("cfg: newsnap.ini line %d: no '=' in '%s'", line, s);
+             else {
+                 *eq = 0;
+                 add(trim(s), trim(eq + 1), line);
+@@ -548,7 +550,11 @@
  
  const CfgMeta *cfg_meta_at(int i) { return i >= 0 && (size_t)i < sizeof metas / sizeof *metas ? &metas[i] : NULL; }
  
@@ -268,9 +546,241 @@
      const char *e = cfg_get(name);
      if (e && *e) return e;
      const CfgMeta *m = cfg_meta(name);
+@@ -642,7 +648,7 @@
+     if (o->n + n + 1 > o->cap) {
+         o->cap = (o->n + n + 1) * 2;
+         o->buf = realloc(o->buf, o->cap);
+-        if (!o->buf) rt_fatal("cfg: out of memory writing astralchain.ini");
++        if (!o->buf) rt_fatal("cfg: out of memory writing newsnap.ini");
+     }
+     memcpy(o->buf + o->n, s, n);
+     o->n += n;
+@@ -678,6 +684,16 @@
+     }
+     uint64_t size = 0;
+     uint8_t *data = plat_file_read(path, &size);
++    // Save only to the new name, preserving all untouched legacy lines as the base.
++    if (!data && !plat_file_exists(path) && snap_primary_ini[0] && !strcmp(path, snap_primary_ini)) {
++        data = plat_file_read(snap_legacy_ini, &size);
++        if (!data) {
++            rt_log("cfg: cannot read legacy settings %s, nothing written", snap_legacy_ini);
++            __atomic_store_n(&save_ok, 0, __ATOMIC_RELEASE);
++            plat_mutex_unlock(&set_lock);
++            return 0;
++        }
++    }
+     if (!data && plat_file_exists(path) && plat_file_size(path) != 0) {
+         // the file is there but unreadable (locked, transient error): rebuilding it from nothing would lose its lines
+         rt_log("cfg: cannot read %s, nothing written", path);
+@@ -691,7 +707,7 @@
+     // after[i]: entries to write after line i (-1 = none); replace[i]: the entry whose value line i now carries
+     int *replace = malloc(sizeof(int) * ((size_t)nl + 1)), *after_key = malloc(sizeof(int) * (size_t)(n + 1));
+     char *drop = calloc((size_t)nl + 1, 1);   // lines of a reset key
+-    if (!lines || !replace || !after_key || !drop) rt_fatal("cfg: out of memory writing astralchain.ini");
++    if (!lines || !replace || !after_key || !drop) rt_fatal("cfg: out of memory writing newsnap.ini");
+     for (int i = 0, at = 0; i < nl; i++) {
+         size_t start = (size_t)at;
+         while ((uint64_t)at < size && text[at] != '\n') at++;
+@@ -804,8 +820,8 @@
+     if (!plat_exe_path(path, sizeof path)) return 0;
+     char *cut = plat_last_sep(path);
+     if (!cut) cut = strrchr(path, '/');
+-    if (!cut || cut + 10 >= path + sizeof path) return 0;
+-    strcpy(cut + 1, "astralchain.ini");
++    if (!cut || (size_t)(path + sizeof path - (cut + 1)) < sizeof "newsnap.ini") return 0;
++    strcpy(cut + 1, "newsnap.ini");
+     snprintf(ini_path, sizeof ini_path, "%s", path);
+     return 1;
+ }
+@@ -818,15 +834,29 @@
+ 
+ static void load_ini(void) {
+     if (!find_ini()) return;
+-    if (!cfg_load(ini_path)) {
+-        rt_log("cfg: no settings file at %s", ini_path);
++    const char *load_path = ini_path;
++    snap_legacy_ini[0] = snap_primary_ini[0] = 0;
++    // Existence, not parse/read success, decides precedence. Never mask a broken new file.
++    if (!plat_file_exists(ini_path)) {
++        snprintf(snap_legacy_ini, sizeof snap_legacy_ini, "%s", ini_path);
++        char *cut = plat_last_sep(snap_legacy_ini);
++        if (!cut) cut = strrchr(snap_legacy_ini, '/');
++        if (cut && (size_t)(snap_legacy_ini + sizeof snap_legacy_ini - (cut + 1)) >= sizeof "astralchain.ini") {
++            strcpy(cut + 1, "astralchain.ini");
++            if (plat_file_exists(snap_legacy_ini)) load_path = snap_legacy_ini;
++        }
++    }
++    if (!cfg_load(load_path)) {
++        rt_log("cfg: no settings file at %s", load_path);
+         return;
+     }
+-    rt_log("cfg: read %s: %d keys", ini_path, n_entries);
++    if (load_path == snap_legacy_ini)
++        snprintf(snap_primary_ini, sizeof snap_primary_ini, "%s", ini_path);
++    rt_log("cfg: read %s: %d keys", load_path, n_entries);
+     for (int i = 0; i < n_entries; i++) {
+         char var[128];
+         snprintf(var, sizeof var, PREFIX "%s", entries[i].key);
+-        if (getenv(var)) rt_log("cfg: %s is set in the environment and overrides astralchain.ini", var);
++        if (getenv(var)) rt_log("cfg: %s is set in the environment and overrides newsnap.ini", var);
+     }
+ }
+ 
+@@ -855,7 +885,7 @@
+     unsigned w = 0, h = 0;
+     int reset = out && out->value && (!res_output_grid(out->value, &w, &h) || (w == 1920 && h == 1080));
+     if (reset) {
+-        rt_log("cfg: Steam Deck: astralchain.ini output_res = %s renders 1920x1080, more than the 1280x800 screen shows; "
++        rt_log("cfg: Steam Deck: newsnap.ini output_res = %s renders 1920x1080, more than the 1280x800 screen shows; "
+                "reset once to the deck profile's 1280x720 (deck_res_migrated = 1 marks it done: 1920x1080 picked again, "
+                "as for a docked display, stays)", out->value);
+         __atomic_store_n(&out->value, NULL, __ATOMIC_RELEASE);   // the old string stays for readers
+@@ -887,7 +917,7 @@
+     }
+     int reset = aspect && aspect->value && !aspect->removed && strcmp(aspect->value, "wide");
+     if (reset) {
+-        rt_log("cfg: astralchain.ini aspect = %s dates from before the wide view; removed once so the default, wide, "
++        rt_log("cfg: newsnap.ini aspect = %s dates from before the wide view; removed once so the default, wide, "
+                "applies (aspect_migrated = 1 marks it done: fit or stretch picked again stays)", aspect->value);
+         __atomic_store_n(&aspect->value, NULL, __ATOMIC_RELEASE);   // the old string stays for readers
+         aspect->dirty = 0;
+@@ -927,7 +957,7 @@
+         rt_log("cfg: " PREFIX "ANTI_ALIASING=%s is read as " PREFIX "UPSCALING=%s with " PREFIX
+                "UPSCALING_QUALITY=native for this run", getenv(PREFIX "ANTI_ALIASING"), legacy_upscaler());
+     if (profile_of())
+-        rt_log("cfg: device profile Steam Deck: defaults for the keys astralchain.ini does not set (AC_DEVICE_PROFILE=desktop "
++        rt_log("cfg: device profile Steam Deck: defaults for the keys newsnap.ini does not set (AC_DEVICE_PROFILE=desktop "
+                "turns it off)");
+     // Saved at once, but no file is made only for the marker: without astralchain.ini it stays pending in memory and goes
+     // in with the first save that makes the file (a menu change, F11), the only way a stored output_res can appear.
 --- a/runtime/vk_pipeline.c
 +++ b/runtime/vk_pipeline.c
-@@ -2138,7 +2138,7 @@
+@@ -886,13 +886,101 @@
+     st->pNext = rq;
+ }
+ 
++// NewSnap CRISTAL-01: Switch-like NaN behaviour on AMD (the Crystabloom's crystal drew black on an RX 6900 XT).
++//  - AC_SPIRV_NMINMAX: GLSL.std.450 FMin/FMax/FClamp -> NMin/NMax/NClamp. Maxwell's FMNMX returns the operand that
++//    is not NaN and .SAT turns NaN into 0; FMin/FMax/FClamp leave a NaN operand undefined (NVIDIA returns the other
++//    operand, AMD can return the NaN).
++//  - AC_SPIRV_DOMAIN_CLAMP: Sqrt/InverseSqrt/Log2 take NMax(x, 0): a value NVIDIA computes as exactly 0 can come out a
++//    hair below 0 on AMD, and sqrt/log2 of it is NaN.
++// Both default on for AMD, off elsewhere. NULL when nothing changes; *out_n is the new word count.
++static void snap_nan_knobs(int *minmax, int *domain) {
++    static volatile int mm = -1, dc = -1;
++    if (mm < 0 || dc < 0) {
++        int a = rt_knob("SPIRV_NMINMAX", vk_caps.amd ? "1" : "0"), b = rt_knob("SPIRV_DOMAIN_CLAMP", vk_caps.amd ? "1" : "0");
++        rt_log("vk_pipeline: shader NaN semantics: min/max/clamp %s (AC_SPIRV_NMINMAX=%d), sqrt/rsqrt/log2 %s "
++               "(AC_SPIRV_DOMAIN_CLAMP=%d)", a ? "NaN-safe" : "as translated", a, b ? "clamped at 0" : "as translated", b);
++        mm = a, dc = b;
++    }
++    *minmax = mm, *domain = dc;
++}
++
++static uint32_t *snap_spirv_nan_safe(const uint32_t *w, uint64_t n, uint64_t *out_n) {
++    enum { OP_EXT_INST_IMPORT = 11, OP_EXT_INST = 12, OP_CONSTANT_NULL = 46, OP_FUNCTION = 54, LOG2 = 30, SQRT = 31,
++           RSQRT = 32, FMIN = 37, FMAX = 40, FCLAMP = 43, NMIN = 79, NMAX = 80, NCLAMP = 81, MAX_TYPES = 16 };
++    int minmax, domain;
++    if (n < 5) return NULL;
++    snap_nan_knobs(&minmax, &domain);
++    if (!minmax && !domain) return NULL;
++    uint32_t glsl = 0, bound = w[3], types[MAX_TYPES], zeros[MAX_TYPES];
++    uint64_t fn_at = 0, swaps = 0, clamps = 0;
++    int ntypes = 0;
++    for (uint64_t i = 5; i < n;) {
++        uint32_t op = w[i] & 0xffff, l = w[i] >> 16;
++        if (!l || i + l > n) return NULL;
++        if (op == OP_EXT_INST_IMPORT && l >= 3 && !strncmp((const char *)(w + i + 2), "GLSL.std.450", (size_t)(l - 2) * 4))
++            glsl = w[i + 1];
++        if (op == OP_FUNCTION && !fn_at) fn_at = i;
++        if (op == OP_EXT_INST && l >= 5 && glsl && w[i + 3] == glsl) {
++            uint32_t ins = w[i + 4];
++            if (minmax && (ins == FMIN || ins == FMAX || ins == FCLAMP)) swaps++;
++            if (domain && l == 6 && (ins == SQRT || ins == RSQRT || ins == LOG2)) {
++                int k = 0;
++                while (k < ntypes && types[k] != w[i + 1]) k++;
++                if (k == ntypes) {
++                    if (ntypes == MAX_TYPES) return NULL;
++                    types[ntypes++] = w[i + 1];
++                }
++                clamps++;
++            }
++        }
++        i += l;
++    }
++    if (!glsl || !fn_at || (!swaps && !clamps)) return NULL;
++    uint64_t total = n + (uint64_t)ntypes * 3 + clamps * 7;
++    uint32_t *o = malloc(total * 4), *p = o;
++    if (!o) return NULL;
++    for (int k = 0; k < ntypes; k++) zeros[k] = bound++;
++    memcpy(p, w, 5 * 4), p[3] = bound + (uint32_t)clamps, p += 5;
++    memcpy(p, w + 5, (fn_at - 5) * 4), p += fn_at - 5;
++    for (int k = 0; k < ntypes; k++) *p++ = 3u << 16 | OP_CONSTANT_NULL, *p++ = types[k], *p++ = zeros[k];
++    for (uint64_t i = fn_at; i < n;) {
++        uint32_t op = w[i] & 0xffff, l = w[i] >> 16;
++        if (op == OP_EXT_INST && l >= 5 && w[i + 3] == glsl) {
++            uint32_t ins = w[i + 4];
++            if (domain && l == 6 && (ins == SQRT || ins == RSQRT || ins == LOG2)) {
++                int k = 0;
++                while (types[k] != w[i + 1]) k++;
++                uint32_t safe = bound++;
++                *p++ = 7u << 16 | OP_EXT_INST, *p++ = w[i + 1], *p++ = safe, *p++ = glsl, *p++ = NMAX, *p++ = w[i + 5],
++                *p++ = zeros[k];
++                memcpy(p, w + i, 5 * 4), p[5] = safe, p += 6;
++                i += l;
++                continue;
++            }
++            memcpy(p, w + i, l * 4);
++            if (minmax) p[4] = ins == FMIN ? NMIN : ins == FMAX ? NMAX : ins == FCLAMP ? NCLAMP : ins;
++            p += l, i += l;
++            continue;
++        }
++        memcpy(p, w + i, l * 4), p += l, i += l;
++    }
++    *out_n = (uint64_t)(p - o);
++    static volatile int logged;
++    if (!logged) logged = 1, rt_log("vk_pipeline: first shader made NaN-safe: %llu min/max/clamp, %llu sqrt/rsqrt/log2",
++                                    (unsigned long long)(minmax ? swaps : 0), (unsigned long long)clamps);
++    return o;
++}
++
+ static VkShaderModule make_module(const uint32_t *w, uint64_t words) {
+-    uint64_t fixed_n = 0;
++    uint64_t fixed_n = 0, safe_n = 0;
+     uint32_t *fixed = spirv_fixup(w, words, &fixed_n);
+     if (fixed) w = fixed, words = fixed_n;
++    uint32_t *nan_safe = snap_spirv_nan_safe(w, words, &safe_n);
++    if (nan_safe) w = nan_safe, words = safe_n;
+     VkShaderModuleCreateInfo ci = {.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO, .codeSize = (size_t)words * 4, .pCode = w};
+     VkShaderModule m = VK_NULL_HANDLE;
+     VkResult r = vkCreateShaderModule(P.device, &ci, NULL, &m);
++    free(nan_safe);
+     free(fixed);
+     return r == VK_SUCCESS ? m : VK_NULL_HANDLE;
+ }
+@@ -1913,10 +2001,20 @@
+     return 1;
+ }
+ 
++// NewSnap PIPE-MO-01 (vk_exec_draw.c): the per-object motion fragment shader has no guest input id; KeyRec.pad names
++// its output location under this tag so the boot prewarm can recreate it instead of dropping the record.
++#define SNAP_MO_KEY_TAG 0x4d4f0000u
++int snap_mo_fs_location(const GfxShader *s);
++const GfxShader *snap_mo_fs_get(int loc);
++
+ static void rec_fill(KeyRec *r, const VkPipeState *s) {
+     memset(r, 0, sizeof *r);
+     memcpy(r->vs, gfx_shader_input_id(s->vs), 32);
+-    if (s->fs) memcpy(r->fs, gfx_shader_input_id(s->fs), 32), r->has_fs = 1;
++    if (s->fs) {
++        memcpy(r->fs, gfx_shader_input_id(s->fs), 32), r->has_fs = 1;
++        int loc = snap_mo_fs_location(s->fs);
++        if (loc >= 0) r->pad = SNAP_MO_KEY_TAG | (uint32_t)loc;
++    }
+     r->s = *s;
+     r->s.vs = r->s.fs = NULL;
+     r->s.prim_restart = 0;   // dynamic state: the same pipeline either way
+@@ -2138,7 +2236,7 @@
      A.on = 1;
  }
  
@@ -279,7 +789,7 @@
  
  // A draw needs a pipeline a prebuild job owns: the job moves to the draw queue, or its worker to normal priority.
  // Caller holds P.lock.
-@@ -2374,7 +2374,7 @@
+@@ -2374,7 +2472,7 @@
  }
  
  VkPipeline vk_pipeline_graphics_async(const VkPipeState *s, const VkPipeInfo **info, int *pending, uint32_t wait_ms) {
@@ -288,6 +798,42 @@
  }
  
  // ---- boot prewarm from the key file (comment at "pipeline keys")
+@@ -2467,7 +2565,7 @@
+         rt_log("vk_pipeline: vertex output unions: %u vertex shaders, %.2f locations each; %llu pairs read %.2f each",
+                VO.n, VO.n ? (double)uni / VO.n : 0.0, (unsigned long long)pairs, pairs ? (double)pair / pairs : 0.0);
+     }
+-    uint32_t queued = 0, dropped = 0, known = 0;
++    uint32_t queued = 0, dropped = 0, known = 0, snap_mo = 0;
+     plat_mutex_lock(&P.lock);
+     K.t0 = t1;
+     K.loading = 1;
+@@ -2475,6 +2573,9 @@
+         const uint8_t (*v)[32] = bsearch(r[i].vs, ids, u, 32, id_cmp);
+         const uint8_t (*f)[32] = r[i].has_fs ? bsearch(r[i].fs, ids, u, 32, id_cmp) : NULL;
+         const GfxShader *vs = v ? sh[v - ids] : NULL, *fs = f ? sh[f - ids] : NULL;
++        if (vs && r[i].has_fs && !fs && (r[i].pad & 0xffff0000u) == SNAP_MO_KEY_TAG &&
++            (fs = snap_mo_fs_get((int)(r[i].pad & 0xffu))))
++            snap_mo++;   // NewSnap PIPE-MO-01: the per-object motion shader, recreated from its location
+         if (!vs || (r[i].has_fs && !fs)) {
+             dropped++;
+             continue;
+@@ -2493,6 +2594,7 @@
+     K.loading = 0;
+     plat_mutex_unlock(&P.lock);
+     free(ids), free(sh);
++    if (snap_mo) rt_log("vk_pipeline: prewarm: %u per-object motion pipelines recreated from their shader location", snap_mo);
+ 
+     PlatThread *t[64];
+     int nt = 0;
+@@ -3028,7 +3130,7 @@
+     if (LB.noshader * 2 > LB.n)
+         rt_log("vk_pipeline: %llu of %zu variants of the warm list are not in the shader cache for this GPU and driver; "
+                "they are translated during play. The folder was prepared on another GPU or with other settings: run "
+-               "astralchain.exe --prepare-shaders in it on this machine", (unsigned long long)LB.noshader, LB.n);
++               "newsnap.exe --prepare-shaders in it on this machine", (unsigned long long)LB.noshader, LB.n);
+     dc_record(dir, dc_boot_id);
+     rt_log("vk_pipeline: the driver's shader cache now holds the warm list: %s/shader-prepared-driver.txt lists it", dir);
+ }
 --- a/runtime/kernel.c
 +++ b/runtime/kernel.c
 @@ -14,6 +14,7 @@
@@ -307,6 +853,24 @@
  #define MAIN_PRIO 44                     // META+0xE
  #define MAIN_CORE 0                      // META+0xF
  #define FIBER_MAX 1024
+@@ -311,7 +312,7 @@
+         if (!g_cores_on)
+             rt_log("kernel: WARNING: free_cores = 1 (AC_FREE_CORES) turns the virtual core gate off. This is an "
+                    "experimental mode and the game crashes or hangs in it, usually at start. Set free_cores = 0 in "
+-                   "astralchain.ini to play");
++                   "newsnap.ini to play");
+         diag_init();
+         ap_init();
+     }
+@@ -321,7 +322,7 @@
+ void kern_free_cores_note(void) {
+     if (!g_cores_on)
+         rt_log("fatal: free_cores = 1 was on: the game crashes in this experimental mode; set free_cores = 0 in "
+-               "astralchain.ini before reporting this crash");
++               "newsnap.ini before reporting this crash");
+ }
+ 
+ static int core_allowed(const RtThread *t, int c) { return (int)((t->mask >> c) & 1); }
 @@ -654,7 +655,7 @@
  #define DG_LONG_LINES 400
  #define DG_SAMPLES 600
@@ -359,26 +923,65 @@
  }
 --- a/runtime/frame_rate.c
 +++ b/runtime/frame_rate.c
-@@ -1259,14 +1259,14 @@
+@@ -27,6 +27,7 @@
+ 
+ #include "audren.h"
+ #include "cfg.h"
++#include "snap_high_fps.h"
+ #include "gfx.h"
+ #include "host.h"
+ #include "layout.h"
+@@ -49,6 +50,8 @@
+ static volatile int in_cutscene;          // the game's fixed-step flag at the last timer call
+ 
+ static int fps60_on = -1, fps_hz;
++static double snap_cap_hz, snap_refresh_seen = -1;
++double gfx_window_refresh_hz(void);
+ static unsigned fps_seen;
+ static int fps_read;
+ 
+@@ -1243,7 +1246,9 @@
+ // site it runs.
+ static void frame_limit_live(void) {
+     unsigned v = cfg_version();
+-    if (fps_read && v == fps_seen) return;
++    double snap_refresh = gfx_window_refresh_hz();
++    if (fps_read && v == fps_seen && snap_refresh == snap_refresh_seen) return;
++    snap_refresh_seen = snap_refresh;
+     fps_read = 1;
+     fps_seen = v;
+     unsigned hm = 0, he = 0, hr = 0, fm = 0, fe = 5000;
+@@ -1258,20 +1263,23 @@
+     if (freeze && sscanf(freeze, "%u:%u", &fm, &fe) >= 1 && (fm != freeze_ms || fe != freeze_every_ms))
          rt_log("frame rate: test freeze of %u ms, the sound with it, in a cutscene frame every %u ms", fm, fe);
      freeze_ms = fm, freeze_every_ms = fe;
-     int hz = cfg_int("AC_FPS");
+-    int hz = cfg_int("AC_FPS");
 -    int on = hz >= 60;
 -    if (on == fps60_on && fps_hz) return;
++    double snap_exact = snap_fps_target(cfg_value("AC_FPS"), snap_refresh);
++    int hz = (int)(snap_exact + 0.5);
++    if (snap_exact != snap_cap_hz && fps_hz == hz) rt_log("frame rate: %.3f fps (display)", snap_exact);
++    snap_cap_hz = snap_exact;
 +    int on = hz >= 60 && rt_patch_set("fps60") >= 0; // Snap has no inherited timing patch.
-+    if (on == fps60_on && fps_hz == (hz >= 60 ? 60 : 30)) return;
++    if (on == fps60_on && fps_hz == hz) return;
      fps60_on = on;
      // the timer does not run at 30: it ends the cutscene run it was in and starts anew at its next call (rt_fps_timer)
      atomic_fetch_add_explicit(&fps_switches, 1, memory_order_relaxed);
 -    fps_hz = on ? 60 : 30;
-+    fps_hz = hz >= 60 ? 60 : 30; // Presentation cap is independent of game timing patches.
++    fps_hz = hz; // Presentation cap is independent of game timing patches.
      rt_patch_switch(rt_patch_set("fps60"), on);
 -    rt_log("frame rate: %d fps%s", fps_hz, on ? " (60 fps patch)" : " (30 fps)");
 +    rt_log("frame rate: %d fps%s", fps_hz, on ? " (60 fps patch)" : " cap (native game timing)");
  }
  
  uint64_t frame_step_cap_ns(void) {
-@@ -1291,7 +1291,7 @@
+     frame_limit_live();
+-    return (uint64_t)(1e9 / fps_hz + 0.5);
++    return (uint64_t)(1e9 / (snap_cap_hz > 0 ? snap_cap_hz : fps_hz) + 0.5);
+ }
+ 
+ // The frame rate the limit gives, for the performance overlay: 60 or 30; 0 before the first frame read the setting.
+@@ -1291,7 +1299,7 @@
  int frame_step_cutscene(void) { return fps60_on && in_cutscene && !cut60_now; }
  
  static void cutscene_rate(void) {
@@ -387,6 +990,26 @@
      uintptr_t base = (uintptr_t)MOD_MAIN_BASE;
      uint32_t want = frame_step_cutscene() ? 2u : 1u;
      void *volatile *slot = (void *volatile *)(base + 0xCCB7B08ull);
+@@ -1317,7 +1325,7 @@
+     win_hist[interval < 1 ? 1 : interval > 3 ? 3 : interval]++;
+     if (win_frames < 120) return;
+     double wall = (double)(now - win_t0) * 1e-9;
+-    rt_log("fps: %llu frames in %.3f s (%.1f fps), %.3f s game stepped, speed %.3f; interval 1/2/3+ %llu/%llu/%llu",
++    rt_log("fps: %llu frames in %.3f s (%.1f fps), %.3f s presentation clock, ratio %.3f; interval 1/2/3+ %llu/%llu/%llu",
+            (unsigned long long)win_frames, wall, (double)win_frames / wall, win_game, win_game / wall,
+            (unsigned long long)win_hist[1], (unsigned long long)win_hist[2], (unsigned long long)win_hist[3]);
+     win_t0 = now;
+@@ -1352,7 +1360,9 @@
+     frame_limit_live();
+     cutscene_rate();
+     double dt = last_ns ? (double)(display_ns - last_ns) * 1e-9 : 0;
+-    if (interval > 0) step_now = interval / 60.0;
++    if (interval > 0) step_now = fps_hz > 60
++        ? (dt > 0 ? (dt > STEP_MAX_S ? STEP_MAX_S : dt) : 1.0 / fps_hz)
++        : interval / 60.0; // Script ticks use clamped presentation deltas above 60, not present count.
+     last_ns = display_ns;
+     // The game clock of untimed script lines: what the game stepped this frame, whole vsyncs.
+     double game = step_now;
 --- a/runtime/nvn_api_core.c
 +++ b/runtime/nvn_api_core.c
 @@ -654,4 +654,4 @@
@@ -450,14 +1073,19 @@
      o->serial = nvn_new_serial();
      NVN_LOG("ProgramSetShaders %p n=%d data0=%#llx", (void *)o, n, n ? (unsigned long long)sd[0].data : 0ull);
      return 1;
-@@ -649,7 +663,9 @@
+@@ -643,13 +657,14 @@
+ // the real-time frame step (frame_rate.c) game speed does not depend on the interval, so a frame is shown when it is
+ // ready, at most at the frame rate (AC_FPS: 60 or 30 per second): holding it to the
+ // 2nd or 3rd tick would only add latency and 50 ms frames.
++#include "snap_high_fps.h"
+ #define VSYNC_HZ 60ull
+ static uint64_t present_period(const win_t *o) {
+     if (frame_step_realtime()) return frame_step_cap_ns();
      uint64_t ticks = o->interval > 0 ? (uint64_t)o->interval : 1ull;
      // the 60 fps patch drops the game's own wait (frame_rate.c); a held cutscene far behind is let go to catch up
      if (frame_step_cutscene() && !frame_step_rush() && ticks < 2) ticks = 2;
 -    return ticks * 1000000000ull / VSYNC_HZ;
-+    uint64_t native_period = ticks * 1000000000ull / VSYNC_HZ;
-+    uint64_t cap_period = frame_step_cap_ns();
-+    return native_period > cap_period ? native_period : cap_period;
++    return snap_fps_period(ticks, frame_step_cap_ns());
  }
  
  // MacNativeGames nvn_pace.h: the present slot is the previous slot plus one period. Early: wait for the slot. Late by
@@ -616,6 +1244,23 @@
      libs = [f'-L {cmd_path(DEPS / "lib")}'] + (LLVM_LINK_LIBS if WIN else LINK_LIBS) if DEPS else LINK_LIBS
      # A compiler cache (sccache) may front clang: every lift rewrites the generated chunks with the same contents, so
      # the cached objects save the compile step on the next build.
+@@ -629,6 +632,7 @@
+ JOB_OBJECT_EXTENDED_LIMIT_INFORMATION = 9
+ JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE = 0x2000
+ CREATE_SUSPENDED = 0x4
++CREATE_NO_WINDOW = 0x08000000
+ 
+ 
+ def run_measured(cmd, env):
+@@ -655,7 +659,7 @@
+     k32.SetInformationJobObject(job, JOB_OBJECT_EXTENDED_LIMIT_INFORMATION, ctypes.byref(info), ctypes.sizeof(info))
+     t0 = time.monotonic()
+     # Suspended until it is in the job, so the compilers it starts are counted from the first one.
+-    proc = subprocess.Popen(cmd, cwd=ROOT, env=env, creationflags=CREATE_SUSPENDED)
++    proc = subprocess.Popen(cmd, cwd=ROOT, env=env, creationflags=CREATE_SUSPENDED | CREATE_NO_WINDOW)
+     if not k32.AssignProcessToJobObject(job, int(proc._handle)):
+         print(f'build_game: cannot track memory (error {ctypes.get_last_error()})', file=sys.stderr)
+     ntdll.NtResumeProcess(int(proc._handle))
 --- a/recomp/gen.py
 +++ b/recomp/gen.py
 @@ -43,6 +43,7 @@
@@ -928,18 +1573,128 @@
  #include "platform/platform.h"
  
  typedef struct {
-@@ -686,6 +687,10 @@
+@@ -245,19 +246,71 @@
+            (f >= VK_FORMAT_ASTC_4x4_SFLOAT_BLOCK && f <= VK_FORMAT_ASTC_12x12_SFLOAT_BLOCK);
+ }
+ 
++// SNAP_POOL_BOUNDS: diagnostic experiment, not a vendor-specific workaround.
++// Cache the startup environment once. Concurrent first callers may compute the
++// same value, but only a completed value is published; no partially initialized
++// state, spin wait or per-image environment reads after publication.
++static int snap_pool_bounds_enabled(void) {
++    static int state;
++    int value = __atomic_load_n(&state, __ATOMIC_ACQUIRE);
++    if (!value) {
++        const char *setting = getenv("AC_SNAP_POOL_BOUNDS");
++        int chosen = setting && !strcmp(setting, "1") ? 2 : 1;
++        int expected = 0;
++        __atomic_compare_exchange_n(&state, &expected, chosen, 0, __ATOMIC_RELEASE, __ATOMIC_RELAXED);
++        value = __atomic_load_n(&state, __ATOMIC_ACQUIRE);
++    }
++    return value == 2;
++}
++
++static int snap_pool_bounds_result(const Tex *e, VkImage img, const VkMemoryRequirements *req,
++                                   uint64_t guest_size, const VkMemSpan *span, int memory_type,
++                                   int result, const char *decision) {
++    static unsigned reported_colour, reported_depth;
++    if (req->size <= guest_size) return result;
++    int depth = e->f.depth || e->f.stencil;
++    unsigned *reported = depth ? &reported_depth : &reported_colour;
++    unsigned limit = depth ? 4 : 16;
++    unsigned count = __atomic_load_n(reported, __ATOMIC_RELAXED);
++    do {
++        if (count >= limit) return result;
++    } while (!__atomic_compare_exchange_n(reported, &count, count + 1, 1,
++                                          __ATOMIC_RELAXED, __ATOMIC_RELAXED));
++    rt_log("pool_bounds: image=%#llx addr=%#llx nvn_fmt=%#x vk_fmt=%d dims=%ux%u "
++           "guest_size=%llu req_size=%llu alignment=%llu type_bits=%#x memory_type=%d "
++           "span_known=%d alloc_offset=%llu avail=%llu decision=%s bound=%d",
++           (unsigned long long)(uintptr_t)img, (unsigned long long)e->pub.addr,
++           e->t.d.format, (int)e->f.vk, e->t.d.width, e->t.d.height,
++           (unsigned long long)guest_size, (unsigned long long)req->size,
++           (unsigned long long)req->alignment, req->memoryTypeBits, memory_type,
++           span != NULL, (unsigned long long)(span ? span->alloc_offset : 0),
++           (unsigned long long)(span ? span->avail : 0), decision, result);
++    return result;
++}
++
+ static int bind_pool_memory(VkCtx *c, Tex *e, VkImage img, uint64_t guest_size) {
+     VkMemoryRequirements req;
+     vkGetImageMemoryRequirements(c->device, img, &req);
+-    if ((e->f.depth || e->f.stencil) && req.size > guest_size) return 0;
++    if ((e->f.depth || e->f.stencil) && req.size > guest_size)
++        return snap_pool_bounds_result(e, img, &req, guest_size, NULL, -1, 0, "policy_depth");
++    if (req.size > guest_size && snap_pool_bounds_enabled())
++        return snap_pool_bounds_result(e, img, &req, guest_size, NULL, -1, 0, "policy_optin");
+     VkMemSpan sp;
+     if (!req.size) return 0;   // an image the device could not lay out (image_size)
+-    if (!vk_mem_resolve(e->pub.addr, req.size, &sp) || !sp.alloc || sp.alloc_offset % req.alignment) return 0;
++    if (!vk_mem_resolve(e->pub.addr, req.size, &sp))
++        return snap_pool_bounds_result(e, img, &req, guest_size, NULL, -1, 0, "unresolved");
++    if (!sp.alloc)
++        return snap_pool_bounds_result(e, img, &req, guest_size, &sp, -1, 0, "no_allocation");
++    if (sp.alloc_offset % req.alignment)
++        return snap_pool_bounds_result(e, img, &req, guest_size, &sp, -1, 0, "alignment");
+     VmaAllocationInfo info;
+     vmaGetAllocationInfo(c->vma, sp.alloc, &info);
+-    if (!(req.memoryTypeBits >> info.memoryType & 1)) return 0;
+-    if (vmaBindImageMemory2(c->vma, sp.alloc, sp.alloc_offset, img, NULL) != VK_SUCCESS) return 0;
++    if (!(req.memoryTypeBits >> info.memoryType & 1))
++        return snap_pool_bounds_result(e, img, &req, guest_size, &sp, info.memoryType, 0, "memory_type");
++    if (vmaBindImageMemory2(c->vma, sp.alloc, sp.alloc_offset, img, NULL) != VK_SUCCESS)
++        return snap_pool_bounds_result(e, img, &req, guest_size, &sp, info.memoryType, 0, "bind_failed");
+     e->bound_to = sp.alloc;
+-    return 1;
++    return snap_pool_bounds_result(e, img, &req, guest_size, &sp, info.memoryType, 1, "bound");
+ }
+ 
+ // agl's BC4 encoder draws a BC texture's blocks through an RGBA16UI view, one texel per 8-byte block (refs/nxnative
+@@ -348,7 +401,9 @@
+               d->height == 2048 && d->levels <= 1;
+     int cascades = d->format == NVN_FORMAT_DEPTH16 && d->target == NVN_TEXTURE_TARGET_2D_ARRAY && d->width == d->height &&
+                    d->width >= 256 && d->depth >= 2 && d->depth <= 4;
+-    if (!sun && !cascades) return 1;
++    int snap_sun = d->format == NVN_FORMAT_DEPTH32F && d->target == NVN_TEXTURE_TARGET_2D && d->width == 1024 &&
++                   d->height == 1024 && d->levels <= 1;
++    if (!sun && !cascades && !snap_sun) return 1;
+     uint32_t most = vk_ctx()->props.limits.maxImageDimension2D;
+     return d->width * (uint32_t)scale <= most ? scale : 1;
+ }
+@@ -686,6 +741,10 @@
      }
      int shadow = shadow_scale_of(d, &f, samples, tex_mirrored(t));
      float scale = (float)shadow;
-+    float output_scale = snap_output_image_scale(d, samples,
-+        f.vk == f.ideal && !f.depth && !f.stencil && !f.expand_rgb && !f.astc_bw,
-+        c->props.limits.maxImageDimension2D);
-+    if (output_scale > 1.0f) scale = output_scale; // DISPLAY only; engine scene targets are untouched
++    float output_scale = snap_output_image_scale_ex(d, samples,
++        (f.depth || f.stencil) ? 1 : (f.vk == f.ideal && !f.expand_rgb && !f.astc_bw),
++        c->props.limits.maxImageDimension2D, tex_mirrored(t), f.depth || f.stencil);
++    if (output_scale > 1.0f) scale = output_scale; // docked full-screen render targets only (SS-02)
      w =(uint32_t)lroundf((float)w * scale), h = (uint32_t)lroundf((float)h * scale);
      uint32_t levels = umax(d->levels, 1), most = 1;
      for (uint32_t s = umax(umax(w, h), depth); s > 1; s >>= 1) most++;
-@@ -775,6 +780,7 @@
+@@ -730,8 +789,20 @@
+         rt_log("vk: 3D BC textures %s (AC_BLOCK_VIEWS_3D=%d)", bv3d ? "get block views (renderable)" : "have no block views",
+                bv3d);
+     }
++    // AC_BLOCK_VIEWS (default 0 on AMD's RDNA 1/2 driver branch, vk_caps.amd_sc; 1 elsewhere): a 2D BC image gets
++    // block views. NewSnap FOTO-01: on an RX 6900 XT (26.10.1) Snap's BC1 encoder of the photo thumbnail draws through
++    // such a view; the thumbnail came out with one stretch in four and black elsewhere, BC UI textures beside it took
++    // stripes and the device faulted ("write invalid"), the overrun of issue #5. Without block views those draws go
++    // through a stand-in, as for 3D BC images (vk_exec.c bc_target).
++    static int bv2d = -1;
++    if (bv2d < 0) {
++        bv2d = rt_knob("BLOCK_VIEWS", vk_caps.amd_sc ? "0" : "1");
++        rt_log("vk: 2D BC textures %s (AC_BLOCK_VIEWS=%d%s)",
++               bv2d ? "get block views (renderable)" : "are drawn through stand-ins", bv2d,
++               vk_caps.amd_sc ? ", AMD RDNA 1/2 driver" : "");
++    }
+     if (!ds && samples == 1 && f.vk == f.ideal && nvn_fmt_bpb(d->format, &bw, &bh) && bw == 4 && bh == 4 &&
+-        (type != VK_IMAGE_TYPE_3D || bv3d)) {
++        (type == VK_IMAGE_TYPE_3D ? bv3d : bv2d)) {
+         VkImageCreateInfo bc = ci;   // BC formats: renderable through views of their blocks (block_views_ok)
+         bc.usage |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+         bc.flags |= VK_IMAGE_CREATE_BLOCK_TEXEL_VIEW_COMPATIBLE_BIT | VK_IMAGE_CREATE_EXTENDED_USAGE_BIT;
+@@ -775,6 +846,7 @@
          VmaAllocationCreateInfo ai = {.usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE};
          VkResult r = vmaCreateImage(c->vma, &ci, &ai, &img, &e->alloc, NULL);
          if (r != VK_SUCCESS) {
@@ -947,7 +1702,7 @@
              log_limited(&n_failed, "image creation failed (%d): nvn fmt %#x %ux%ux%u target %d levels %u layers %u", (int)r,
                          d->format, w, h, depth, d->target, levels, layers);
              free(e);
-@@ -788,7 +794,7 @@
+@@ -788,7 +860,7 @@
          own_bytes += e->bytes;
          static int scaled_logs;
          if (scale > 1.0f && scaled_logs < 8)   // what an enlarged shadow map costs, beside the pool storage it leaves
@@ -956,7 +1711,7 @@
                                    d->width, d->height, d->format, w, h, (double)mi.size / 1048576.0);
      }
      // The recompression accounting of the perf line (vk_texture_new_submit): the scan's cost, the format
-@@ -1278,6 +1284,92 @@
+@@ -1278,6 +1350,92 @@
  }
  
  // Copies the whole storage into the image (every level and layer the image has).
@@ -1049,7 +1804,7 @@
  static void upload(Tex *e) {
      static volatile int32_t n_bad, n_undecoded, n_split;
      const tex_t *t = &e->t;
-@@ -1343,6 +1435,7 @@
+@@ -1343,6 +1501,7 @@
              size_t raw = (size_t)rb * rows * sl;
              rg[k].bufferOffset -= base;
              uint8_t *dst = stg + rg[k].bufferOffset, *tmp = (astc && !agpu) || rgb ? malloc(raw) : NULL;
@@ -1057,7 +1812,7 @@
              if (nvn_deswizzle(d, lv + skip, ly, t->mem, tmp ? tmp : dst, rb)) {
                  log_limited(&n_bad, "texture %#llx fmt %#x target %d: level %u layer %u has no CPU layout; uploaded as zeros",
                              (unsigned long long)e->pub.addr, d->format, d->target, lv + skip, ly);
-@@ -1716,7 +1809,29 @@
+@@ -1716,7 +1875,29 @@
  
  void vk_texture_range_gone(uint64_t lo, uint64_t size, VmaAllocation alloc) {
      lock();
@@ -1087,13 +1842,13 @@
      Tex **list = malloc(sizeof *list * (size_t)(by_key.n + 1));
      int n = 0;
      for (uint32_t i = 0; i < by_key.cap; i++) {
-@@ -2051,6 +2166,68 @@
+@@ -2051,6 +2232,98 @@
  }
  
  // Image <-> caller rows through a staging buffer; the GPU copy is waited for. The region is in the image's texels.
 +
-+// FOTO-01: explicitly enabled, local diagnostic images only. At most eight
-+// captures per path; staging owned by diagnostics survives until its fence.
++// FOTO-01: bounded statistics; local images only when explicitly enabled.
++// Diagnostic staging is owned until completion, independently of guest memory.
 +static int snap_photo_format(VkFormat format) {
 +    return format == VK_FORMAT_R8G8B8A8_UNORM || format == VK_FORMAT_R8G8B8A8_SRGB ? 1 :
 +           format == VK_FORMAT_B8G8R8A8_UNORM || format == VK_FORMAT_B8G8R8A8_SRGB ? 2 : 0;
@@ -1101,17 +1856,25 @@
 +static void snap_photo_pair(const char *directory, const char *path, unsigned number, uint64_t frame,
 +                            uint32_t w, uint32_t h, VkFormat format,
 +                            const uint8_t *source, size_t source_pitch, const uint8_t *copy, size_t copy_pitch) {
-+    if (!directory || !*directory || !w || !h || w > 8192 || h > 8192 ||
++    // directory NULL or empty: statistics in the log only, no files.
++    int files = directory && *directory;
++    if (!w || !h || w > 8192 || h > 8192 ||
 +            (uint64_t)w * h > 4u * 1024u * 1024u || !snap_photo_format(format)) return;
 +    size_t row = (size_t)w * 4, bytes = row * h;
 +    if (source_pitch < row || copy_pitch < row) return;
 +    uint8_t *rgba = malloc(bytes);
 +    if (!rgba) return;
++    // 16-pixel tiles with any non-black texel, per image: a band that covers
++    // only part of a row does not show in black_rows.
++    uint32_t tw = (w + 15) / 16, th = (h + 15) / 16;
++    size_t tiles = (size_t)tw * th;
++    uint8_t *lit = calloc(2, tiles);
++    if (!lit) { free(rgba); return; }
 +    uint64_t mismatch = 0, hash[2] = {14695981039346656037ull, 14695981039346656037ull};
 +    unsigned black[2] = {0};
 +    const uint8_t *inputs[2] = {source, copy};
 +    size_t pitches[2] = {source_pitch, copy_pitch};
-+    plat_file_mkdir_p(directory);
++    if (files) plat_file_mkdir_p(directory);
 +    for (int image = 0; image < 2; image++) {
 +        for (uint32_t y = 0; y < h; y++) {
 +            const uint8_t *in = inputs[image] + (size_t)y * pitches[image];
@@ -1123,21 +1886,43 @@
 +                    uint8_t value = in[(size_t)x * 4 + component];
 +                    out[c] = c == 3 ? 255 : value;
 +                    hash[image] = (hash[image] ^ value) * 1099511628211ull;
-+                    if (c < 3 && value) empty = 0;
++                    if (c < 3 && value) empty = 0, lit[image * tiles + (size_t)(y / 16) * tw + x / 16] = 1;
 +                    if (!image && in[(size_t)x * 4 + c] != copy[(size_t)y * copy_pitch + (size_t)x * 4 + c]) mismatch++;
 +                }
 +            }
 +            black[image] += empty;
 +        }
++        if (!files) continue;
 +        char filename[1024];
 +        int length = snprintf(filename, sizeof filename, "%s/%s-%02u-f%llu-%s.png", directory, path, number,
 +                              (unsigned long long)frame, image ? "buffer" : "source");
 +        if (length > 0 && (size_t)length < sizeof filename) rt_write_png(filename, rgba, w, h);
 +    }
++    // Black tiles per image and the first runs of black tiles in the buffer
++    // (tile row y, pixel columns x0-x1): the geometry of a band, for the log.
++    unsigned dark[2] = {0};
++    char bands[400] = "none";
++    size_t used = 0;
++    unsigned runs = 0;
++    for (int image = 0; image < 2; image++)
++        for (uint32_t ty = 0; ty < th; ty++)
++            for (uint32_t tx = 0; tx < tw; tx++) {
++                if (lit[image * tiles + (size_t)ty * tw + tx]) continue;
++                dark[image]++;
++                if (!image || (tx && !lit[tiles + (size_t)ty * tw + tx - 1])) continue;
++                uint32_t end = tx;
++                while (end + 1 < tw && !lit[tiles + (size_t)ty * tw + end + 1]) end++;
++                if (runs++ < 10 && used < sizeof bands - 40)
++                    used += (size_t)snprintf(bands + used, sizeof bands - used, "%sy%u:x%u-%u", used ? " " : "",
++                                             ty * 16, tx * 16, end * 16 + 15 < w ? end * 16 + 15 : w - 1);
++            }
 +    rt_log("photo_trace: %s %u frame %llu %ux%u fmt %d pitches %llu/%llu mismatch_bytes=%llu "
-+           "black_rows=%u/%u hashes=%016llx/%016llx", path, number, (unsigned long long)frame, w, h, (int)format,
++           "black_rows=%u/%u hashes=%016llx/%016llx black_tiles16=%u/%u of %u buffer_black_runs=%u [%s]%s",
++           path, number, (unsigned long long)frame, w, h, (int)format,
 +           (unsigned long long)source_pitch, (unsigned long long)copy_pitch, (unsigned long long)mismatch,
-+           black[0], black[1], (unsigned long long)hash[0], (unsigned long long)hash[1]);
++           black[0], black[1], (unsigned long long)hash[0], (unsigned long long)hash[1], dark[0], dark[1],
++           (unsigned)tiles, runs, bands, files ? "" : " (log only)");
++    free(lit);
 +    free(rgba);
 +}
 +
@@ -1156,7 +1941,7 @@
  static int image_texels_at(Tex *e, const Region *g, const NVNcopyRegion *r, uint8_t *mem, int write) {
      static volatile int32_t n_astc, n_ds;
      VkCtx *c = vk_ctx();
-@@ -2167,6 +2344,7 @@
+@@ -2167,6 +2440,7 @@
              }
          }
      }
@@ -1164,6 +1949,29 @@
      free(rg);
      vmaDestroyBuffer(c->vma, sb, sa);
      return 1;
+@@ -2220,6 +2494,22 @@
+                 ey = ey < 0 ? 0 : ey >= (int32_t)h2 ? (int32_t)h2 - 1 : ey;
+                 const uint8_t *src = tmp + (size_t)z * g2.img + (size_t)ey * g2.row;
+                 uint8_t *dst = mem + (size_t)z * g->img + (size_t)y * g->row;
++                if (snap_box_read((int)e->f.vk, bpb)) {   // SS-03: 8-bit colour averages the texels each game texel covers
++                    int32_t ya = (int32_t)floorf((float)(r->yoffset + y) * k) - y0, yb = (int32_t)ceilf((float)(r->yoffset + y + 1) * k) - y0;
++                    ya = ya < 0 ? 0 : ya; yb = yb > (int32_t)h2 ? (int32_t)h2 : yb; if (yb <= ya) yb = ya + 1;
++                    for (int32_t x = 0; x < r->width; x++) {
++                        int32_t xa = (int32_t)floorf((float)(r->xoffset + x) * k) - x0, xb = (int32_t)ceilf((float)(r->xoffset + x + 1) * k) - x0;
++                        xa = xa < 0 ? 0 : xa; xb = xb > (int32_t)w2 ? (int32_t)w2 : xb; if (xb <= xa) xb = xa + 1;
++                        uint32_t sum[4] = {0, 0, 0, 0}, n = 0;
++                        for (int32_t yy = ya; yy < yb; yy++)
++                            for (int32_t xx = xa; xx < xb; xx++, n++) {
++                                const uint8_t *p = tmp + (size_t)z * g2.img + (size_t)yy * g2.row + (size_t)xx * 4;
++                                sum[0] += p[0], sum[1] += p[1], sum[2] += p[2], sum[3] += p[3];
++                            }
++                        for (int c = 0; c < 4; c++) dst[(size_t)x * 4 + c] = (uint8_t)((sum[c] + n / 2) / n);
++                    }
++                    continue;
++                }
+                 for (int32_t x = 0; x < r->width; x++) memcpy(dst + (size_t)x * bpb, src + xs[x] * bpb, bpb);
+             }
+     }
 --- a/runtime/vk_exec.c
 +++ b/runtime/vk_exec.c
 @@ -27,6 +27,7 @@
@@ -1174,7 +1982,124 @@
  #include "vk_dlaa.h"
  
  #define WEAK __attribute__((weak))
-@@ -350,7 +351,7 @@
+@@ -154,8 +155,12 @@
+ // levels at the logo) go to a stand-in: a 2D array of the blocks of one level in the view's format, one layer per
+ // depth plane. It starts with the level's content, so a pass that writes part of a plane keeps the rest, and each pass
+ // end copies the planes it drew into the level (a copy between a compressed and a size-compatible uncompressed format).
+-typedef struct { VkImage bc, img; VmaAllocation alloc; VkFormat fmt; uint32_t level, w, h, d; } BcStandIn;
+-#define BC_STANDINS 64   // one per level drawn: 6 volumes of up to 7 levels at the logo
++// A 2D BC texture without block views (vk_texture.c create_tex, AC_BLOCK_VIEWS: off on AMD's RDNA 1/2 driver, NewSnap
++// FOTO-01) goes the same way, one stand-in layer per array layer. Its stand-in is refreshed from the level at each
++// pass begin (bc_refresh, flat), so content the texture took since (uploads, copies, other passes) is not overwritten
++// by stale stand-in blocks at the pass end.
++typedef struct { VkImage bc, img; VmaAllocation alloc; VkFormat fmt; uint32_t level, w, h, d; uint8_t flat; } BcStandIn;
++#define BC_STANDINS 256   // one per level drawn: 6 volumes of up to 7 levels at the logo, plus 2D BC targets
+ static BcStandIn bcs[BC_STANDINS];
+ static int nbcs;
+ static PlatMutex bcs_lock = PLAT_MUTEX_INIT;   // the replay adds and reads; destroy_tex (any thread) removes
+@@ -197,8 +202,9 @@
+         return 0;
+     }
+     uint32_t lw = level_extent(img->width, level), lh = level_extent(img->height, level);
++    int flat = img->type != VK_IMAGE_TYPE_3D;
+     BcStandIn s = {img->image, VK_NULL_HANDLE, NULL, fmt, level, (lw + 3) / 4, (lh + 3) / 4,
+-                   level_extent(img->depth, level)};
++                   flat ? (img->layers ? img->layers : 1) : level_extent(img->depth, level), (uint8_t)flat};
+     VkImageCreateInfo ci = {.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO, .imageType = VK_IMAGE_TYPE_2D, .format = fmt,
+                             .extent = {s.w, s.h, 1}, .mipLevels = 1, .arrayLayers = s.d, .samples = VK_SAMPLE_COUNT_1_BIT,
+                             .tiling = VK_IMAGE_TILING_OPTIMAL,
+@@ -215,9 +221,9 @@
+     image_barrier(cb, s.img, VK_IMAGE_LAYOUT_UNDEFINED, s.d);
+     memory_barrier(cb, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, VK_ACCESS_2_MEMORY_WRITE_BIT, VK_PIPELINE_STAGE_2_COPY_BIT,
+                    VK_ACCESS_2_TRANSFER_READ_BIT | VK_ACCESS_2_TRANSFER_WRITE_BIT);
+-    VkImageCopy rg = {.srcSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, level, 0, 1},
++    VkImageCopy rg = {.srcSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, level, 0, flat ? s.d : 1},
+                       .dstSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, s.d},
+-                      .extent = {lw, lh, s.d}};   // texels of the compressed source
++                      .extent = {lw, lh, flat ? 1 : s.d}};   // texels of the compressed source
+     vkCmdCopyImage(cb, img->image, VK_IMAGE_LAYOUT_GENERAL, s.img, VK_IMAGE_LAYOUT_GENERAL, 1, &rg);
+     memory_barrier(cb, VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
+                    VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT);
+@@ -225,8 +231,13 @@
+     plat_mutex_lock(&bcs_lock);
+     bcs[nbcs++] = s;
+     plat_mutex_unlock(&bcs_lock);
+-    rt_log("vk: 3D BC render target %ux%ux%u level %u drawn through a %ux%u x %u stand-in (format %d)", img->width,
+-           img->height, img->depth, level, s.w, s.h, s.d, (int)fmt);
++    static int logged2d;
++    if (!flat)
++        rt_log("vk: 3D BC render target %ux%ux%u level %u drawn through a %ux%u x %u stand-in (format %d)", img->width,
++               img->height, img->depth, level, s.w, s.h, s.d, (int)fmt);
++    else if (logged2d < 16)
++        logged2d++, rt_log("vk: 2D BC render target %ux%u (vk format %d) level %u drawn through a %ux%u x %u stand-in "
++                           "(format %d)", img->width, img->height, (int)img->format, level, s.w, s.h, s.d, (int)fmt);
+     *out = s;
+     return 1;
+ }
+@@ -249,10 +260,12 @@
+         if (bcs[i].img != t->image) continue;
+         memory_barrier(ex->cb, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, VK_ACCESS_2_MEMORY_WRITE_BIT, VK_PIPELINE_STAGE_2_COPY_BIT,
+                        VK_ACCESS_2_TRANSFER_READ_BIT | VK_ACCESS_2_TRANSFER_WRITE_BIT);
++        int flat = bcs[i].flat;
+         VkImageCopy rg = {.srcSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, t->base_layer, t->layers},
+-                          .dstSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, bcs[i].level, 0, 1},
+-                          .dstOffset = {0, 0, (int32_t)t->base_layer},
+-                          .extent = {bcs[i].w, bcs[i].h, t->layers}};   // texels of the uncompressed source
++                          .dstSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, bcs[i].level, flat ? t->base_layer : 0,
++                                             flat ? t->layers : 1},
++                          .dstOffset = {0, 0, flat ? 0 : (int32_t)t->base_layer},
++                          .extent = {bcs[i].w, bcs[i].h, flat ? 1 : t->layers}};   // texels of the uncompressed source
+         vkCmdCopyImage(ex->cb, t->image, VK_IMAGE_LAYOUT_GENERAL, bcs[i].bc, VK_IMAGE_LAYOUT_GENERAL, 1, &rg);
+         memory_barrier(ex->cb, VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT,
+                        VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT);
+@@ -262,11 +275,34 @@
+     plat_mutex_unlock(&bcs_lock);
+ }
+ 
+-// A draw into a 3D BC image without block views through an uncompressed view of its blocks: the target is the
+-// image's stand-in (bc_standin). 1 when o is filled (target or left out), 0 for any other target.
++// At a pass begin (outside rendering): a 2D stand-in takes its texture's current blocks of the layers the pass draws,
++// so a pass that writes part of them keeps the rest (bc_copy_back copies all of them back at the pass end).
++static void bc_refresh(VkExec *ex, const VkExecTarget *t) {
++    plat_mutex_lock(&bcs_lock);
++    for (int i = 0; i < nbcs; i++) {
++        if (bcs[i].img != t->image) continue;
++        if (!bcs[i].flat) break;
++        memory_barrier(ex->cb, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, VK_ACCESS_2_MEMORY_WRITE_BIT, VK_PIPELINE_STAGE_2_COPY_BIT,
++                       VK_ACCESS_2_TRANSFER_READ_BIT | VK_ACCESS_2_TRANSFER_WRITE_BIT);
++        VkImageCopy rg = {.srcSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, bcs[i].level, t->base_layer, t->layers},
++                          .dstSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, t->base_layer, t->layers},
++                          .extent = {level_extent(t->img->width, bcs[i].level), level_extent(t->img->height, bcs[i].level),
++                                     1}};   // texels of the compressed source
++        vkCmdCopyImage(ex->cb, bcs[i].bc, VK_IMAGE_LAYOUT_GENERAL, t->image, VK_IMAGE_LAYOUT_GENERAL, 1, &rg);
++        memory_barrier(ex->cb, VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT,
++                       VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT);
++        ex->recorded++;
++        break;
++    }
++    plat_mutex_unlock(&bcs_lock);
++}
++
++// A draw into a BC image without block views (3D, or 2D with AC_BLOCK_VIEWS=0) through an uncompressed view of its
++// blocks: the target is the image's stand-in (bc_standin). 1 when o is filled (target or left out), 0 for any other.
+ static int bc_target(const tex_t *t, const view_t *v, int has_v, const VkTexImage *img, VkExecTarget *o) {
+     int bw, bh;
+-    if (img->type != VK_IMAGE_TYPE_3D || img->block_views || !nvn_fmt_bpb(t->d.format, &bw, &bh) || bw != 4 || bh != 4)
++    if ((img->type != VK_IMAGE_TYPE_3D && img->type != VK_IMAGE_TYPE_2D) || img->block_views || img->samples > 1 ||
++        !nvn_fmt_bpb(t->d.format, &bw, &bh) || bw != 4 || bh != 4)
+         return 0;
+     VkFormat fmt;
+     BcStandIn s;
+@@ -303,7 +339,7 @@
+     o->tex = t;
+     if (!t) return;
+     const VkTexImage *img = vk_texture_get(t);
+-    if (img && !depth_slot && bc_target(t, v, has_v, img, o)) return;   // a 3D BC image: its stand-in
++    if (img && !depth_slot && bc_target(t, v, has_v, img, o)) return;   // a BC image without block views: its stand-in
+     VkImageUsageFlags need = depth_slot ? VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT : VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+     int is3d = img && img->type == VK_IMAGE_TYPE_3D && !depth_slot;   // slices drawn through 2D views (2D_ARRAY_COMPATIBLE)
+     if (!img || !(img->usage & need) || (img->type != VK_IMAGE_TYPE_2D && !is3d)) {
+@@ -350,7 +386,7 @@
      }
      o->image = img->image;
      o->img = img;
@@ -1183,6 +2108,140 @@
      o->format = fmt;
      o->view_type = layers > 1 ? VK_IMAGE_VIEW_TYPE_2D_ARRAY : VK_IMAGE_VIEW_TYPE_2D;
      o->aspect = depth_slot ? img->aspect & (VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT)
+@@ -612,6 +648,9 @@
+         want[nwant] = t->image, wasp[nwant++] = i < 8 ? VK_IMAGE_ASPECT_COLOR_BIT : t->img->aspect;
+     }
+     barrier_to(ex, want, wasp, nwant);   // passes, clears, copies and dispatches see each other's results
++    for (uint32_t i = 0; i < ex->pass_ncolor && i < 8; i++)   // 2D BC stand-ins take their textures' current blocks
++        if (ex->color[i].image && ex->color[i].img && ex->color[i].img->image != ex->color[i].image)
++            bc_refresh(ex, &ex->color[i]);
+     if (vk_gpuprof_on()) vk_gpuprof_mark(ex, 1, 0);
+     ex->fbl_mask = fbl;
+     ex->fb_dirty = 0;
+@@ -715,7 +754,10 @@
+ static int whole_target(const VkExec *ex, const VkExecTarget *t) {
+     // vkCmdClear*Image addresses a 3D level whole, not one depth plane: slices of a 3D target clear in a pass; it
+     // cannot clear a compressed image: views of BC blocks clear in a pass too
+-    if (ex->in_pass || t->is3d || t->blocks || t->width != ex->pass_w || t->height != ex->pass_h) return 0;
++    // nor a stand-in of a BC image (bc_target): only a pass end copies a stand-in back to its texture
++    if (ex->in_pass || t->is3d || t->blocks || (t->img && t->img->image != t->image) || t->width != ex->pass_w ||
++        t->height != ex->pass_h)
++        return 0;
+     if (!ex->has_scissor) return 1;
+     const p_scissor *s = &ex->scissor;
+     return s->x <= 0 && s->y <= 0 && (int64_t)s->x + s->w >= t->width && (int64_t)s->y + s->h >= t->height;
+--- a/runtime/vk_exec_draw.c
++++ b/runtime/vk_exec_draw.c
+@@ -27,6 +27,7 @@
+ #include "nvn_hmap.h"
+ #include "vk.h"
+ #include "vk_exec.h"
++#include "snap_output_scale.h"
+ #include "platform/platform.h"
+ #include "vk_dlaa.h"
+ 
+@@ -1625,7 +1626,7 @@
+     for (int i = 0; i < SCALES; i++) o->s[i] = 1.0f;
+     o->nfs = 0;
+     int skip = vk_tex_mip_skip() > 0;
+-    if (!skip) return;
++    if (!skip && snap_host_scale_factor() <= 1.0f) return;
+     int gfx = info->bind_point == VK_PIPELINE_BIND_POINT_GRAPHICS;
+     o->s[0] = gfx && ex->pass_scale > 1.0f ? ex->pass_scale : 1.0f;
+     int want = gfx ? GFX_STAGE_FS : GFX_STAGE_CS;
+@@ -2299,6 +2300,31 @@
+     return 0;
+ }
+ 
++
++static int snap_shader_writes(const GfxShader *shader) {
++    if (!shader) return 0;
++    const GfxShaderRes *resources;
++    int count = gfx_shader_resources(shader, GFX_RES_SSBO, &resources);
++    for (int i = 0; i < count; i++)
++        if (resources[i].flags & 1) return 1;
++    count = gfx_shader_resources(shader, GFX_RES_IMG, &resources);
++    for (int i = 0; i < count; i++)
++        if (resources[i].flags & 4) return 1;
++    return 0;
++}
++
++static VkPipeline snap_required_pipeline(const VkPipeState *state, const VkPipeInfo **info, int *pending) {
++    VkPipeline pipeline;
++    // Reuse the donor's promotion/condition wait, including an entry already
++    // building asynchronously. A time slice expiring is not a compile failure
++    // and must never discard an authoritative storage write.
++    do {
++        pipeline = vk_pipeline_graphics_async(state, info, pending, ONESHOT_WAIT_MS);
++    } while (*pending);
++    // NULL with pending=0 is an actual creation failure; keep donor reporting.
++    return pipeline;
++}
++
+ // Pass, shaders, pipeline, fixed state and resources for a draw. 0: the draw is skipped.
+ static int prepare_draw(VkExec *ex, int prim, int32_t count, int restart) {
+     if (ex->render_disabled) return drop_draw(ex, VK_DROP_DISABLED, "rendering disabled");
+@@ -2351,14 +2377,16 @@
+     // one-shot draws (volumes and LUTs generated once, later only sampled) would leave their target empty for the
+     // session. A draw into per-frame targets is skipped until they are ready and comes back next frame.
+     int oneshot = -1, skip = pipe_skip_mode();   // -1: not looked up
++    // Until translation completes, storage effects are unknown.
++    // Recent colour/depth targets cannot establish that this draw is safe to skip.
+     if (vs_wait || fs_wait) {
+-        if (!(oneshot = !vk_exec_targets_recent(ex, skip >= 1))) return perf_count(PERF_CNT_SHADER_SKIP), 0;   // skipped until ready
+-        perf_count(PERF_CNT_ONESHOT_WAIT);
++        oneshot = !vk_exec_targets_recent(ex, skip >= 1);
+         if (vs_wait) vs = shader_for(ex, NVN_STAGE_VS, &has_vs, NULL, 1);
+         if (fs_wait) fs = shader_for(ex, NVN_STAGE_FS, &has_fs, NULL, 1);
+     }
+     if (!vs || (has_fs && !fs)) return drop_draw(ex, VK_DROP_OTHER, "a shader failed to translate");
+     if (vk_dlaa_skip_draw(ex, fs)) return drop_draw(ex, VK_DROP_OTHER, "SMAA set aside for the temporal AA");   // vk_dlaa.c
++    int storage_write = snap_shader_writes(vs) || snap_shader_writes(fs);
+     uint32_t fbl = feedback_prepare(ex, fs);
+     VkPipeState s = ex->pipe;
+     // AC_FORCE_BLEND=<prog>: debug switch, the enemy-death effect (prog 268) is opaque at 1x and 2x; force
+@@ -2394,7 +2422,7 @@
+     static uint64_t wait_left_ns;
+     uint32_t wait_ms = 0;
+     uint64_t t0 = 0;
+-    if (oneshot > 0) {
++    if (storage_write || oneshot > 0) {
+         wait_ms = ONESHOT_WAIT_MS;
+     } else if (skip < 2 && count <= 6 && (uint64_t)sc.extent.width * sc.extent.height * 2 >= (uint64_t)ex->pass_w * ex->pass_h) {
+         uint64_t f = __atomic_load_n(&gfx_counters.frames, __ATOMIC_RELAXED);
+@@ -2413,12 +2441,13 @@
+         p = __atomic_load_n(&info->pipeline, __ATOMIC_ACQUIRE);
+     } else {
+         w0 = t0 ? t0 : wait_ms ? kern_now_ns() : 0;   // the clock is read only for draws that may wait
+-        p = vk_pipeline_graphics_async(&s, &info, &pending, wait_ms);
++        p = storage_write ? snap_required_pipeline(&s, &info, &pending)
++                          : vk_pipeline_graphics_async(&s, &info, &pending, wait_ms);
+         if (t0) {
+             uint64_t spent = kern_now_ns() - t0;
+             wait_left_ns = spent < wait_left_ns ? wait_left_ns - spent : 0;
+         }
+-        why = oneshot > 0 ? "one-shot, shader" : wait_ms ? "full-screen" : NULL;
++        why = storage_write ? "storage write" : oneshot > 0 ? "one-shot, shader" : wait_ms ? "full-screen" : NULL;
+         if (pending && oneshot < 0 && !vk_exec_targets_recent(ex, skip >= 1)) {
+             perf_count(PERF_CNT_ONESHOT_WAIT);
+             why = "one-shot";
+@@ -2562,6 +2591,16 @@
+     }
+     return MO.fs[loc];
+ }
++
++// NewSnap PIPE-MO-01: vk_pipeline.c names this shader in pipeline-keys.bin by its output location (it has no guest
++// input id) and recreates it at the boot prewarm. -1: not a per-object motion shader.
++int snap_mo_fs_location(const GfxShader *s) {
++    for (int i = 0; s && i < 32; i++)
++        if (MO.fs[i] == s) return i;
++    return -1;
++}
++
++const GfxShader *snap_mo_fs_get(int loc) { return mo_fs(loc); }
+ 
+ // The write of binding b from its packed descriptors.
+ static VkWriteDescriptorSet mo_write(const VkPipeBinding *b, const VkDescSlot *d) {
 --- a/runtime/resolution.c
 +++ b/runtime/resolution.c
 @@ -39,6 +39,8 @@
@@ -1218,6 +2277,17 @@
  
  static void scene_apply(unsigned w, unsigned h) {
      S.w = w, S.h = h, S.reduced = w < S.gw;
+@@ -540,8 +542,8 @@
+         const char *up = cfg_upscaling();
+         if (strcmp(up, "off"))
+             rt_log("resolution: upscaling = %s cannot run (%s): the scene keeps the game's size", up,
+-                   !strcmp(up, "dlss") ? "nvngx_dlss.dll from NVIDIA is not next to astralchain.exe"
+-                   : !strcmp(up, "xess") ? "libxess.dll is not next to astralchain.exe"
++                   !strcmp(up, "dlss") ? "nvngx_dlss.dll from NVIDIA is not next to newsnap.exe"
++                   : !strcmp(up, "xess") ? "libxess.dll is not next to newsnap.exe"
+                                          : "not on this system");
+         return;
+     }
 --- a/runtime/vk_dlaa.c
 +++ b/runtime/vk_dlaa.c
 @@ -33,6 +33,9 @@
@@ -1230,6 +2300,15 @@
  #include "vk_xess.h"
  #include "nvn_api.h"
  #include "platform/platform.h"
+@@ -234,7 +237,7 @@
+         p_geti(caps, "SuperSampling.NeedsUpdatedDriver", &driver);
+     }
+     N.available = avail != 0;
+-    rt_log("dlaa: NGX up; DLSS %s%s", avail ? "available" : "NOT available (is nvngx_dlss.dll next to astralchain.exe?)",
++    rt_log("dlaa: NGX up; DLSS %s%s", avail ? "available" : "NOT available (is nvngx_dlss.dll next to newsnap.exe?)",
+            driver ? "; the driver needs an update" : "");
+ #endif
+ }
 @@ -335,12 +338,12 @@
  uint32_t vk_dlaa_swap_w;
  VkImage vk_dlaa_swap_pic;   // the image behind vk_dlaa_swap_view (vk_hdr.c records it as the frame's scene)
@@ -1294,7 +2373,15 @@
      if (e->out) vk_hdr_image_gone(e->out);
      if (e->sharp) vk_hdr_image_gone(e->sharp);
      vk_defer_view(e->out_view), vk_defer_view(e->mv_view), vk_defer_view(e->sharp_view);
-@@ -737,7 +744,7 @@
+@@ -626,6 +633,7 @@
+     }
+     const float *vw = cam, *pj = cam + 16, *vp = cam + 32;
+     memcpy(D.proj, pj, sizeof D.proj), D.proj_ok = 1;
++    { extern float snap_fg_view[16]; memcpy(snap_fg_view, vw, sizeof snap_fg_view); }   // FG-01 camera
+     // its y scale, a diagonal element and so the same in either matrix order; the jitter moves the viewport, not this
+     double focal = isfinite(pj[5]) ? fabs((double)pj[5]) : 0;
+     double cur_vp[16], ci[16], m[16];
+@@ -737,7 +745,7 @@
      if (!dl_active() || D.ended) return;
      const p_bind_buf *b = &ex->ubo[0][0];   // constant bank c3: the replay keeps user banks from c3 on
      const VkExecTarget *z = &ex->depth;
@@ -1303,7 +2390,7 @@
            ((D.armed && z->image == D.depth.image) || (D.jdepth && z->image == D.jdepth))))
          return;
      int i = 0, low = 0;
-@@ -746,8 +753,10 @@
+@@ -746,8 +754,10 @@
      if (i == 4) i = low, D.cams[i].addr = 0;   // full: the rarest makes room
      struct Cam *c = &D.cams[i];
      if (c->addr != b->addr) {
@@ -1316,7 +2403,7 @@
          c->addr = b->addr, c->n = 0;
          c->have = 1;
      }
-@@ -788,7 +797,8 @@
+@@ -788,7 +798,8 @@
  static const char *backend_name(int b, int up) {
      return b == BK_DLSS   ? (up ? "DLSS" : "DLAA")
             : b == BK_XESS ? (up ? "XeSS" : "XeSS Native AA")
@@ -1326,7 +2413,7 @@
                            : "off";
  }
  
-@@ -830,7 +840,10 @@
+@@ -830,7 +841,10 @@
  // HDR output (RCAS's limiter works on 0..1). The frame then tells the present to copy it (vk_dlaa_frame's return,
  // vk_fsr_presharp_set); frames without an upscaled scene (the title, loads, native modes) are sharpened at the present
  // as before. *img, *view: the picture the scaling pass is to read, replaced by the sharpened one.
@@ -1337,7 +2424,7 @@
      if (vk_hdr_wanted() || vk_fsr_present_scales() || !vk_fsr_rcas_on()) return;
      if (!e->sharp) {
          if (!image2d(e->ow, e->oh, VK_FORMAT_R16G16B16A16_SFLOAT,
-@@ -854,6 +867,7 @@
+@@ -854,6 +868,7 @@
  // scene's own size in place. 0: the frame stays unresolved.
  static int motion(VkExec *ex, uint32_t ow, uint32_t oh) {
      const VkExecTarget *t = &D.color, *z = &D.depth;
@@ -1345,7 +2432,7 @@
      uint32_t w = t->width, h = t->height;
      VkCommandBuffer cb = ex->cb;
      if (ow == w && oh == h && !blit_ok(t->format)) return 0;
-@@ -899,7 +913,7 @@
+@@ -899,7 +914,7 @@
      uint32_t w = e->w, h = e->h, ow = e->ow, oh = e->oh;
      int up = ow != w || oh != h;
      // linear scene light (the light target), or the composite with HDR output, which keeps highlights above 1
@@ -1354,7 +2441,7 @@
      VkCommandBuffer cb = ex->cb;
      if (up) vk_exec_barrier(ex);   // the composite and SMAA's passes are done (no pass is open here)
      VkImageView zv = vk_exec_target_view(z->img, z->format, VK_IMAGE_VIEW_TYPE_2D, VK_IMAGE_ASPECT_DEPTH_BIT, z->level,
-@@ -916,11 +930,8 @@
+@@ -916,11 +931,8 @@
      // NGX and XeSS record into the command buffer themselves: the recorder thread must have made every call so far.
      // FSR 3's passes go through the recorder like the replay's own commands.
      if (D.backend != BK_FSR3) rec_drain();
@@ -1368,7 +2455,7 @@
      } else if (D.backend == BK_DLSS) {
          if (!D.params && !NGX_OK(N.alloc_params(&D.params))) return dl_fail("parameter allocation", 0), 0;
          NgxParam *p = D.params;
-@@ -935,7 +946,7 @@
+@@ -935,7 +947,7 @@
              p_seti(p, "PerfQualityValue", q);
              // MVLowRes: motion vectors at the render size. Linear scene light: IsHDR | AutoExposure, no exposure
              // texture; the tonemapped composite (0..1) neither.
@@ -1377,7 +2464,7 @@
              p_seti(p, "DLSS.Enable.Output.Subrects", 0);
              // The model per mode (NVSDK_NGX_DLSS_Hint_Render_Preset: 11 K, 12 L, 13 M), as NVIDIA recommends for DLSS
              // 4.5 (310.x): K (the transformer) for DLAA, Quality and Balanced, M for Performance, L for Ultra
-@@ -1056,7 +1067,8 @@
+@@ -1056,7 +1068,8 @@
  static int target_scaled(const VkExecTarget *c) {
      unsigned s[2];
      res_scene_size(s);
@@ -1387,7 +2474,7 @@
  }
  
  void vk_dlaa_pass(VkExec *ex) {
-@@ -1075,7 +1087,8 @@
+@@ -1075,7 +1088,8 @@
          return;
      }
      // a light-target pass; a smaller pair never takes over an armed one
@@ -1397,7 +2484,7 @@
          c->width == z->width && c->height == z->height && c->samples <= 1 && !c->is3d &&
          (!D.armed || (c->width >= D.color.width && c->height >= D.color.height))) {
          D.color = *c, D.depth = *z, D.armed = 1;
-@@ -1098,7 +1111,8 @@
+@@ -1098,7 +1112,8 @@
              if (!resolve(ex, &D.color)) unresolved(ex);
              return;
          }
@@ -1407,7 +2494,7 @@
          return;
      }
      // upscaling: the composite, a pass at the light target's size into one HDR-format target with the scene depth (the
-@@ -1157,6 +1171,7 @@
+@@ -1157,6 +1172,7 @@
      if (no_taa == OFF_PRESENTS)
          for (int i = 0; i < 3; i++)
              if (D.sizes[i].out) free_size(&D.sizes[i]);
@@ -1415,7 +2502,7 @@
      if (N.loaded) features_sweep(0);
      if (bk != D.backend) {
          int reduced = res_scene_reduced(), want = chosen();
-@@ -1203,7 +1218,9 @@
+@@ -1203,7 +1219,9 @@
      if (!strcmp(up, "off")) return res_scene_reduced() ? 1 : 0;
      if (!strcmp(up, "dlss")) return !N.tried ? 1 : N.available && !D.failed ? 0 : 2;
      if (!strcmp(up, "xess")) return !vk_xess_tried() ? 1 : vk_xess_available() ? 0 : 2;
@@ -1426,7 +2513,7 @@
      return 0;
  }
  
-@@ -1280,6 +1297,7 @@
+@@ -1280,6 +1298,7 @@
  // process's end, like the back end's other pipelines.
  void vk_dlaa_release(void) {
      const VkCtx *c = vk_ctx();
@@ -1616,7 +2703,25 @@
  }
  
  static void row_gpu(void) {
-@@ -674,33 +667,6 @@
+@@ -641,13 +634,12 @@
+ // The game's frame rate (frame_rate.c, patches-v101.txt): 60 fps runs the community 60 fps patch, 30 fps switches it
+ // off. The row is the patch switch itself, so it takes effect on the next frame.
+ static void row_fps_limit() {
+-    static const char *const vals[] = {"30", "60"};
+-    static const UiTextId ids[] = {UI_MENU_FPS_30, UI_MENU_FPS_60};
++    static const char *const vals[] = {"30", "60", "90", "120", "144", "display"};
+     enum { N = sizeof vals / sizeof *vals };
+-    const char *names[N];
+-    for (int i = 0; i < N; i++) names[i] = menu_text(ids[i]);
++    const char *names[N] = {menu_text(UI_MENU_FPS_30), menu_text(UI_MENU_FPS_60), "90 FPS", "120 FPS", "144 FPS", "Auto (display)"};
+     const char *set = cfg_get("AC_FPS");
+-    int cur = set && !strcmp(set, "30") ? 0 : 1;
++    int cur = 1;
++    for (int i = 0; set && i < N; i++) if (!strcmp(set, vals[i])) cur = i;
+     opt_choice_list("AC_FPS", UI_MENU_FPS_LIMIT, vals, names, N, UI_MENU_FPS_LIMIT_DESC, cur);
+ }
+ 
+@@ -674,33 +666,6 @@
  // ---- the tabs
  // Colour adjustment (vk_color.c): a profile writes the four values (STS78721's presets, issue #136); moving one of them
  // makes the profile Custom.
@@ -1650,7 +2755,7 @@
  static void tab_screen(float scale) {
      opt_begin("##screen", scale);
      opt_toggle("AC_FULLSCREEN", UI_MENU_FULLSCREEN, UI_MENU_FULLSCREEN_DESC);
-@@ -713,24 +679,12 @@
+@@ -713,24 +678,12 @@
      opt_group(UI_MENU_GRAPHICS);
      row_output_res();
      rows_upscaling();
@@ -1677,7 +2782,7 @@
      opt_end();
  }
  
-@@ -1008,9 +962,8 @@
+@@ -1008,9 +961,8 @@
                                          ImGuiWindowFlags_NoSavedSettings);
      ImGui::TextColored(ImVec4(0.93f, 0.76f, 0.33f, 1), "%s", menu_text(UI_MENU_TITLE));
      // the port version and the game update, right-aligned on the title line: what a bug report needs first
@@ -1746,22 +2851,41 @@
  // and offered (1). vk_hdr_set_active: gfx_present.c says whether the swapchain is HDR10 (vk_hdr_active). vk_hdr_encode:
 --- a/runtime/vk_exec_xfer.c
 +++ b/runtime/vk_exec_xfer.c
-@@ -45,6 +45,8 @@
+@@ -45,6 +45,9 @@
  #include "tex.h"
  #include "vk.h"
  #include "vk_exec.h"
 +#include "gfx.h"
++#include "vk_dlaa.h"
 +#include "platform/platform.h"
  
  enum { W_FORMAT, W_REGION, W_BUFFER, W_OVERLAP, W_COPY, W_CLEAR, W_QUERY, W_COUNT };
  
-@@ -414,6 +416,123 @@
+@@ -374,6 +377,7 @@
      return 1;
  }
  
++static VkMemSpan snap_photo_span_before;   // replay thread: the span buffer_side resolved, before its mirror pick
+ static VkImageSubresourceLayers sub_layers(const Sub *s) {
+     int is3d = s->img->type == VK_IMAGE_TYPE_3D;
+     return (VkImageSubresourceLayers){s->aspect, s->level, is3d ? 0 : s->layer0 + (uint32_t)s->z, is3d ? 1 : s->nz};
+@@ -406,12 +410,226 @@
+                   (unsigned long long)addr, (unsigned long long)*size);
+         return 0;
+     }
++    VkMemSpan snap_before_pick = m;
+     VK_MEM_PICK(m);
+     *span = m;
++    if (c) snap_photo_span_before = snap_before_pick;
+     *c = (VkBufferImageCopy){.bufferOffset = m.offset, .bufferRowLength = (uint32_t)(row / (uint64_t)s->bpb) * (uint32_t)s->bw,
+                              .bufferImageHeight = hb * (uint32_t)s->bh, .imageSubresource = sub_layers(s),
+                              .imageOffset = sub_offset(s), .imageExtent = sub_extent(s)};
+     return 1;
++}
 +
-+// FOTO-01: explicitly enabled, local diagnostic images only. At most eight
-+// captures per path; staging owned by diagnostics survives until its fence.
++
++// FOTO-01: bounded statistics; local images only when explicitly enabled.
++// Diagnostic staging is owned until completion, independently of guest memory.
 +static int snap_photo_format(VkFormat format) {
 +    return format == VK_FORMAT_R8G8B8A8_UNORM || format == VK_FORMAT_R8G8B8A8_SRGB ? 1 :
 +           format == VK_FORMAT_B8G8R8A8_UNORM || format == VK_FORMAT_B8G8R8A8_SRGB ? 2 : 0;
@@ -1769,17 +2893,25 @@
 +static void snap_photo_pair(const char *directory, const char *path, unsigned number, uint64_t frame,
 +                            uint32_t w, uint32_t h, VkFormat format,
 +                            const uint8_t *source, size_t source_pitch, const uint8_t *copy, size_t copy_pitch) {
-+    if (!directory || !*directory || !w || !h || w > 8192 || h > 8192 ||
++    // directory NULL or empty: statistics in the log only, no files.
++    int files = directory && *directory;
++    if (!w || !h || w > 8192 || h > 8192 ||
 +            (uint64_t)w * h > 4u * 1024u * 1024u || !snap_photo_format(format)) return;
 +    size_t row = (size_t)w * 4, bytes = row * h;
 +    if (source_pitch < row || copy_pitch < row) return;
 +    uint8_t *rgba = malloc(bytes);
 +    if (!rgba) return;
++    // 16-pixel tiles with any non-black texel, per image: a band that covers
++    // only part of a row does not show in black_rows.
++    uint32_t tw = (w + 15) / 16, th = (h + 15) / 16;
++    size_t tiles = (size_t)tw * th;
++    uint8_t *lit = calloc(2, tiles);
++    if (!lit) { free(rgba); return; }
 +    uint64_t mismatch = 0, hash[2] = {14695981039346656037ull, 14695981039346656037ull};
 +    unsigned black[2] = {0};
 +    const uint8_t *inputs[2] = {source, copy};
 +    size_t pitches[2] = {source_pitch, copy_pitch};
-+    plat_file_mkdir_p(directory);
++    if (files) plat_file_mkdir_p(directory);
 +    for (int image = 0; image < 2; image++) {
 +        for (uint32_t y = 0; y < h; y++) {
 +            const uint8_t *in = inputs[image] + (size_t)y * pitches[image];
@@ -1791,21 +2923,43 @@
 +                    uint8_t value = in[(size_t)x * 4 + component];
 +                    out[c] = c == 3 ? 255 : value;
 +                    hash[image] = (hash[image] ^ value) * 1099511628211ull;
-+                    if (c < 3 && value) empty = 0;
++                    if (c < 3 && value) empty = 0, lit[image * tiles + (size_t)(y / 16) * tw + x / 16] = 1;
 +                    if (!image && in[(size_t)x * 4 + c] != copy[(size_t)y * copy_pitch + (size_t)x * 4 + c]) mismatch++;
 +                }
 +            }
 +            black[image] += empty;
 +        }
++        if (!files) continue;
 +        char filename[1024];
 +        int length = snprintf(filename, sizeof filename, "%s/%s-%02u-f%llu-%s.png", directory, path, number,
 +                              (unsigned long long)frame, image ? "buffer" : "source");
 +        if (length > 0 && (size_t)length < sizeof filename) rt_write_png(filename, rgba, w, h);
 +    }
++    // Black tiles per image and the first runs of black tiles in the buffer
++    // (tile row y, pixel columns x0-x1): the geometry of a band, for the log.
++    unsigned dark[2] = {0};
++    char bands[400] = "none";
++    size_t used = 0;
++    unsigned runs = 0;
++    for (int image = 0; image < 2; image++)
++        for (uint32_t ty = 0; ty < th; ty++)
++            for (uint32_t tx = 0; tx < tw; tx++) {
++                if (lit[image * tiles + (size_t)ty * tw + tx]) continue;
++                dark[image]++;
++                if (!image || (tx && !lit[tiles + (size_t)ty * tw + tx - 1])) continue;
++                uint32_t end = tx;
++                while (end + 1 < tw && !lit[tiles + (size_t)ty * tw + end + 1]) end++;
++                if (runs++ < 10 && used < sizeof bands - 40)
++                    used += (size_t)snprintf(bands + used, sizeof bands - used, "%sy%u:x%u-%u", used ? " " : "",
++                                             ty * 16, tx * 16, end * 16 + 15 < w ? end * 16 + 15 : w - 1);
++            }
 +    rt_log("photo_trace: %s %u frame %llu %ux%u fmt %d pitches %llu/%llu mismatch_bytes=%llu "
-+           "black_rows=%u/%u hashes=%016llx/%016llx", path, number, (unsigned long long)frame, w, h, (int)format,
++           "black_rows=%u/%u hashes=%016llx/%016llx black_tiles16=%u/%u of %u buffer_black_runs=%u [%s]%s",
++           path, number, (unsigned long long)frame, w, h, (int)format,
 +           (unsigned long long)source_pitch, (unsigned long long)copy_pitch, (unsigned long long)mismatch,
-+           black[0], black[1], (unsigned long long)hash[0], (unsigned long long)hash[1]);
++           black[0], black[1], (unsigned long long)hash[0], (unsigned long long)hash[1], dark[0], dark[1],
++           (unsigned)tiles, runs, bands, files ? "" : " (log only)");
++    free(lit);
 +    free(rgba);
 +}
 +
@@ -1819,7 +2973,37 @@
 +    uint64_t frame;
 +    unsigned number;
 +    char directory[1024];
++    uint64_t reserved_bytes;
 +} SnapPhotoTransfer;
++#define SNAP_PHOTO_PENDING_MAX (64ull << 20)
++static uint64_t snap_photo_pending_bytes;
++static int snap_photo_reserve(uint64_t bytes) {
++    uint64_t old = __atomic_load_n(&snap_photo_pending_bytes, __ATOMIC_RELAXED);
++    do {
++        if (bytes > SNAP_PHOTO_PENDING_MAX || old > SNAP_PHOTO_PENDING_MAX - bytes) return 0;
++    } while (!__atomic_compare_exchange_n(&snap_photo_pending_bytes, &old, old + bytes, 1,
++                                          __ATOMIC_RELAXED, __ATOMIC_RELAXED));
++    return 1;
++}
++static int snap_photo_staging(VkDeviceSize size, VkBuffer *buffer, VmaAllocation *allocation, uint8_t **mapping) {
++    VkBufferCreateInfo bi = {.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO, .size = size,
++        .usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT};
++    VmaAllocationCreateInfo ai = {.usage = VMA_MEMORY_USAGE_AUTO_PREFER_HOST,
++        .flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_RANDOM_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT};
++    VmaAllocationInfo info;
++    VkCtx *c = vk_ctx();
++    if (vmaCreateBuffer(c->vma, &bi, &ai, buffer, allocation, &info) != VK_SUCCESS) return 0;
++    if (!info.pMappedData) {
++        vmaDestroyBuffer(c->vma, *buffer, *allocation);
++        return 0;
++    }
++    *mapping = info.pMappedData;
++    return 1;
++}
++static void snap_photo_release(SnapPhotoTransfer *trace) {
++    __atomic_fetch_sub(&snap_photo_pending_bytes, trace->reserved_bytes, __ATOMIC_RELAXED);
++    free(trace);
++}
 +static void snap_photo_transfer_done(void *argument) {
 +    SnapPhotoTransfer *trace = argument;
 +    VkCtx *c = vk_ctx();
@@ -1829,28 +3013,42 @@
 +                    trace->source, (size_t)trace->w * 4, trace->copy, trace->pitch);
 +    vmaDestroyBuffer(c->vma, trace->source_buffer, trace->source_alloc);
 +    vmaDestroyBuffer(c->vma, trace->copy_buffer, trace->copy_alloc);
-+    free(trace);
++    snap_photo_release(trace);
 +}
 +static void snap_photo_trace_t2b(VkExec *ex, const Sub *s, uint64_t size,
 +                                const VkBufferImageCopy *original, const VkMemSpan *destination) {
 +    const char *directory = getenv("NEWSNAP_PHOTO_TRACE_DIR");
 +    static unsigned captures;
-+    if (!directory || !*directory || captures >= 8 || !snap_photo_format(s->img->format) ||
++    if (captures >= (directory && *directory ? 8u : 24u) || !snap_photo_format(s->img->format) ||
 +            s->nz != 1 || s->img->samples != 1 || s->w < 128 || s->h < 96 ||
 +            s->w > 8192 || s->h > 8192 || (uint64_t)s->w * s->h > 4u * 1024u * 1024u ||
 +            !size || size > 32u * 1024u * 1024u) return;
 +    size_t row = (size_t)s->w * 4;
 +    size_t pitch = original->bufferRowLength ? (size_t)original->bufferRowLength * 4 : row;
 +    if (pitch < row || (uint64_t)pitch * (s->h - 1) + row > size) return;
++    uint64_t reserved = (uint64_t)row * s->h + size;
++    if (!snap_photo_reserve(reserved)) return;
 +    SnapPhotoTransfer *trace = calloc(1, sizeof *trace);
-+    if (!trace) return;
++    if (!trace) {
++        __atomic_fetch_sub(&snap_photo_pending_bytes, reserved, __ATOMIC_RELAXED);
++        return;
++    }
++    trace->reserved_bytes = reserved;
 +    trace->w = s->w, trace->h = s->h, trace->pitch = pitch, trace->format = s->img->format;
 +    trace->frame = __atomic_load_n(&gfx_counters.frames, __ATOMIC_RELAXED);
-+    trace->number = captures++;
-+    int length = snprintf(trace->directory, sizeof trace->directory, "%s", directory);
-+    if (length < 0 || (size_t)length >= sizeof trace->directory) { free(trace); return; }
-+    trace->source = vk_staging(row * s->h, &trace->source_buffer, &trace->source_alloc);
-+    trace->copy = vk_staging(size, &trace->copy_buffer, &trace->copy_alloc);
++    trace->number = captures;
++    int length = snprintf(trace->directory, sizeof trace->directory, "%s", directory ? directory : "");
++    if (length < 0 || (size_t)length >= sizeof trace->directory) { snap_photo_release(trace); return; }
++    if (!snap_photo_staging(row * s->h, &trace->source_buffer, &trace->source_alloc, &trace->source)) {
++        snap_photo_release(trace);
++        return;
++    }
++    if (!snap_photo_staging(size, &trace->copy_buffer, &trace->copy_alloc, &trace->copy)) {
++        vmaDestroyBuffer(vk_ctx()->vma, trace->source_buffer, trace->source_alloc);
++        snap_photo_release(trace);
++        return;
++    }
++    captures++;
 +    VkBufferImageCopy tight = *original;
 +    tight.bufferOffset = 0, tight.bufferRowLength = 0, tight.bufferImageHeight = 0;
 +    vkCmdCopyImageToBuffer(ex->cb, s->img->image, VK_IMAGE_LAYOUT_GENERAL, trace->source_buffer, 1, &tight);
@@ -1876,13 +3074,33 @@
 +           (unsigned long long)ex->fence);
 +}
 +
++// FOTO-01: what the photo copy reads and where it writes, in the normal log.
++// 24 lines a run at most; reads no guest memory and records no GPU work.
++static void snap_photo_context(const Sub *s, uint64_t address, uint64_t size, const VkMemSpan *before,
++                               const VkMemSpan *picked) {
++    static unsigned lines;
++    if (lines >= 24 || !snap_photo_format(s->img->format) || s->nz != 1 || s->w < 128 || s->h < 96) return;
++    lines++;
++    uint32_t uploads = 0;
++    int last_change = 0, pages_written = 0;
++    vk_texture_debug(s->img, &uploads, &last_change, &pages_written);
++    const char *upscaler = vk_dlaa_running();
++    rt_log("photo_log: copy %u frame %llu source %#llx %ux%u vk_fmt %d gpu_owned %d cpu_storage %d uploads %u "
++           "storage_written_since %d; destination %#llx bytes %llu class %d through %s; upscaler %s", lines - 1,
++           (unsigned long long)__atomic_load_n(&gfx_counters.frames, __ATOMIC_RELAXED),
++           (unsigned long long)s->img->addr, s->w, s->h, (int)s->img->format, s->img->gpu_owned, s->img->mirrored,
++           uploads, pages_written, (unsigned long long)address, (unsigned long long)size, picked->cls,
++           !picked->pool ? "device memory" : picked->buffer != before->buffer ? "a device-local mirror"
++                                                                              : "the pool's own buffer",
++           upscaler ? upscaler : "none");
+ }
+ 
  static void copy_buffer_image(VkExec *ex, const p_copy_b2t *p, int to_image) {
-     Sub s;
-     if (!sub_resolve(p->tex, &p->view, p->has_view, &p->r, 1, &s)) return;
-@@ -433,6 +552,7 @@
+@@ -433,6 +651,8 @@
      ex->recorded++;
      if (to_image) vk_texture_gpu_written(p->tex);
      else vk_mem_gpu_wrote(&m, size), note_gpu_write(ex, p->src, size);
++    if (!to_image) snap_photo_context(&s, p->src, size, &snap_photo_span_before, &m);
 +    if (!to_image) snap_photo_trace_t2b(ex, &s, size, &c, &m);
  }
  
@@ -1994,7 +3212,27 @@
      plat_mutex_lock(&shadow_lock);
      int held_now;
      uint64_t holds, fetched;
-@@ -2377,6 +2408,7 @@
+@@ -1316,6 +1347,19 @@
+ #endif
+     if (shadow_on) rt_log("mem: shadow storage: CPU-visible pools are host-visible copies of guest memory, not imports%s",
+                           sh && *sh ? " (AC_SHADOW)" : "");
++    {   // FOTO-01: the knobs of an AMD A/B session, as this run resolved them ("-": not set, default).
++        static const char *const knobs[] = {"AC_SHADOW", "AC_MEMORY", "AC_REPLAY_ASYNC", "AC_TEX_ALIAS",
++            "AC_TEX_PREFETCH", "AC_ASTC", "AC_ASTC_BC", "AC_PIPE_SKIP", "AC_GPL", "AC_VK_RECORDER",
++            "AC_UBO_SNAPSHOT", "AC_UPSCALING", "AC_VK_PRESENT", "AC_DUMP_KEY"};
++        char line[768];
++        size_t used = 0;
++        for (size_t i = 0; i < sizeof knobs / sizeof *knobs && used < sizeof line - 64; i++) {
++            const char *value = cfg_get(knobs[i]);
++            used += (size_t)snprintf(line + used, sizeof line - used, " %s=%.24s", knobs[i] + 3,
++                                     value && *value ? value : "-");
++        }
++        rt_log("amd_diag: shadow storage %s;%s", shadow_on ? "on" : "off", line);
++    }
+     rt_log("mem: mode %s (%s): %s", mode == 2 ? "verify" : mode ? "mirror" : "import", why,
+            mode ? "pools used as buffers get a device-local mirror" : "every CPU-visible pool is imported host memory");
+ }
+@@ -2377,6 +2421,7 @@
      nm = npend = nwbl = 0;   // mirrors went with their pools
      plat_mutex_lock(&shadow_lock);
      nstouch = nspend = 0;   // shadows too
@@ -2072,87 +3310,25 @@
  int ikb_captured(void) { return captured != 0; }
  
  void ikb_mouse_take(int32_t *dx, int32_t *dy) {
---- a/runtime/vk_exec_draw.c
-+++ b/runtime/vk_exec_draw.c
-@@ -2299,6 +2299,31 @@
-     return 0;
- }
- 
-+
-+static int snap_shader_writes(const GfxShader *shader) {
-+    if (!shader) return 0;
-+    const GfxShaderRes *resources;
-+    int count = gfx_shader_resources(shader, GFX_RES_SSBO, &resources);
-+    for (int i = 0; i < count; i++)
-+        if (resources[i].flags & 1) return 1;
-+    count = gfx_shader_resources(shader, GFX_RES_IMG, &resources);
-+    for (int i = 0; i < count; i++)
-+        if (resources[i].flags & 4) return 1;
-+    return 0;
-+}
-+
-+static VkPipeline snap_required_pipeline(const VkPipeState *state, const VkPipeInfo **info, int *pending) {
-+    VkPipeline pipeline;
-+    // Reuse the donor's promotion/condition wait, including an entry already
-+    // building asynchronously. A time slice expiring is not a compile failure
-+    // and must never discard an authoritative storage write.
-+    do {
-+        pipeline = vk_pipeline_graphics_async(state, info, pending, ONESHOT_WAIT_MS);
-+    } while (*pending);
-+    // NULL with pending=0 is an actual creation failure; keep donor reporting.
-+    return pipeline;
-+}
-+
- // Pass, shaders, pipeline, fixed state and resources for a draw. 0: the draw is skipped.
- static int prepare_draw(VkExec *ex, int prim, int32_t count, int restart) {
-     if (ex->render_disabled) return drop_draw(ex, VK_DROP_DISABLED, "rendering disabled");
-@@ -2351,14 +2376,16 @@
-     // one-shot draws (volumes and LUTs generated once, later only sampled) would leave their target empty for the
-     // session. A draw into per-frame targets is skipped until they are ready and comes back next frame.
-     int oneshot = -1, skip = pipe_skip_mode();   // -1: not looked up
-+    // Until translation completes, storage effects are unknown.
-+    // Recent colour/depth targets cannot establish that this draw is safe to skip.
-     if (vs_wait || fs_wait) {
--        if (!(oneshot = !vk_exec_targets_recent(ex, skip >= 1))) return perf_count(PERF_CNT_SHADER_SKIP), 0;   // skipped until ready
--        perf_count(PERF_CNT_ONESHOT_WAIT);
-+        oneshot = !vk_exec_targets_recent(ex, skip >= 1);
-         if (vs_wait) vs = shader_for(ex, NVN_STAGE_VS, &has_vs, NULL, 1);
-         if (fs_wait) fs = shader_for(ex, NVN_STAGE_FS, &has_fs, NULL, 1);
-     }
-     if (!vs || (has_fs && !fs)) return drop_draw(ex, VK_DROP_OTHER, "a shader failed to translate");
-     if (vk_dlaa_skip_draw(ex, fs)) return drop_draw(ex, VK_DROP_OTHER, "SMAA set aside for the temporal AA");   // vk_dlaa.c
-+    int storage_write = snap_shader_writes(vs) || snap_shader_writes(fs);
-     uint32_t fbl = feedback_prepare(ex, fs);
-     VkPipeState s = ex->pipe;
-     // AC_FORCE_BLEND=<prog>: debug switch, the enemy-death effect (prog 268) is opaque at 1x and 2x; force
-@@ -2394,7 +2421,7 @@
-     static uint64_t wait_left_ns;
-     uint32_t wait_ms = 0;
-     uint64_t t0 = 0;
--    if (oneshot > 0) {
-+    if (storage_write || oneshot > 0) {
-         wait_ms = ONESHOT_WAIT_MS;
-     } else if (skip < 2 && count <= 6 && (uint64_t)sc.extent.width * sc.extent.height * 2 >= (uint64_t)ex->pass_w * ex->pass_h) {
-         uint64_t f = __atomic_load_n(&gfx_counters.frames, __ATOMIC_RELAXED);
-@@ -2413,12 +2440,13 @@
-         p = __atomic_load_n(&info->pipeline, __ATOMIC_ACQUIRE);
-     } else {
-         w0 = t0 ? t0 : wait_ms ? kern_now_ns() : 0;   // the clock is read only for draws that may wait
--        p = vk_pipeline_graphics_async(&s, &info, &pending, wait_ms);
-+        p = storage_write ? snap_required_pipeline(&s, &info, &pending)
-+                          : vk_pipeline_graphics_async(&s, &info, &pending, wait_ms);
-         if (t0) {
-             uint64_t spent = kern_now_ns() - t0;
-             wait_left_ns = spent < wait_left_ns ? wait_left_ns - spent : 0;
-         }
--        why = oneshot > 0 ? "one-shot, shader" : wait_ms ? "full-screen" : NULL;
-+        why = storage_write ? "storage write" : oneshot > 0 ? "one-shot, shader" : wait_ms ? "full-screen" : NULL;
-         if (pending && oneshot < 0 && !vk_exec_targets_recent(ex, skip >= 1)) {
-             perf_count(PERF_CNT_ONESHOT_WAIT);
-             why = "one-shot";
 --- a/runtime/patches.c
 +++ b/runtime/patches.c
-@@ -48,6 +48,8 @@
+@@ -17,6 +17,7 @@
+ #include <string.h>
+ 
+ #include "host.h"
++#include "snap_crc.h"
+ 
+ #if __has_include("patches.h")
+ #include "patches.h"
+@@ -37,6 +38,7 @@
+ #endif
+ 
+ void rt_patches_init(void) {
++    snap_crc32_init();
+ #if RT_PATCH_COUNT
+     if (!plat_mem_commit(RT_PATCH_PAGE, 0x1000))
+         rt_fatal("patches: cannot commit the patch page at %#llx", RT_PATCH_PAGE);
+@@ -48,6 +50,8 @@
          const char *e = cfg_get(sets[i].env);
          // a set with a row in the settings table takes its default from there; the generated default serves the rest
          rt_patch_on[i] = (uint8_t)(cfg_meta(sets[i].env) ? cfg_bool(sets[i].env) : e && *e ? strcmp(e, "0") != 0 : sets[i].on);
@@ -2161,3 +3337,488 @@
          n += (size_t)snprintf(list + n, sizeof list - n, "%s%s %s", i ? ", " : "", sets[i].name,
                                rt_patch_on[i] ? "on" : "off");
          if (n >= sizeof list) n = sizeof list - 1;
+--- a/runtime/platform/win32.c
++++ b/runtime/platform/win32.c
+@@ -724,7 +724,9 @@
+     STARTUPINFOW si = {.cb = sizeof si};
+     PROCESS_INFORMATION pi;
+     wchar_t *cmd = _wcsdup(GetCommandLineW());   // CreateProcessW may write its command line
+-    if (!cmd || !CreateProcessW(NULL, cmd, NULL, NULL, TRUE, 0, NULL, NULL, &si, &pi)) {
++    // A direct CLI keeps its console; a consoleless launcher stays consoleless.
++    DWORD console_flags = GetConsoleWindow() ? 0 : CREATE_NO_WINDOW;
++    if (!cmd || !CreateProcessW(NULL, cmd, NULL, NULL, TRUE, console_flags, NULL, NULL, &si, &pi)) {
+         fprintf(stderr, "FATAL: re-running the process failed (error %lu)\n", GetLastError());
+         ExitProcess(70);
+     }
+@@ -821,7 +823,7 @@
+     PROCESS_INFORMATION pi;
+     wchar_t *cmdline = _wcsdup(GetCommandLineW());
+     SetEnvironmentVariableA(env_name, env_value);
+-    BOOL ok = cmdline && CreateProcessW(NULL, cmdline, NULL, NULL, TRUE, 0, NULL, NULL, &si, &pi);
++    BOOL ok = cmdline && CreateProcessW(NULL, cmdline, NULL, NULL, TRUE, CREATE_NO_WINDOW, NULL, NULL, &si, &pi);
+     SetEnvironmentVariableA(env_name, NULL);
+     free(cmdline);
+     CloseHandle(wr);
+@@ -1581,7 +1583,8 @@
+     STARTUPINFOW si = {.cb = sizeof si};
+     PROCESS_INFORMATION pi;
+     wchar_t *cmd = _wcsdup(GetCommandLineW());   // CreateProcessW may write its command line
+-    BOOL ok = cmd && CreateProcessW(NULL, cmd, NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi);
++    DWORD console_flags = GetConsoleWindow() ? 0 : CREATE_NO_WINDOW;
++    BOOL ok = cmd && CreateProcessW(NULL, cmd, NULL, NULL, FALSE, console_flags, NULL, NULL, &si, &pi);
+     free(cmd);
+     plat_setenv(RESTART_WAIT, NULL);
+     if (!ok) return 0;
+--- a/runtime/main.c
++++ b/runtime/main.c
+@@ -109,12 +109,12 @@
+         strcpy(cut, "/logs");
+         plat_file_mkdir_p(dir);
+         for (int i = LOG_KEEP - 1; i > 0; i--) {   // totk.3.log -> totk.4.log, ..., astralchain.log -> totk.1.log
+-            if (i > 1) snprintf(from, sizeof from, "%s/totk.%d.log", dir, i - 1);
+-            else snprintf(from, sizeof from, "%s/astralchain.log", dir);
+-            snprintf(to, sizeof to, "%s/totk.%d.log", dir, i);
++            if (i > 1) snprintf(from, sizeof from, "%s/newsnap.%d.log", dir, i - 1);
++            else snprintf(from, sizeof from, "%s/newsnap.log", dir);
++            snprintf(to, sizeof to, "%s/newsnap.%d.log", dir, i);
+             if (plat_file_exists(from)) plat_file_replace(from, to);
+         }
+-        snprintf(g_log_path, sizeof g_log_path, "%s/astralchain.log", dir);
++        snprintf(g_log_path, sizeof g_log_path, "%s/newsnap.log", dir);
+         g_log_file = plat_append_open(g_log_path);
+     }
+     if (!g_log_file) {
+@@ -218,7 +218,7 @@
+     if (plat_xchg32(&busy, 1)) plat_exit(71);
+     char d[160];
+     uintptr_t rip = x->rip;
+-    rt_logf("FATAL: %s (%#x) at host %p (astralchain+%#llx)", x->what, x->code, (void *)rip, (unsigned long long)x->offset);
++    rt_logf("FATAL: %s (%#x) at host %p (newsnap+%#llx)", x->what, x->code, (void *)rip, (unsigned long long)x->offset);
+     if (x->access >= 0)
+         rt_logf(", %s address %#llx", x->access == 1 ? "writing" : x->access == 8 ? "executing" : "reading",
+                 (unsigned long long)x->addr);
+@@ -227,7 +227,7 @@
+     if (f) rt_logf("  in lifted function f_%llx = %s\n", (unsigned long long)f, ldr_describe(f, d, sizeof d));
+     for (int i = 0; i < x->nframes; i++) {   // abort and invalid parameter: where the host code called it
+         uint64_t g = lifted_function(x->frames[i]);
+-        rt_logf("  host frame %2d: astralchain+%#llx", i, (unsigned long long)(x->frames[i] - (rip - x->offset)));
++        rt_logf("  host frame %2d: newsnap+%#llx", i, (unsigned long long)(x->frames[i] - (rip - x->offset)));
+         if (g) rt_logf(" in lifted function f_%llx", (unsigned long long)g);
+         rt_log_raw("\n", 1);
+     }
+--- a/runtime/romfs.c
++++ b/runtime/romfs.c
+@@ -927,7 +927,7 @@
+     else strcpy(index_dir, ".");
+     uint64_t sz = 0;
+     index_bytes = plat_file_read(path, &sz);
+-    if (!index_bytes) rt_fatal("RomFS index %s missing (tools/build_game.py writes it next to totk.exe)", path);
++    if (!index_bytes) rt_fatal("RomFS index %s missing (tools/build_game.py writes it next to newsnap.exe)", path);
+     need(sz >= 24 && sz < (128 << 20), "index size");
+     index_size = (size_t)sz;
+     uint8_t d[32];
+@@ -966,7 +966,7 @@
+     const char *dir = rt_config()->romfs;
+     need(snprintf(image_file, sizeof image_file, "%s/romfs.bin", dir) < (int)sizeof image_file, "image path");
+     image = open_read(image_file);
+-    if (!image) rt_fatal("RomFS image %s missing; put romfs.bin into the romfs folder next to totk or set AC_ROMFS",
++    if (!image) rt_fatal("RomFS image %s missing; put romfs.bin into the romfs folder next to newsnap or set AC_ROMFS",
+                          image_file);
+     PlatFileId sz;
+     need(plat_file_id(image, &sz), "image size");
+--- a/runtime/gfx_window_sdl.c
++++ b/runtime/gfx_window_sdl.c
+@@ -214,7 +214,7 @@
+ static void window_main(void *arg) {
+     (void)arg;
+     g_window_tid = plat_thread_id();
+-    SDL_SetHint(SDL_HINT_APP_ID, "astralchain");   // Wayland's app id: the desktop file and the taskbar match it
++    SDL_SetHint(SDL_HINT_APP_ID, "newsnap");   // Wayland's app id: the desktop file and the taskbar match it
+     SDL_SetHint(SDL_HINT_VIDEO_ALLOW_SCREENSAVER, "0");
+     g_video_ok = SDL_Init(SDL_INIT_VIDEO);
+     if (!g_video_ok) rt_log("gfx: SDL video init failed (%s)", SDL_GetError());
+--- a/runtime/platform/linux.c
++++ b/runtime/platform/linux.c
+@@ -542,7 +542,7 @@
+             why = "no power profile service, or it refused";
+             for (int i = 0; i < 2 && !held; i++)
+                 if (call(bus, svc[i][0], svc[i][1], svc[i][0], "HoldProfile", NULL, NULL, "sss", "performance",
+-                         "Astral Chain is running", "astralchain") >= 0)
++                         "NewSnapRecomp is running", "newsnap") >= 0)
+                     held = svc[i][0];
+             // the connection stays open for the life of the process: closing it would release the hold
+         }
+--- a/runtime/flight.c
++++ b/runtime/flight.c
+@@ -272,7 +272,7 @@
+         free(have), free(j);
+         return;
+     }
+-    fprintf(f, "# astralchain flight dump: %s at frame %llu, interval %.1f ms\n", j->why, (unsigned long long)j->trig_frame,
++    fprintf(f, "# newsnap flight dump: %s at frame %llu, interval %.1f ms\n", j->why, (unsigned long long)j->trig_frame,
+             j->trig_interval_us / 1000.0);
+     fprintf(f, "frame\tt_ms\tinterval_ms");
+     for (int k = 0; k < PERF_N; k++) fprintf(f, "\t%s", blocked_names[k]);
+--- a/runtime/prof_win.c
++++ b/runtime/prof_win.c
+@@ -182,7 +182,7 @@
+     FILE *f = dumps < SLOW_DUMPS ? fopen(path, "w") : NULL;
+     if (f) {
+         dumps++;
+-        fprintf(f, "astralchain-prof 1\nbase %llx\nperiod_us 1000\nframe %llu interval_ms %.1f\nmain %u render %u replay %u\n",
++        fprintf(f, "newsnap-prof 1\nbase %llx\nperiod_us 1000\nframe %llu interval_ms %.1f\nmain %u render %u replay %u\n",
+                 (unsigned long long)(uintptr_t)GetModuleHandleW(NULL), (unsigned long long)frame, (hi - lo) / 1e6 - 20,
+                 main_tid, render_tid, replay_tid);
+         write_modules(f);
+@@ -304,7 +304,7 @@
+         rt_log("prof: cannot write %s", out_path);
+         return;
+     }
+-    fprintf(f, "astralchain-prof 1\nbase %llx\nperiod_us 1000\nsamples %llu\ndropped %llu\n", (unsigned long long)(uintptr_t)GetModuleHandleW(NULL),
++    fprintf(f, "newsnap-prof 1\nbase %llx\nperiod_us 1000\nsamples %llu\ndropped %llu\n", (unsigned long long)(uintptr_t)GetModuleHandleW(NULL),
+             (unsigned long long)total, (unsigned long long)dropped);
+     for (int i = 0; i < n_threads; i++)
+         fprintf(f, "thread %lu %llu %llu\n", threads[i].tid, (unsigned long long)threads[i].n, (unsigned long long)threads[i].in_exe);
+--- a/runtime/ui_text.c
++++ b/runtime/ui_text.c
+@@ -35,7 +35,7 @@
+     [UI_MENU_ON] = "On", [UI_MENU_OFF] = "Off", [UI_MENU_AUTO] = "Automatic", [UI_MENU_DEFAULT_MARK] = "default",
+     [UI_MENU_AFTER_RESTART] = "after restart", [UI_MENU_SET_BY_ENV] = "set by environment variable",
+     [UI_MENU_SAVE_FAILED] = "could not save settings",
+-    [UI_MENU_VERSION] = "Astral Chain Recomp %s, game %s",
++    [UI_MENU_VERSION] = "NewSnapRecomp %s, Snap %s",
+ 
+     [UI_MENU_FULLSCREEN] = "Fullscreen", [UI_MENU_FULLSCREEN_DESC] = "Fills the screen with the game; F11 toggles it.",
+     [UI_MENU_WINDOW_SIZE] = "Window size", [UI_MENU_WINDOW_SIZE_DESC] = "Size of the game window when not fullscreen.",
+@@ -114,8 +114,8 @@
+     [UI_MENU_UPSCALING] = "Upscaler",
+     [UI_MENU_UPSCALING_DESC] = "A temporal upscaler in place of the game's anti-aliasing: smoother edges and less "
+                                "shimmer, and with a mode below Native more frames per second. NVIDIA DLSS needs an NVIDIA "
+-                               "RTX GPU and nvngx_dlss.dll next to astralchain.exe, Intel XeSS a recent GPU and "
+-                               "libxess.dll next to astralchain.exe; AMD FSR 3 runs on any GPU. Automatic takes DLSS "
++                               "RTX GPU and nvngx_dlss.dll next to newsnap.exe, Intel XeSS a recent GPU and "
++                               "libxess.dll next to newsnap.exe; AMD FSR 3 runs on any GPU. Automatic takes DLSS "
+                                "where it can run and FSR 3 elsewhere. DLSS and XeSS chosen here take effect after a "
+                                "restart. The HUD is not touched.",
+     [UI_MENU_UPSCALING_DESC_OTHER] = "A temporal upscaler in place of the game's anti-aliasing: smoother edges and less "
+@@ -142,7 +142,7 @@
+     [UI_MENU_OUTPUT_RES_NEXT] = ", %s after restart",
+ 
+     [UI_MENU_FPS_LIMIT] = "Frame rate",
+-    [UI_MENU_FPS_LIMIT_DESC] = "60 FPS runs the game's 60 fps patch; 30 FPS switches it off. Read live.",
++    [UI_MENU_FPS_LIMIT_DESC] = "Frame limit: 30, 60 (default), 90, 120 or 144 FPS. Slower native scenes keep their cadence. Read live; achieved FPS depends on the GPU and display mode.",
+     [UI_MENU_FPS_30] = "30 FPS", [UI_MENU_FPS_60] = "60 FPS",
+     [UI_MENU_REALTIME] = "Game speed follows the clock",
+     [UI_MENU_REALTIME_DESC] = "Steps the game by real time, so a slow frame does not slow the game down.",
+@@ -428,7 +428,7 @@
+     [UI_MENU_DEFAULT_MARK] = "по умолчанию",
+     [UI_MENU_AFTER_RESTART] = "после перезапуска", [UI_MENU_SET_BY_ENV] = "задано переменной окружения",
+     [UI_MENU_SAVE_FAILED] = "не удалось сохранить настройки",
+-    [UI_MENU_VERSION] = "Astral Chain Recomp %s, игра %s",
++    [UI_MENU_VERSION] = "NewSnapRecomp %s, Snap %s",
+ 
+     [UI_MENU_FULLSCREEN] = "Полный экран", [UI_MENU_FULLSCREEN_DESC] = "Игра на весь экран; F11 переключает режим.",
+     [UI_MENU_WINDOW_SIZE] = "Размер окна", [UI_MENU_WINDOW_SIZE_DESC] = "Размер окна игры вне полноэкранного режима.",
+@@ -509,8 +509,8 @@
+     [UI_MENU_UPSCALING] = "Апскейлер",
+     [UI_MENU_UPSCALING_DESC] = "Временной апскейлер вместо сглаживания игры: ровнее края и меньше мерцания, а в режиме "
+                                "ниже «Родного» — больше кадров в секунду. NVIDIA DLSS нужна видеокарта NVIDIA RTX и "
+-                               "nvngx_dlss.dll рядом с astralchain.exe, Intel XeSS — современная видеокарта и libxess.dll "
+-                               "рядом с astralchain.exe; AMD FSR 3 работает на любой видеокарте. «Автоматически» берёт "
++                               "nvngx_dlss.dll рядом с newsnap.exe, Intel XeSS — современная видеокарта и libxess.dll "
++                               "рядом с newsnap.exe; AMD FSR 3 работает на любой видеокарте. «Автоматически» берёт "
+                                "DLSS, где он может работать, иначе FSR 3. DLSS и XeSS, выбранные здесь, действуют после "
+                                "перезапуска. Интерфейс не затрагивается.",
+     [UI_MENU_UPSCALING_DESC_OTHER] = "Временной апскейлер вместо сглаживания игры: ровнее края и меньше мерцания, а в "
+@@ -538,7 +538,7 @@
+     [UI_MENU_OUTPUT_RES_NEXT] = ", %s после перезапуска",
+ 
+     [UI_MENU_FPS_LIMIT] = "Частота кадров",
+-    [UI_MENU_FPS_LIMIT_DESC] = "60 FPS включает патч игры на 60 кадров; 30 FPS отключает его. Читается на лету.",
++    [UI_MENU_FPS_LIMIT_DESC] = "Лимит: 30, 60 (по умолчанию), 90, 120 или 144 FPS. Медленные сцены сохраняют свой темп. Изменяется сразу; результат зависит от GPU и режима вывода.",
+     [UI_MENU_FPS_30] = "30 FPS", [UI_MENU_FPS_60] = "60 FPS",
+     [UI_MENU_REALTIME] = "Скорость игры по часам",
+     [UI_MENU_REALTIME_DESC] = "Игра идёт по реальному времени, медленный кадр её не замедляет.",
+@@ -851,7 +851,7 @@
+     [UI_MENU_DEFAULT_MARK] = "padrão",
+     [UI_MENU_AFTER_RESTART] = "após reiniciar", [UI_MENU_SET_BY_ENV] = "definido por variável de ambiente",
+     [UI_MENU_SAVE_FAILED] = "não foi possível salvar as configurações",
+-    [UI_MENU_VERSION] = "Astral Chain Recomp %s, jogo %s",
++    [UI_MENU_VERSION] = "NewSnapRecomp %s, Snap %s",
+ 
+     [UI_MENU_FULLSCREEN] = "Tela cheia", [UI_MENU_FULLSCREEN_DESC] = "O jogo ocupa a tela inteira; F11 alterna.",
+     [UI_MENU_WINDOW_SIZE] = "Tamanho da janela",
+@@ -884,7 +884,7 @@
+     [UI_MENU_SHARPNESS_DESC] = "Aumento de nitidez após a ampliação do FSR; 0 desliga.",
+ 
+     [UI_MENU_FPS_LIMIT] = "Taxa de quadros",
+-    [UI_MENU_FPS_LIMIT_DESC] = "60 FPS usa o patch de 60 fps do jogo; 30 FPS o desliga. Lido na hora.",
++    [UI_MENU_FPS_LIMIT_DESC] = "Limite: 30, 60 (padrão), 90, 120 ou 144 FPS. Cenas mais lentas mantêm sua cadência. Muda ao vivo; o resultado depende da GPU e do modo de apresentação.",
+     [UI_MENU_FPS_30] = "30 FPS", [UI_MENU_FPS_60] = "60 FPS",
+     [UI_MENU_HUD] = "HUD",
+     [UI_MENU_HUD_DESC] = "Desligado, o HUD do jogo não é desenhado durante a partida; os menus continuam. F12 "
+@@ -1180,8 +1180,8 @@
+     [UI_MENU_UPSCALING] = "Upscaler",
+     [UI_MENU_UPSCALING_DESC] = "Um upscaler temporal no lugar do antisserrilhado do jogo: bordas mais suaves e menos "
+                                "cintilação e, com um modo abaixo de Nativo, mais quadros por segundo. NVIDIA DLSS precisa "
+-                               "de uma placa NVIDIA RTX e do nvngx_dlss.dll ao lado do astralchain.exe, Intel XeSS de uma "
+-                               "placa recente e do libxess.dll ao lado do astralchain.exe; AMD FSR 3 roda em qualquer "
++                               "de uma placa NVIDIA RTX e do nvngx_dlss.dll ao lado do newsnap.exe, Intel XeSS de uma "
++                               "placa recente e do libxess.dll ao lado do newsnap.exe; AMD FSR 3 roda em qualquer "
+                                "placa. Automático usa o DLSS onde ele pode rodar e o FSR 3 nos outros casos. DLSS e XeSS "
+                                "escolhidos aqui valem após reiniciar. O HUD não é afetado.",
+     [UI_MENU_UPSCALING_DESC_OTHER] = "Um upscaler temporal no lugar do antisserrilhado do jogo: bordas mais suaves e menos "
+@@ -1282,7 +1282,7 @@
+     [UI_MENU_AFTER_RESTART] = "重启后生效",
+     [UI_MENU_SET_BY_ENV] = "由环境变量设定",
+     [UI_MENU_SAVE_FAILED] = "无法保存设置",
+-    [UI_MENU_VERSION] = "Astral Chain Recomp %s，游戏 %s",
++    [UI_MENU_VERSION] = "NewSnapRecomp %s, Snap %s",
+     [UI_MENU_FULLSCREEN] = "全屏",
+     [UI_MENU_FULLSCREEN_DESC] = "游戏铺满屏幕；按 F11 切换。",
+     [UI_MENU_WINDOW_SIZE] = "窗口大小",
+@@ -1340,7 +1340,7 @@
+     [UI_MENU_COLOR_GAMMA] = "伽马",
+     [UI_MENU_COLOR_GAMMA_DESC] = "小于 1 提亮暗部与中间调，大于 1 压暗；1 表示不调整。",
+     [UI_MENU_FPS_LIMIT] = "帧率",
+-    [UI_MENU_FPS_LIMIT_DESC] = "60 FPS 启用游戏的 60 帧补丁；30 FPS 关闭它。即时生效。",
++    [UI_MENU_FPS_LIMIT_DESC] = "帧率上限：30、60（默认）、90、120 或 144 FPS。较慢场景保留原有节奏。即时生效；实际帧率取决于 GPU 和显示模式。",
+     [UI_MENU_FPS_30] = "30 FPS",
+     [UI_MENU_FPS_60] = "60 FPS",
+     [UI_MENU_REALTIME] = "游戏速度跟随时钟",
+@@ -1708,8 +1708,8 @@
+     [UI_MENU_AO_HIGH] = "高",
+     [UI_MENU_UPSCALING] = "超分辨率",
+     [UI_MENU_UPSCALING_DESC] = "以时间性超分辨率取代游戏的抗锯齿：边缘更平滑、闪烁更少；选择低于“原生”的模式还能提高帧率。"
+-                               "NVIDIA DLSS 需要 NVIDIA RTX 显卡，并将 nvngx_dlss.dll 放在 astralchain.exe 旁；Intel XeSS "
+-                               "需要较新的显卡，并将 libxess.dll 放在 astralchain.exe 旁；AMD FSR 3 可在任何显卡上运行。"
++                               "NVIDIA DLSS 需要 NVIDIA RTX 显卡，并将 nvngx_dlss.dll 放在 newsnap.exe 旁；Intel XeSS "
++                               "需要较新的显卡，并将 libxess.dll 放在 newsnap.exe 旁；AMD FSR 3 可在任何显卡上运行。"
+                                "“自动”在可运行时使用 DLSS，否则使用 FSR 3。在此选择的 DLSS 和 XeSS 重启后生效。HUD 不受影响。",
+     [UI_MENU_UPSCALING_DESC_OTHER] = "以时间性超分辨率取代游戏的抗锯齿：边缘更平滑、闪烁更少；选择低于“原生”的模式还能提高"
+                                      "帧率。AMD FSR 3 可在任何显卡上运行；此处“自动”即 FSR 3（NVIDIA DLSS 和 Intel XeSS "
+--- a/runtime/simd.h
++++ b/runtime/simd.h
+@@ -693,7 +693,29 @@
+     for (int i = 0; i < bytes; i++) acc = t[(acc ^ (uint8_t)(v >> (8 * i))) & 0xff] ^ (acc >> 8);
+     return acc;
+ }
+-#define CRC32(acc, v, n) simd_crc(simd_crc32_tab, (uint32_t)(acc), (v), n)
++#include "snap_crc.h"
++// IEEE reflected CRC, least-significant input byte first. Keep the original
++// helper for every other defined width, and for the startup scalar opt-out.
++SI uint32_t snap_crc32_instruction(uint32_t acc, uint64_t value, int bytes) {
++    if ((bytes == 4 || bytes == 8) && snap_crc32_slice8_on) {
++        uint32_t low = (uint32_t)value ^ acc;
++        if (bytes == 4)
++            return snap_crc32_slice8_rows[2][low & 255] ^
++                   snap_crc32_slice8_rows[1][(low >> 8) & 255] ^
++                   snap_crc32_slice8_rows[0][(low >> 16) & 255] ^
++                   simd_crc32_tab[low >> 24];
++        return snap_crc32_slice8_rows[6][low & 255] ^
++               snap_crc32_slice8_rows[5][(low >> 8) & 255] ^
++               snap_crc32_slice8_rows[4][(low >> 16) & 255] ^
++               snap_crc32_slice8_rows[3][low >> 24] ^
++               snap_crc32_slice8_rows[2][(value >> 32) & 255] ^
++               snap_crc32_slice8_rows[1][(value >> 40) & 255] ^
++               snap_crc32_slice8_rows[0][(value >> 48) & 255] ^
++               simd_crc32_tab[value >> 56];
++    }
++    return simd_crc(simd_crc32_tab, acc, value, bytes);
++}
++#define CRC32(acc, v, n) snap_crc32_instruction((uint32_t)(acc), (v), (n))
+ #define CRC32C(acc, v, n) simd_crc(simd_crc32c_tab, (uint32_t)(acc), (v), n)
+ 
+ // ---- crypto (AES, SHA1, SHA256)
+--- a/tools/build_xlate.py
++++ b/tools/build_xlate.py
+@@ -99,8 +99,9 @@
+     for junk in list(src.glob("src/*/obj")) + list(src.glob("src/*/bin")):
+         shutil.rmtree(junk)
+     patches = sorted((XLATE / "patches").glob("*.patch"))
+-    if len(patches) != 12:
+-        sys.exit(f"expected 12 patches, found {len(patches)}")
++    expected = ('0001-keep-call-arguments-in-variables.patch', '0002-keep-live-call-sources-when-removing-dead-node.patch', '0003-keep-side-effect-assignments-in-the-ast-optimizer.patch', '0004-no-else-if-flattening.patch', '0005-declare-storage-image-write-without-format.patch', '0006-initialise-unlinked-vertex-outputs.patch', '0007-position-always-invariant.patch', '0008-point-size-from-support-buffer.patch', '0009-round-d16-array-compare-reference.patch', '0010-pcss-for-cascade-compares.patch', '0011-shadow-filter-spread.patch', '0012-motion-previous-position.patch', '0013-bitfield-defined-ranges.patch', '0014-funnel-defined-shifts.patch')
++    if tuple(p.name for p in patches) != expected:
++        sys.exit("expected exact 14 Snap translator patches; unexpected or missing patch")
+     for patch in patches:
+         # git apply works outside a repository when given a directory; --check first so a failure names the patch.
+         for extra in (["--check"], []):
+--- a/runtime/ov_hid.c
++++ b/runtime/ov_hid.c
+@@ -10,6 +10,7 @@
+ #include "host.h"
+ #include "ipc.h"
+ #include "ov.h"
++#include "input.h"
+ 
+ void hid_server_handler(IpcSession *s, const IpcRequest *rq, IpcResponse *rs) {
+     (void)s;
+@@ -30,6 +31,47 @@
+         rt_log("hid: SetNpadHandheldActivationMode(%u)", mode);
+         return;
+     }
++    // NewSnap GYRO-01: six-axis sensor commands (switchbrew IHidServer 68-83). Setters keep no state: the host feeds
++    // fused motion from the gamepad itself (ov_input.c six_fill) and only that reaches the game.
++    case 68:   // IsSixAxisSensorFusionEnabled(handle, aruid) -> bool
++    case 83: { // IsFirmwareUpdateAvailableForSixAxisSensor(handle, aruid) -> bool
++        uint8_t v = rq->cmd == 68;
++        IPC_OUT(rs, v);
++        return;
++    }
++    case 71: { // GetSixAxisSensorFusionParameters(handle, aruid) -> (f32 revise power, f32 revise range): SDK defaults
++        float v[2] = {0.03f, 0.4f};
++        IPC_OUT(rs, v);
++        return;
++    }
++    case 74: { // GetAccelerometerParameters(handle, aruid) -> (f32 x, f32 y): SDK defaults
++        float v[2] = {0.0f, 0.0f};
++        IPC_OUT(rs, v);
++        return;
++    }
++    case 77:   // GetAccelerometerPlayMode(handle, aruid) -> u32 (0: tight)
++    case 80: { // GetGyroscopeZeroDriftMode(handle, aruid) -> u32 (1: standard)
++        uint32_t v = rq->cmd == 80;
++        IPC_OUT(rs, v);
++        return;
++    }
++    case 82: { // IsSixAxisSensorAtRest(handle, aruid) -> bool: no live motion, or turning slower than ~1.4 degrees/s
++        MotionState m;
++        uint8_t rest = 1;
++        if (input_motion_enabled() && motion_read(motion_global(), &m, 1, kern_now_ns()) == 1)
++            rest = m.gyro[0] * m.gyro[0] + m.gyro[1] * m.gyro[1] + m.gyro[2] * m.gyro[2] < 0.004f * 0.004f;   // rev/s
++        static int logged;
++        if (!logged++) rt_log("hid: IsSixAxisSensorAtRest answered (%s)", rest ? "at rest" : "moving");
++        IPC_OUT(rs, rest);
++        return;
++    }
++    case 69: case 70: case 72: case 73: case 75: case 76: case 78: case 79: case 81: {
++        // EnableSixAxisSensorFusion, Set/ResetSixAxisSensorFusionParameters, Set/ResetAccelerometerParameters,
++        // Set/ResetAccelerometerPlayMode, Set/ResetGyroscopeZeroDriftMode: accepted, nothing to return
++        static int logged;
++        if (logged < 8) logged++, rt_log("hid: six-axis setting command %u accepted", rq->cmd);
++        return;
++    }
+     default: ipc_unimplemented(s, rq);
+     }
+ }
+--- a/runtime/motion_fusion.c
++++ b/runtime/motion_fusion.c
+@@ -15,6 +15,7 @@
+ #include <string.h>
+ 
+ #include "host.h"
++#include "cfg.h"
+ #include "input.h"
+ #include "platform/platform.h"
+ 
+@@ -79,9 +80,9 @@
+     orthonormalize(R);
+ }
+ // Body-frame rate: R = R * exp([w] dt), the rate plus the gravity pull.
+-static void integrate(double R[3][3], const double gyro[3], const double acc[3], double dt) {
++static void integrate(double R[3][3], const double gyro[3], const double acc[3], double dt, int pull) {
+     double w[3] = {gyro[0], gyro[1], gyro[2]}, n = norm3(acc);
+-    if (fabs(n - 1) < 0.15) {   // not being accelerated: turn the estimated down toward the measured one
++    if (pull && fabs(n - 1) < 0.15) {   // not being accelerated: turn the estimated down toward the measured one
+         const double kp = 0.5;
+         double measured[3] = {acc[0] / n, acc[1] / n, acc[2] / n}, estimated[3] = {-R[2][0], -R[2][1], -R[2][2]}, e[3];
+         cross3(measured, estimated, e);
+@@ -107,7 +108,22 @@
+     orthonormalize(R);
+ }
+ 
+-void motion_feed(MotionFusion *m, const double acc[3], const double gyro[3], uint64_t now) {
++// NewSnap GYRO-02: AC_GYRO_SENS (gyro_sens, default 2.5, 0.1..10, live): the rotation rate is scaled before it is
++// integrated, so the rate, the angle and the direction the game reads all turn that much faster than the controller.
++// With a scale other than 1 the gravity pull is left out: it would turn the tilt back toward the real one over ~2 s.
++static double snap_gyro_scale(void) {
++    static double k = -1;
++    static unsigned seen;
++    unsigned v = cfg_version();
++    if (k < 0 || v != seen) {
++        double d = cfg_double("AC_GYRO_SENS");
++        seen = v, k = !(d >= 0.1) ? 0.1 : d > 10 ? 10 : d;
++    }
++    return k;
++}
++
++void motion_feed(MotionFusion *m, const double acc[3], const double raw_gyro[3], uint64_t now) {
++    double k = snap_gyro_scale(), gyro[3] = {raw_gyro[0] * k, raw_gyro[1] * k, raw_gyro[2] * k};
+     plat_mutex_lock(&m->lock);
+     double dt = m->last_ns && now > m->last_ns ? (double)(now - m->last_ns) / 1e9 : 0.004;
+     if (dt > 0.05) dt = 0.004;   // a gap (no controller, sensors were off): no integration across it
+@@ -116,7 +132,7 @@
+         align_to(m->R, acc);
+         memset(m->angle, 0, sizeof m->angle);
+         m->restart = 0;
+-    } else integrate(m->R, gyro, acc, dt);
++    } else integrate(m->R, gyro, acc, dt, k == 1.0);
+     MotionState *s = &m->ring[m->produced % MOTION_RING];
+     *s = (MotionState){.delta_ns = (int64_t)(dt * 1e9), .sampling = (int64_t)m->produced + 1, .attributes = 1};
+     for (int i = 0; i < 3; i++) {
+--- a/runtime/vk_backend.c
++++ b/runtime/vk_backend.c
+@@ -31,6 +31,8 @@
+ #include "vk_exec.h"
+ #include "platform/platform.h"
+ #include "vk_dlaa.h"
++#include "snap_fsr_fg.h"
++#include "snap_latent_sync.h"
+ 
+ #define WEAK __attribute__((weak))
+ 
+@@ -41,6 +43,7 @@
+     int presharp;           // the upscaled scene was sharpened before the HUD (vk_dlaa.c): the present copies it
+     float shape;            // the shape the frame is shown in (resolution.c res_wide_tick), 0 for the picture's own
+     uint64_t frame, at, queued, value;
++    uint64_t fg;            // FG-01: the frame generation prepare of this frame, 0 for none
+ } PresentJob;
+ 
+ static PlatMutex pl = PLAT_MUTEX_INIT;
+@@ -57,7 +60,7 @@
+ 
+ static void present_main(void *arg) {
+     (void)arg;
+-    uint64_t last = 0, last_queued = 0;
++    uint64_t last = 0, last_queued = 0, fg_interval = 0;
+     plat_mutex_lock(&pl);
+     for (;;) {
+         while (!pending) plat_cond_wait(&pcv, &pl);
+@@ -70,6 +73,17 @@
+         vk_hdr_set_scene(j.scene, j.scene_format);   // read by the HDR encode in this blit
+         vk_fsr_presharp_set(j.presharp);             // and by FSR's step in it
+         vk_present_shape_set(j.shape);               // and where the picture goes in the window
++        uint64_t fg_real_at = 0;
++        if (j.fg && snap_fg_rate_ok(fg_interval)) {   // FG-01: the generated frame goes out first, halfway between the last real frame and this one
++            snap_fg_arm(j.fg);
++            vk_present_blit(j.image, VK_IMAGE_LAYOUT_GENERAL, j.format, j.w, j.h, j.has_crop ? j.crop : NULL);
++            snap_fg_arm(0);
++            uint64_t now = kern_now_ns(), gen_at = now;
++            if (j.at && last && j.at > last) gen_at = last + (j.at - last) / 2;
++            else if (fg_interval) fg_real_at = now + fg_interval / 2;   // no pacer target: half the measured interval later
++            wait_until(gen_at);
++            vk_present_flip();
++        }
+         vk_present_blit(j.image, VK_IMAGE_LAYOUT_GENERAL, j.format, j.w, j.h, j.has_crop ? j.crop : NULL);
+         uint64_t f = vk_sync_submit(NULL, 0);   // a timeline value after the blit: deferred destruction waits for the blit too
+         if (j.value && f != j.value)
+@@ -80,8 +94,9 @@
+         plat_cond_broadcast(&pcv);
+         plat_mutex_unlock(&pl);
+         uint64_t t0 = kern_now_ns();
+-        wait_until(j.at);
++        wait_until(j.at ? snap_vblank_mid(j.at, cfg_value("AC_FPS")) : fg_real_at);   // PACE-AMD-01: mid-refresh with AC_FPS=display
+         uint64_t t1 = kern_now_ns();
++        if (last && t1 > last && t1 - last < 100000000) fg_interval = t1 - last;
+         vk_present_flip();
+         // AC_TRACE=present: one line per present: the host present's interval, the interval of the game's present
+         // calls (when the host present went out before back-edge pacing), the wait and how far past its target it went
+@@ -136,6 +151,7 @@
+     }
+     PresentJob j = {.image = img->image, .format = img->format, .w = (int)img->width, .h = (int)img->height, .frame = frame,
+                     .at = at_ns, .queued = queued, .value = value, .presharp = presharp, .shape = shape};
++    j.fg = snap_fg_take();   // FG-01: taken here, in order with the replay
+     vk_hdr_present_source(img, &j.scene, &j.scene_format);   // AC_HDR: the scene the game drew into it, same size
+     if (crop) {
+         j.has_crop = 1;
