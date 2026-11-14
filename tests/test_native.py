@@ -24,6 +24,7 @@ class NativeFrameTests(unittest.TestCase):
             start = text.index('static uint64_t present_period(')
             function = text[start:text.index('\n}', start) + 2]
             (folder / 'test.c').write_text('''#include <stdint.h>
+#include "snap_high_fps.h"
 typedef struct { int interval; } win_t;
 static uint64_t cap;
 int frame_step_realtime(void) { return 0; }
@@ -37,11 +38,15 @@ int main(void) {
  cap=16666667; if(present_period(&w)!=cap) return 2;
  w.interval=2; if(present_period(&w)<33333333) return 3;
  w.interval=3; if(present_period(&w)!=50000000) return 4;
+ w.interval=1; cap=8333333; if(present_period(&w)!=cap) return 5;
+ cap=11111111; if(present_period(&w)!=cap) return 6;
+ cap=6944444; if(present_period(&w)!=cap) return 7;
+ w.interval=2; if(present_period(&w)!=33333333) return 8;
  return 0;
 }
 ''')
             exe = folder / ('pacing.exe' if os.name == 'nt' else 'pacing')
-            subprocess.run([compiler, str(folder / 'test.c'), '-o', str(exe)], check=True, capture_output=True)
+            subprocess.run([compiler, str(folder / 'test.c'), '-I', str(source.parent), '-o', str(exe)], check=True, capture_output=True)
             subprocess.run([str(exe)], check=True, capture_output=True)
 
     def test_missing_system_storage_never_returns_success_without_object(self):
