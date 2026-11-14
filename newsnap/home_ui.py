@@ -17,12 +17,18 @@ class HomePanel:
         self.verifying=False
         footer=ttk.Frame(parent,padding=(0,12,0,0));footer.pack(side='bottom',fill='x')
         self.notice_slot=ttk.Frame(parent);self.notice_slot.pack(fill='x')
-        ttk.Label(parent,text='Tu próxima expedición',style='Title.TLabel').pack(anchor='w',pady=(0,12))
-        self.version=ttk.Label(parent,text='',style='Muted.TLabel');self.version.pack(anchor='w',pady=(0,14))
-        card=ttk.LabelFrame(parent,text='Datos del juego',padding=16);card.pack(fill='x',pady=(0,12))
+        content=ttk.Frame(parent);content.pack(fill='both',expand=True)
+        from .hero_ui import SnapCover
+        self.cover=SnapCover(content,launcher);self.cover.pack(side='left',anchor='n',padx=(0,22))
+        body=ttk.Frame(content);body.pack(side='left',fill='both',expand=True)
+        ttk.Label(body,text='Tu próxima expedición',style='Title.TLabel').pack(anchor='w',pady=(0,5))
+        self.version=ttk.Label(body,text='',style='Muted.TLabel',wraplength=530);self.version.pack(anchor='w',pady=(0,6))
+        card=ttk.LabelFrame(body,text='Datos del juego',padding=10);card.pack(fill='x',pady=(0,6))
         self.data_state=ttk.Label(card,text='Sin datos cargados',font=('Segoe UI',13,'bold'))
         self.data_state.pack(anchor='w')
-        self.location=ttk.Label(card,text='',wraplength=760,style='Muted.TLabel');self.location.pack(anchor='w',pady=(6,12))
+        self.location=ttk.Label(card,text='',wraplength=510,style='Muted.TLabel',font=('Segoe UI',9));self.location.pack(anchor='w',pady=(4,6))
+        from .tooltip import Tooltip
+        self.location_tooltip=Tooltip(self.location,'',wraplength=600)
         actions=ttk.Frame(card);actions.pack(anchor='w')
         self.load_button=ttk.Button(actions,text='Cargar GameData…',command=self.choose_data)
         self.load_button.pack(side='left')
@@ -31,12 +37,12 @@ class HomePanel:
         self.cancel_button=ttk.Button(actions,text='Cancelar',command=self.cancel.set,state='disabled')
         self.cancel_button.pack(side='left')
         launcher.prepare=tk.BooleanVar(value=True)
-        prepare = ttk.Checkbutton(parent,text='Precompilar shaders antes de jugar',variable=launcher.prepare)
+        prepare = ttk.Checkbutton(body,text='Precompilar shaders disponibles',variable=launcher.prepare)
         prepare.pack(anchor='w',pady=(6,4))
         from .tooltip import Tooltip
-        Tooltip(prepare, 'Prepara pipelines/shaders para esta GPU antes de abrir el juego. Puede tardar; ayuda a reducir pausas de compilación durante la expedición. Un cambio de GPU/controlador/runtime puede requerir regenerar la caché.')
-        ttk.Label(parent,text='La verificación y la preparación necesarias se muestran aquí, antes de abrir el juego.',
-                  wraplength=760,style='Muted.TLabel').pack(anchor='w')
+        Tooltip(prepare, 'Prepara los shaders y pipelines registrados para esta GPU antes de jugar. Si es el primer inicio y aún no hay registros, el juego arranca y los compila durante la expedición. Un cambio de GPU/controlador/runtime puede requerir preparar de nuevo la caché.')
+        from .progress_ui import PreparationPanel
+        self.progress=PreparationPanel(body);self.progress.pack(fill='x',pady=(6,0))
         launcher.play_button=ttk.Button(footer,text='Iniciar expedición  →',style='Accent.TButton',command=launcher.launch)
         launcher.play_button.pack(side='right')
         self.update_notice=ttk.Button(self.notice_slot,text='',command=lambda:launcher.tabs.select(launcher.update_tab))
@@ -44,9 +50,14 @@ class HomePanel:
         self.credits.pack(side='left')
         self.refresh();launcher.root.after(150,self.poll)
 
+    def show_preparation_note(self,message):
+        self.progress.set_note(message)
+
     def refresh(self):
         value=home_state.state(self.launcher.project)
-        self.location.configure(text=value['directory'])
+        location=value['directory']
+        self.location.configure(text=location if len(location)<=90 else location[:26]+'…'+location[-62:])
+        self.location_tooltip.text=location
         runtime=value['runtime_version'] or 'por preparar'
         self.version.configure(text=f'Launcher {VERSION}  ·  Juego 2.0.1  ·  Runtime {runtime}')
         if value['verified']:
@@ -62,6 +73,8 @@ class HomePanel:
         self.load_button.configure(state='disabled' if busy else 'normal')
         self.verify_button.configure(state='disabled' if busy else 'normal')
         self.cancel_button.configure(state='normal' if self.verifying else 'disabled')
+        if busy and not self.progress.active:self.progress.begin('Preparando el inicio…')
+        elif not busy:self.progress.stop()
 
     def choose_data(self):
         if self.launcher.busy:return
@@ -86,6 +99,7 @@ class HomePanel:
         self.verifying=True;self.resume=resume_game;self.cancel.clear()
         self.launcher._set_busy(True)
         self.launcher.status.set('Verificando ExeFS y RomFS de tu juego…')
+        self.progress.report('Verificando ExeFS y RomFS de tu juego…')
         def work():
             try:
                 with settings.ProfileLock(self.launcher.profile):value=home_state.verify(self.launcher.project,self.cancel)
@@ -103,6 +117,7 @@ class HomePanel:
                 kind,value=self.events.get_nowait()
                 self.verifying=False;self.launcher._set_busy(False);self.refresh()
                 self.launcher.status.set('Datos del juego verificados.' if kind=='verified' else value)
+                self.progress.finish('Datos del juego verificados' if kind=='verified' else 'Verificación sin completar',error=kind!='verified')
                 if kind=='verified' and self.resume:self.launcher.root.after(50,self.launcher.launch)
                 self.resume=False
         except queue.Empty:pass

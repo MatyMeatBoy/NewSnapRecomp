@@ -64,3 +64,17 @@ No game data or generated game code is included in the build kit.
 at `c1149c2822b857a351ed1c130aef2c6ec7430094` (MIT; Copyright 2020 Smash Ultimate
 Research Group). Its full notice is retained in `licenses/ssbh_lib-MIT.txt`.
 Shader seed layouts and runtime hashes follow the pinned Astral tools/runtime.
+# Official promotional artwork used by the launcher
+
+The owner requested New Pokémon Snap imagery in the launcher. Files under
+`assets/launcher/` are unmodified promotional images from the official website:
+https://newpokemonsnap.pokemon.com/en-us/ . Exact source URLs, SHA256 and image
+dimensions are recorded in `assets/launcher/source-pins.json`.
+
+©1995–2021 Nintendo / Creatures Inc. / GAME FREAK inc.
+©1999 Nintendo / HAL Laboratory, Inc. Developed by BANDAI NAMCO Studios Inc.
+Pokémon and Nintendo Switch are trademarks of Nintendo. These images retain
+their respective owners' rights and are not covered by this project's MIT
+license. Their inclusion does not imply endorsement or a redistribution license
+from the rights holders. No private player photographs or extracted game data
+are used for the launcher artwork.
