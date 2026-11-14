@@ -242,7 +242,8 @@ class BuildCacheIntegrationTests(TestCase):
                 'exefs_sha256':{'main':digest(owner/'exefs/main')},'romfs_sha256':digest(owner/'romfs/romfs.bin'),
                 'verified_control':{'display_version':'2.0.1','save_size':42,'journal_size':2}}))
             (root/'patches').mkdir()
-            for name in ('snap-2.0.1-render.txt','snap-2.0.1-supersample.txt','snap-2.0.1-random-range.txt'):
+            for name in ('snap-2.0.1-render.txt','snap-2.0.1-supersample.txt','snap-2.0.1-random-range.txt',
+                         'snap-2.0.1-high-fps.txt'):
                 (root/'patches'/name).write_text('')
             sdk=root/'sdk'
             (sdk/'bin').mkdir(parents=True)
