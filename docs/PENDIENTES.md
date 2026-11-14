@@ -3,13 +3,13 @@
 Read this before taking work. History and the previous Spanish board:
 [PENDIENTES-HECHOS.md](PENDIENTES-HECHOS.md). Rules: [AGENTS.md](../AGENTS.md).
 
-## Current state (2026-11-14, after 0.8.6-tester): read first
+## Current state (2026-11-14, after 0.8.7-tester): read first
 
-- `main` = 0.8.6-tester (FPS «display» with mid-refresh presents, PACE-AMD-01; repo docs all in English; 0.8.5 added NSP/NSZ/XCI/XCZ import): AMD RDNA 1/2 fixes (FOTO-01, CRISTAL-01), gyro (GYRO-01/02), windowed
+- `main` = 0.8.7-tester (HD photo thumbnails and shadow «auto», SS-03; 0.8.6 FPS «display»; 0.8.5 NSP/NSZ/XCI/XCZ import): AMD RDNA 1/2 fixes (FOTO-01, CRISTAL-01), gyro (GYRO-01/02), windowed
   present (PRESENT-WIN-01), internal resolution by host scaling (SS-02), high FPS 90/120/144
   (FPS-01, Codex), FSR frame generation off by default with refresh fallback (FG-01/02).
 - Owner hardware: RX 6900 XT, Samsung C27HG7x 144 Hz monitor, FreeSync. Codex: RTX 4060.
-- Open queue: SS-03 photos (needs an RTX comparison), ULTRAWIDE-01 (photo capture and HUD
+- Open queue: SS-03 RTX check of HD thumbnails, ULTRAWIDE-01 (photo capture and HUD
   sites, see [ULTRAWIDE.md](ULTRAWIDE.md)), HUD-less image for FSR FG, DLSS-G (needs RTX 40/50),
   loading times in the extended modes.
 - Release recipe: bottom of this file.
@@ -21,7 +21,7 @@ acceptance), DONE (moved to the history file).
 
 | ID | P | State | Owner | Summary |
 |---|---|---|---|---|
-| SS-03 | P1 | IN PROGRESS | Claude | Higher-resolution photos. CPU reads of enlarged colour average (box filter). `AC_SS_PHOTO=1` (off) enlarges 1080×720/360×240/240×200 colour targets, but the big photo on the selection screen comes from the 360×240 **BC1** thumbnail, which cannot be enlarged; on the RX 6900 XT its 4×4 blocks look almost flat, which may be the FOTO-01 stand-in path (90×60 block view) rather than the game. Next: RTX comparison with `AC_BLOCK_VIEWS=1`, then decide whether to point that screen at the 1080×720 photo. |
+| SS-03 | P1 | REVIEW | Claude | HD photo thumbnails (`AC_HD_PHOTOS`, on): the 360×240 picture encoded to BC1 is drawn at 1080×720 and a copy replaces the BC1 thumbnail when sampled (`snap_hd_photo.c`, no vendor branch). Folder screen verified on RX 6900 XT; in-level preview and the big selection photo not opened by the route; RTX pending. Shadow option covers every square depth map and has `auto`. |
 | IMPORT-01/02 | P1 | REVIEW | Claude | Launcher "Importar NSP/XCI/NSZ…": base NSP/NSZ/XCI/XCZ + update NSP/NSZ + prod.keys through `newsnap import` on the build kit's Python and a bundled hactool (`tools/build_hactool.py`). NSZ/XCZ/XCI are rebuilt as a temporary NSP by `newsnap/container.py` (nsz's NCZ format, NCA hash check). Synthetic tests only; not tested end to end (no dump on the owner's disk). |
 | PACE-AMD-01 | P1 | REVIEW | Claude | Judder on fixed-refresh displays: 60 fps on the owner's 144 Hz FIFO display alternates 2/3 refreshes. `fps = display` caps at refresh/n (72 at 144 Hz) and presents mid-refresh from DWM vblank timing (`snap_latent_sync.h`, as Special K's Latent Sync). Trace: 100 % of presents 13.9 ms apart; the panel itself not measured (AMD lacks present timing). Owner's eye test pending. |
 | FG-01/02 | P2 | REVIEW | Claude | FSR frame generation (SDK 2.4, no FFX swapchain), `frame_gen = fsr`, off by default, FSR 3.1/4 only; pauses when real fps > 0.55 × refresh. No HUD-less image (HUD trails possible). Not done: DLSS-G, VRR pacing. |
