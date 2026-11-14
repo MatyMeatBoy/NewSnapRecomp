@@ -1,6 +1,6 @@
 PRUEBAS A/B PARA LA RX 6900 XT (FOTO-01)
 
-Copia esta carpeta (pruebas-amd) junto a newsnap.exe y haz doble clic en una prueba.
+Deja esta carpeta (pruebas-amd) junto a NewSnapLauncher.exe o junto a newsnap.exe y haz doble clic en una prueba.
 Cada .bat arranca el juego con un ajuste distinto solo para esa vez; newsnap.ini no se toca.
 Al cerrar el juego, el log queda en logs\pruebas\<nombre>.log.
 

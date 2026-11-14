@@ -13,8 +13,10 @@ set "JUEGO="
 if exist "%~dp0newsnap.exe" set "JUEGO=%~dp0"
 if not defined JUEGO if exist "%~dp0..\newsnap.exe" set "JUEGO=%~dp0..\"
 if not defined JUEGO if exist "%~dp0..\..\newsnap.exe" set "JUEGO=%~dp0..\..\"
+if not defined JUEGO if exist "%~dp0..\GameData\newsnap.exe" set "JUEGO=%~dp0..\GameData\"
+if not defined JUEGO if exist "%~dp0GameData\newsnap.exe" set "JUEGO=%~dp0GameData\"
 if not defined JUEGO (
-  echo No encuentro newsnap.exe. Copia la carpeta pruebas-amd junto a newsnap.exe.
+  echo No encuentro newsnap.exe. Deja la carpeta pruebas-amd junto a NewSnapLauncher.exe o junto a newsnap.exe.
   pause
   exit /b 3
 )
