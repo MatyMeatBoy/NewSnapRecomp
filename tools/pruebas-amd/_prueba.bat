@@ -1,5 +1,5 @@
 @echo off
-rem Pruebas A/B de NewSnapRecomp para la RX 6900 XT (FOTO-01).
+rem Pruebas de NewSnapRecomp: arranca el juego con ajustes solo para esa vez y guarda el log.
 rem Uso interno: _prueba.bat NOMBRE VARIABLE=VALOR [VARIABLE=VALOR ...]
 rem Las variables solo valen para este arranque: newsnap.ini no se modifica.
 setlocal EnableExtensions
