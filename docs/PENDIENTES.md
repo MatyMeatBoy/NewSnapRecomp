@@ -82,13 +82,13 @@ fotos ni constituye una validación completa AMD/VRR/mando. Reporte histórico:
 - `build/v03-jump-fixed/`: tutorial, evaluación previa, primeras fotos válidas y
   ruta reproducible. `tests/routes/tutorial-photo.txt` conserva su script.
 - Capturas del propietario: archivos `clipboard-4d415416-…`,
-  `clipboard-473be5db-…`, `clipboard-b8af3c5e-…` en su Temp local.
+  `clipboard-473be5db-…`, `clipboard-b8af3c5e-…` en su carpeta temporal local.
   Copiar a `build/user-reports/` para inspección, sin añadirlas a Git.
 
 ## Referencia de ReKHCoM para ART-01
 
-`D:/Dev/ReKHCoM-build/LEEME.md` señala como mapa canónico
-`C:/Users/MP/Documents/00 MatyMeatBoy/KHCoMPC/LEEME.md` y `NOTES.md`.
+El `LEEME.md` de la carpeta local `ReKHCoM-build` señala como mapa canónico el
+`LEEME.md` y el `NOTES.md` del proyecto local `KHCoMPC` del propietario.
 No recorrer junctions ni duplicar hardlinks. Reutilizar solo el gráfico de mando
 original solicitado por el propietario, adaptando sus etiquetas a Switch.
 
