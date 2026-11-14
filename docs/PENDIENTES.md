@@ -37,15 +37,15 @@ resuelta solo por cambiar un ajuste o por compilar.
   No cambiar de rama en el checkout compartido ni mezclar trabajo ajeno.
 
 Las tareas terminadas se conservan en [historial de trabajo completado](PENDIENTES-HECHOS.md).
-Última entrega: [0.8.0-tester](https://github.com/MatyMeatBoy/NewSnapRecomp/releases/tag/v0.8.0-tester)
-(notas en `docs/releases/0.8.0-tester.md`).
+Última entrega: [0.8.1-tester](https://github.com/MatyMeatBoy/NewSnapRecomp/releases/tag/v0.8.1-tester)
+(notas en `docs/releases/0.8.1-tester.md`).
 
-## Estado al día (2026-11-14, tras 0.8.0-tester): leer primero
+## Estado al día (2026-11-14, tras 0.8.1-tester): leer primero
 
 Para cualquier modelo que retome el trabajo:
 
-- `main` contiene 0.8.0-tester: FOTO-01, CRISTAL-01, GYRO-01/02, PIPE-MO-01, PRESENT-WIN-01 y
-  FPS-TXT-01. Todo probado solo en la RX 6900 XT del propietario.
+- `main` contiene 0.8.1-tester: lo de 0.8.0 más SS-02 (resolución interna por escalado en el host,
+  sombras), FPS-01 (90/120/144, Codex) y FG-01 (generación de fotogramas FSR, apagada por defecto).
 - **En curso, Claude: SS-02** (escala interna 125/150/200 %). Rama `claude/ss-02-*`. Reservados
   los adaptadores de supersampling (`snap_supersample`), `docs/SUPERSAMPLING.md` y la opción de
   escala en `launcher.py`.
@@ -97,7 +97,8 @@ fotos ni constituye una validación completa AMD/VRR/mando. Reporte histórico:
 | PAD-01 | P1 | REVISIÓN | Codex / agente de controles | Backend SDL de prueba de mandos implementado y probado con dispositivos virtuales/ABI real. Reservados `controller_probe.py`, `controller_ui.py`, `tests/test_controller_probe.py`. UI visual se integra con ART-01. |
 | VRR-01 | P1 | REVISIÓN | Codex / agente de render | Estado real de presentación por VK_EXT_present_timing, unknown/fixed/variable; nunca inferir VRR por FIFO/mailbox. Reservados `vrr_adapt.py`, overlays `snap_vrr*`, `display_status.py`, `display_ui.py`, tests y `docs/DISPLAY.md`. Prueba swapchain real integrada completada: API disponible, intervalo cero → unknown, sin inferir VRR. Validación FreeSync física pendiente. |
 | MENU-01 | P1 | REVISIÓN | Codex / agente de render | Menú dentro del juego: Original/Auto/DLSS/FSR 3.1/FSR 4, Native AA/DLAA y tres presets reducidos. Quitar FSR 3 genérico, XeSS/FSR espacial y opciones artísticas ignoradas. Reservados `menu_adapt.py`, `tests/test_snap_menu.py`. |
-| SS-02 | P1 | EN CURSO | Claude · 2026-11-14 · rama `claude/ss-02-internal-scale` | **Funciona en RX 6900 XT:** escalado en el host de los render targets 16:9 (como Witch Time/emuladores) en lugar del redimensionado del motor; HUD, fotos y miniaturas correctos a 200 %, 1 % low 52–58 fps. Añade 133/175/250/300 % y «Según la pantalla», cadena 16:9 (`AC_SS_CHAIN`) y `shadow_scale` para los mapas de sol 1024 de Snap. Detalle y tabla en `docs/SUPERSAMPLING.md`. Falta: RTX, demás escalas, pantalla completa, puntuación comparada, y después frame generation (FFX FG del SDK 2.4, apagado por defecto) para 0.8.1. |
+| SS-02 | P1 | REVISIÓN | Claude · 0.8.1-tester | Resolución interna por escalado en el host, 125–300 % y «Según la pantalla», cadena 16:9, `shadow_scale` para los mapas de sol de Snap. RX 6900 XT: 200 % a 60 y 120 fps, fotos correctas. Falta RTX y puntuación comparada. `docs/SUPERSAMPLING.md`. |
+| FG-01 | P2 | REVISIÓN | Claude · 0.8.1-tester | Generación de fotogramas FSR (SDK 2.4, sin swapchain de FFX), `frame_gen = fsr`, apagada por defecto, solo con FSR 3.1/4. `newsnap/framegen_adapt.py`, `overlays/snap_fsr_fg.c`. RX 6900 XT: frames reales a 16,667 ms con `immediate`. Falta: imagen sin HUD, DLSS-G, ritmo con VRR y monitores de 100 Hz. |
 | FPS-01 | P1 | REVISIÓN | Codex · PR #20 · 2026-11-14 | Opciones integradas 30/60/90/120/144, 60 por defecto, sin uncapped; metadata exige runtime nuevo. Reservas de implementación liberadas: high_fps_adapt.py, overlays snap_high_fps.*, patches snap-2.0.1-high-fps.txt, selector FPS exclusivamente en launcher/settings, capacidad en version.py sin cambiar release, adapt/build y tests de la receta. Sondas de solo lectura timer/rail/UI y check_fps_rail.py. Cinco pasadas RTX 180 s con mismo binario/perfil/ruta/caché salen 0 y conservan origen; tramo rail 10 a 80 tarda 87,969–87,971 s a todos los caps, dentro de variación de dos controles 60. CI 493 tests pasa (34 omitidos Linux); Windows 483 pasa (16 omitidos) y fila FPS nativa adicional. No acredita todo HUD/menú, foto/puntuación/persistencia ni AMD/FreeSync; un warm boot aislado falló SwitchToFiber(0) antes de presentar, causa sin atribuir. Cuatro controles de arranque posteriores pasan. Pedida revisión; no marcar HECHA. Integrado main/PR #21 en la rama del PR: 485 tests Windows pasan (16 omitidos), CI 494 pasa (34 omitidos Linux). RTX: 90 s a 144 nativo y dos pasadas 120 + Internal x2 salen 0, targets 3840x2160, HUD/miniaturas completos, sin fallos de shader/draws omitidos; caché x2 caliente elimina la espera de traducción observada, quedan picos. No es aceptación AMD ni toda foto/evaluación. Evidencia privada build/fps01/, informe docs/HIGH_FPS.md. Conserva la implementación de SS-02 de Claude. |
 | GYRO-02 | P1 | REVISIÓN | Claude · 0.8.0-tester | Pestaña Mods, `gyro_sens` 2,5 por defecto (0,1–10, en vivo). Falta prueba con mando físico. |
 | PIPE-MO-01 | P2 | REVISIÓN | Claude · 0.8.0-tester | Prewarm de los pipelines del pase de movimiento por objeto (99 de 286 registros se descartaban). |
