@@ -1,43 +1,41 @@
-# Recuperación del kit e identidad de sesión
+# Kit recovery and session identity
 
-## Fallos reproducidos y correcciones
+## Reproduced failures and fixes
 
-Un caché con una herramienta dañada se rechazaba antes de intentar el bundle
-válido. Ahora solo un fallo de integridad inicia recuperación local: se verifica
-el bundle exacto, se extrae/verifica el candidato completo y se serializa su
-publicación mediante lock del sistema operativo. El caché fallido queda en una
-cuarentena propia. Cancelación/permisos no se convierten en una descarga ni se
-modifican imports/perfiles; un fallo de publicación restaura el slot anterior.
-Una revisión independiente y pruebas de rollback/publicación simultánea pasan.
-Las cuarentenas se conservan para diagnóstico, sin limpieza automática.
+A cache with a damaged tool was rejected before the valid bundle was tried. Now only an
+integrity failure starts a local recovery: the exact bundle is verified, the complete
+candidate is extracted/verified and its publication is serialised with an operating-system
+lock. The failed cache goes to its own quarantine. Cancellation/permissions are not turned
+into a download, and imports/profiles are not modified; a publication failure restores the
+previous slot. An independent review and rollback/concurrent publication tests pass.
+Quarantines are kept for diagnosis, with no automatic cleanup.
 
-Los logs de lanzamientos anteriores no permitían contrastar automáticamente el
-ejecutable con la versión del launcher. Cada intento nuevo registra su SHA256
-leído, claims del marcador separados, discrepancia si existe y exit code real.
-El hash se calcula en el worker, no en Tk. Una afirmación del marcador no
-sustituye ese hash. Mayúsculas hex válidas no producen discrepancias falsas.
+Logs from earlier launches did not allow automatically checking the executable against the
+launcher's version. Each new attempt records the SHA256 it read, the marker's separate
+claims, a mismatch if any, and the real exit code. The hash is computed in the worker, not
+in Tk. A marker's claim does not replace that hash. Valid upper-case hex does not produce
+false mismatches.
 
-El triaje CPU del PR #2 se integra por separado del overlay de applets, todavía
-en revisión. Reconoce nombres nuevos/legados, conserva clasificación y marca la
-generación como inferencia del log. Se endurecieron rutas con espacios y JSON
-anidado/corrupto; datos de identidad aceptados son escalares acotados. El ZIP
-incluye análisis JSON legible por sesión, además de texto redactado y resumen.
-No requiere ejecutar agentes, red ni utilidades externas en el PC de prueba.
+The CPU triage of PR #2 is integrated separately from the applet overlay, still in review.
+It recognises new/legacy names, keeps the classification and marks generation as an
+inference from the log. Paths with spaces and nested/corrupt JSON were hardened; accepted
+identity data are bounded scalars. The ZIP includes a readable JSON analysis per session,
+besides redacted text and a summary. It needs no agents, network or external utilities on
+the test PC.
 
-## Evidencia y límites
+## Evidence and limits
 
-387 pruebas completas antes de la nueva identidad, una omitida por privilegios
-symlink; las comprobaciones de reparse attributes se ejecutan. Evidencia privada:
-build/pending-investigation-full.log, portable-observability-reviewed.log,
-diagnostics-reviewed-final.log. El rechazo de un caché sin bundle se conserva;
-no se usan kits de versiones/revisiones distintas para rescatarlo.
+387 complete tests before the new identity, one skipped for symlink privileges; the
+reparse-attribute checks run. Private evidence: build/pending-investigation-full.log,
+portable-observability-reviewed.log, diagnostics-reviewed-final.log. Rejecting a cache
+without a bundle is kept; kits of other versions/revisions are never used to rescue it.
 
-El runtime 8ff756d se compiló desde cero y pasó selftest/loader. Prueba Vulkan
-aislada RTX de 20 segundos: salida 0, boot passed, INI legado intacto; SHA256
-d733b8c8d805fd73a523e297b520347752b017afef2d85c228137adfd2ef6968.
-La caché fría muestra picos con traducción de shaders, incluido 685,5 ms con
-593,3 ms de traducción agregada; los contadores se solapan y no deben sumarse.
-Esto no explica por sí solo el pico previo de 107 ms ni verifica fotos/AMD.
+Runtime 8ff756d was compiled from scratch and passed selftest/loader. Isolated 20-second
+RTX Vulkan test: exit 0, boot passed, legacy INI intact; SHA256
+d733b8c8d805fd73a523e297b520347752b017afef2d85c228137adfd2ef6968. The cold cache shows
+spikes with shader translation, including 685.5 ms with 593.3 ms of aggregated
+translation; the counters overlap and must not be added. This alone does not explain the
+earlier 107 ms spike, nor does it verify photos/AMD.
 
-La compilación y prueba anteriores no incluyen las nuevas trazas de presentación
-y pool; necesitan su verificación integrada y entrega con identidad propia.
+The earlier build and test do not include the new presentation and pool traces; they need
+their integrated verification and a delivery with its own identity.

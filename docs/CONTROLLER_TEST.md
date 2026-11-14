@@ -1,79 +1,75 @@
-# Prueba local del mando
+# Local controller test
 
-La prueba muestra la identidad que SDL detecta, su GUID, si tiene un mapeo de
-gamepad, los botones/ejes en vivo y las capacidades que informa el dispositivo.
-Un joystick sin mapeo sigue apareciendo con sus controles originales. Una
-capacidad de vibración significa que SDL la declara; la prueba no la activa.
+The test shows the identity SDL detects, its GUID, whether it has a gamepad mapping, the
+live buttons/axes and the capabilities the device reports. A joystick without a mapping
+still appears with its raw controls. A rumble capability means SDL declares it; the test
+does not trigger it.
 
-Para comprobar el mando en el segundo PC:
+To check the controller on the second PC:
 
-1. Cierra el juego y abre la prueba de mandos del launcher.
-2. Conecta el mando y comprueba nombre, GUID y reconocimiento. Si hay varios,
-   revisa cada ID por separado.
-3. Pulsa los botones y mueve ambas palancas y gatillos. Los botones deben volver
-   a reposo al soltarlos. Los ejes se muestran como valores SDL originales:
-   palancas aproximadamente de −32768 a 32767, gatillos mapeados de 0 a 32767.
-4. Desconecta y vuelve a conectar el mando. La entrada anterior debe desaparecer;
-   la nueva conexión puede recibir otro ID.
-5. Cierra la prueba antes de abrir el juego, importar datos o reconstruir el
-   runtime. Comprueba después los mismos controles dentro del juego.
+1. Close the game and open the launcher's controller test.
+2. Connect the controller and check name, GUID and recognition. With several, check each
+   ID separately.
+3. Press the buttons and move both sticks and triggers. Buttons must return to rest when
+   released. Axes are shown as raw SDL values: sticks about −32768 to 32767, mapped
+   triggers 0 to 32767.
+4. Disconnect and reconnect the controller. The old entry must disappear; the new
+   connection may get another ID.
+5. Close the test before opening the game, importing data or rebuilding the runtime. Then
+   check the same controls in the game.
 
-Si no se reconoce como gamepad, anota nombre/GUID y los botones/ejes originales.
-El archivo opcional `gamecontrollerdb.txt` va junto a `SDL3.dll` del runtime
-(`GameData` en la instalación normal). Se usa la misma precedencia que el juego:
-un `SDL_GAMECONTROLLERCONFIG_FILE` explícito suprime ese archivo local; cuando
-se carga el archivo local, se reaplican los mapeos inline de
-`SDL_GAMECONTROLLERCONFIG` para conservar las preferencias explícitas.
+If it is not recognised as a gamepad, note the name/GUID and the raw buttons/axes. The
+optional `gamecontrollerdb.txt` goes next to the runtime's `SDL3.dll` (`GameData` in a
+normal installation). The game's precedence applies: an explicit
+`SDL_GAMECONTROLLERCONFIG_FILE` suppresses that local file; when the local file is loaded,
+the inline mappings of `SDL_GAMECONTROLLERCONFIG` are applied again to keep explicit
+preferences.
 
-El diagnóstico no escribe partidas, perfiles ni bases de mandos; tampoco envía
-entradas, activa sensores, LED o vibración. No hace falta abrir una ventana Vulkan
-ni iniciar SDL video/audio/haptics. El launcher mantiene bloqueadas las operaciones
-incompatibles mientras el diagnóstico posee SDL.
+The diagnostic writes no saves, profiles or controller databases; it sends no input and
+does not turn on sensors, LEDs or rumble. It needs no Vulkan window and does not start SDL
+video/audio/haptics. The launcher keeps incompatible operations locked while the
+diagnostic owns SDL.
 
-## Backend para el launcher
+## Launcher backend
 
-`newsnap.controller_probe.Session(runtime_dir, env=None)` inicializa el SDL
-incluido en ese runtime. Usar constructor/context manager, `pump()`, `snapshot()`
-y `close()` desde el hilo principal de Tk; SDL exige el hilo principal para
-[inicializar subsistemas](https://wiki.libsdl.org/SDL3/SDL_Init) y
-[procesar eventos](https://wiki.libsdl.org/SDL3/SDL_PumpEvents).
+`newsnap.controller_probe.Session(runtime_dir, env=None)` initialises the SDL shipped in that
+runtime. Use the constructor/context manager, `pump()`, `snapshot()` and `close()` from the
+Tk main thread; SDL requires the main thread to
+[initialise subsystems](https://wiki.libsdl.org/SDL3/SDL_Init) and
+[process events](https://wiki.libsdl.org/SDL3/SDL_PumpEvents).
 
 ```python
 with Session(runtime_dir, env=controller_environment) as session:
-    controllers = session.snapshot()  # también hace pump
+    controllers = session.snapshot()  # also pumps
 ```
 
-La UI debe poseer su estado ocupado y `ProfileLock` durante toda la sesión, y
-programar snapshots con `after`, sin moverlos a un worker. `snapshot()` devuelve
-una lista serializable a JSON con `id`, `name`, `guid`, `vendor`, `product`,
-`recognized`, `virtual`, `connected`, `mapping`, `buttons`, `axes`, `raw_buttons`,
-`raw_axes`, `hats`, `capabilities` y `error`. Una lista vacía significa que no hay
-dispositivos enumerados. Una desconexión que coincide con una lectura puede
-aparecer una vez con `connected=false`; el siguiente snapshot cierra su handle.
-Los problemas globales generan `ProbeError`; las advertencias de mapeos están
-en `session.warnings` y la versión en `session.sdl_version`.
+The UI must own its busy state and `ProfileLock` for the whole session and schedule
+snapshots with `after`, without moving them to a worker. `snapshot()` returns a
+JSON-serialisable list with `id`, `name`, `guid`, `vendor`, `product`, `recognized`,
+`virtual`, `connected`, `mapping`, `buttons`, `axes`, `raw_buttons`, `raw_axes`, `hats`,
+`capabilities` and `error`. An empty list means no devices are enumerated. A disconnect
+that coincides with a read can appear once with `connected=false`; the next snapshot closes
+its handle. Global problems raise `ProbeError`; mapping warnings are in `session.warnings`
+and the version in `session.sdl_version`.
 
-Se abre una ruta absoluta a `SDL3.dll` con búsqueda segura de dependencias de
-Windows. Se adquiere únicamente `SDL_INIT_GAMEPAD` (que implica joystick y
-eventos). Cada handle abierto se cierra, los hints temporales se restauran, se
-libera la referencia de subsistema y finalmente se descarga la DLL para permitir
-reemplazar el runtime. No se usa `SDL_Quit` global.
+An absolute path to `SDL3.dll` is opened with Windows' safe dependency search. Only
+`SDL_INIT_GAMEPAD` (which implies joystick and events) is acquired. Every open handle is
+closed, temporary hints are restored, the subsystem reference is released and finally the
+DLL is unloaded so the runtime can be replaced. Global `SDL_Quit` is not used.
 
-## Evidencia automatizada
+## Automated evidence
 
 ```powershell
 python -m unittest tests.test_controller_probe -v
 ```
 
-Las pruebas nativas usan copias temporales de la DLL incluida y joysticks
-virtuales locales de SDL. Comprueban un gamepad mapeado y un joystick desconocido,
-lecturas de botones/ejes/hat, múltiples dispositivos, desconexión, precedencia
-de mapeos y descarga de DLL. Otra prueba compila los headers incluidos y compara
-la ABI de `bool`, GUID, ID y descriptor virtual con ctypes. Las pruebas de fallo
-verifican la limpieza de inicialización/hints/handles y la restricción de hilo.
+The native tests use temporary copies of the shipped DLL and SDL's local virtual
+joysticks. They check a mapped gamepad and an unknown joystick, button/axis/hat reads,
+several devices, disconnection, mapping precedence and DLL unloading. Another test compiles
+the shipped headers and compares the ABI of `bool`, GUID, ID and the virtual descriptor with
+ctypes. Failure tests check cleanup of initialisation/hints/handles and the thread rule.
 
-Runtime verificado durante el desarrollo: SDL **3.4.18**, DLL SHA-256
-`2b4b128d8d510cc2d442693cf848c050d700d43dc667afe9e5fd82b0570d667e`.
-Esta evidencia virtual no confirma la compatibilidad física del mando del
-segundo PC; esa aceptación depende de la prueba real y de su transporte USB o
-Bluetooth.
+Runtime verified during development: SDL **3.4.18**, DLL SHA-256
+`2b4b128d8d510cc2d442693cf848c050d700d43dc667afe9e5fd82b0570d667e`. This virtual evidence
+does not confirm physical compatibility of the second PC's controller; that acceptance
+depends on the real test and its USB or Bluetooth transport.
