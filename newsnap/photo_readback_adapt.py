@@ -310,6 +310,21 @@ def edits():
          '    if (req.size > n) {'),
         ('        if (shadow_on && h->pool && !((PoolRec *)h->pool)->stouched) shadow_touch(h->pool);',
          '        if (h->pool && ((PoolRec *)h->pool)->smap && !((PoolRec *)h->pool)->stouched) shadow_touch(h->pool);'),
+        ('    rt_log("mem: mode %s (%s): %s", mode == 2 ? "verify" : mode ? "mirror" : "import", why,',
+         '    {   // FOTO-01: the knobs of an AMD A/B session, as this run resolved them ("-": not set, default).\n'
+         '        static const char *const knobs[] = {"AC_SHADOW", "AC_MEMORY", "AC_REPLAY_ASYNC", "AC_TEX_ALIAS",\n'
+         '            "AC_TEX_PREFETCH", "AC_ASTC", "AC_ASTC_BC", "AC_PIPE_SKIP", "AC_GPL", "AC_VK_RECORDER",\n'
+         '            "AC_UBO_SNAPSHOT", "AC_UPSCALING", "AC_VK_PRESENT", "AC_DUMP_KEY"};\n'
+         '        char line[768];\n'
+         '        size_t used = 0;\n'
+         '        for (size_t i = 0; i < sizeof knobs / sizeof *knobs && used < sizeof line - 64; i++) {\n'
+         '            const char *value = cfg_get(knobs[i]);\n'
+         '            used += (size_t)snprintf(line + used, sizeof line - used, " %s=%.24s", knobs[i] + 3,\n'
+         '                                     value && *value ? value : "-");\n'
+         '        }\n'
+         '        rt_log("amd_diag: shadow storage %s;%s", shadow_on ? "on" : "off", line);\n'
+         '    }\n'
+         '    rt_log("mem: mode %s (%s): %s", mode == 2 ? "verify" : mode ? "mirror" : "import", why,'),
         ('void vk_mem_shadow_sync(void) {\n    if (!shadow_on) return;',
          'void vk_mem_shadow_sync(void) {\n    if (!snap_shadow_active()) return;'),
         ('void vk_mem_gpu_pending(uint64_t addr, uint64_t size) {\n    if (!shadow_on || !size) return;',
