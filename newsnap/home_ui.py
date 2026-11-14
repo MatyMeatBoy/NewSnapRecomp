@@ -32,7 +32,7 @@ class HomePanel:
         actions=ttk.Frame(card);actions.pack(anchor='w')
         self.load_button=ttk.Button(actions,text='Cargar GameData…',command=self.choose_data)
         self.load_button.pack(side='left')
-        self.import_button=ttk.Button(actions,text='Importar NSP/XCI…',command=self.import_dump)
+        self.import_button=ttk.Button(actions,text='Importar NSP/XCI/NSZ…',command=self.import_dump)
         self.import_button.pack(side='left',padx=(8,0))
         self.verify_button=ttk.Button(actions,text='Verificar datos',command=self.verify)
         self.verify_button.pack(side='left',padx=8)
@@ -86,15 +86,15 @@ class HomePanel:
         HomePanel._use_data(self,chosen)
 
     def import_dump(self):
-        """Import the base game (NSP or XCI), the 2.0.1 update (NSP) and prod.keys into GameData.
+        """Import the base game (NSP, NSZ, XCI or XCZ), the 2.0.1 update (NSP or NSZ) and prod.keys into GameData.
 
         Runs `newsnap import` with the build kit's Python (cryptography, the pinned NCA reader) and the
         bundled hactool for the update RomFS; the owner's files are only read."""
         if self.launcher.busy:return
         ask=lambda title,types:filedialog.askopenfilename(parent=self.launcher.root,title=title,filetypes=types)
-        base=ask('Juego base de New Pokémon Snap',[('Volcado del juego','*.nsp *.xci'),('Todos','*.*')])
+        base=ask('Juego base de New Pokémon Snap',[('Volcado del juego','*.nsp *.nsz *.xci *.xcz'),('Todos','*.*')])
         if not base:return
-        update=ask('Actualización 2.0.1',[('Actualización','*.nsp'),('Todos','*.*')])
+        update=ask('Actualización 2.0.1',[('Actualización','*.nsp *.nsz'),('Todos','*.*')])
         if not update:return
         keys=ask('Tus claves de consola (prod.keys)',[('Claves','*.keys'),('Todos','*.*')])
         if not keys:return
