@@ -1,95 +1,89 @@
-# FOTO-02 · Auditoría CPU de fotos guardadas (bandas negras)
+# FOTO-02 · CPU audit of saved photos (black bands)
 
-Estado: **REVISIÓN** · Responsable: MatyMeatBoy · 2026-11-13
-Equipo de la auditoría: RTX 4060 Laptop (el mismo de RTX tester). **No hay bytes
-generados en la RX 6900 XT del propietario en este equipo**; ver Límites.
+Status: **REVIEW** · Owner: MatyMeatBoy · 2026-11-13
+Audit hardware: RTX 4060 Laptop (the same as the RTX tester's). **No bytes generated on the owner's
+RX 6900 XT are on this machine**; see Limits.
 
-## Pregunta
+## Question
 
-¿Las bandas negras de fotos y miniaturas están en los bytes guardados
-(captura → readback → JPEG) o solo en la vista previa (textura/presentación)?
+Are the black bands in photos and thumbnails in the saved bytes (capture → readback → JPEG) or
+only in the preview (texture/presentation)?
 
-## Resumen
+## Summary
 
-| Afirmación | Clase | Evidencia |
+| Claim | Class | Evidence |
 |---|---|---|
-| Las fotos y miniaturas guardadas localmente (NVIDIA) están limpias en bytes | **Observado** | 150 bancos en 14 copias de perfil, 0 bandas, 0 bloques negros, CRC/Adler/estructura JPEG correctos |
-| El fallo del propietario (AMD) aparece en la pantalla de selección **antes de guardar** | **Observado** | Captura `b8af3c5e`: vista previa y las 2 miniaturas de la tira con franjas; mensaje «No puedes seleccionar una foto sin un sujeto que se vea claramente» |
-| Las franjas AMD no son bandas de ancho completo: son tramos válidos contiguos en orden de franjas de 48 filas | **Observado** (medido en la captura) | Geometría abajo |
-| Las fotos AMD con franjas probablemente nunca llegaron al banco 3/4 | **Inferido** | El juego no dejó seleccionarlas; no existe ningún guardado posterior a las 16:53 en este equipo |
-| El defecto está aguas arriba del JPEG (textura/readback sin comprimir) | **Hipótesis sin comprobar** | Vista previa y miniaturas muestran la misma corrupción y coincide el rechazo del sujeto. La coincidencia no demuestra que la evaluación lea esos píxeles ni excluye presentación, pitch o JPEG |
-| Si el JPEG AMD guardado contiene las franjas | **Sin determinar** | Requiere ejecutar la herramienta sobre una copia de un guardado AMD |
+| Locally saved photos and thumbnails (NVIDIA) are clean in bytes | **Observed** | 150 banks in 14 profile copies, 0 bands, 0 black blocks, correct CRC/Adler/JPEG structure |
+| The owner's failure (AMD) appears on the selection screen **before saving** | **Observed** | Screenshot `b8af3c5e`: preview and the strip's 2 thumbnails with bands; message «You can't select a photo without a clearly visible subject» |
+| The AMD bands are not full-width bands: they are contiguous valid runs in the order of 48-row strips | **Observed** (measured on the screenshot) | Geometry below |
+| The banded AMD photos probably never reached bank 3/4 | **Inferred** | The game did not let them be selected; no save after 16:53 exists on this machine |
+| The defect is upstream of the JPEG (uncompressed texture/readback) | **Unchecked hypothesis** | Preview and thumbnails show the same corruption and the subject rejection coincides. The coincidence does not show that the evaluation reads those pixels, nor exclude presentation, pitch or JPEG |
+| Whether the saved AMD JPEG contains the bands | **Undetermined** | Needs the tool run on a copy of an AMD save |
 
-## Herramienta
+## Tool
 
-`tools/audit_saved_photos.py` (solo lectura, CPU):
+`tools/audit_saved_photos.py` (read-only, CPU):
 
-- Abre los bancos 3 (`00c31e53dde3ac51`, fotos) y 4 (`4f342de95be7450e`,
-  miniaturas) con `shared_read`; calcula SHA-256 del archivo antes y después
-  (`unchanged_after_read`).
-- Por posición: magia, longitudes, Adler-32 y CRC-32 por separado, metadatos,
-  relleno tras EOI. A diferencia de `saves.saved_jpegs`, no se detiene en la
-  primera entrada dañada.
-- Por JPEG: recorrido de segmentos (SOF, muestreo, DRI, secuencia RST, EOI),
-  decodificación completa con Pillow, dimensiones SOF vs. decodificadas.
-- Píxeles: filas/columnas negras (≥98 % con canal máx. ≤24) clasificadas
-  `edge`/`interior` y alineación a 8/16; proporción de bloques 16×16 totalmente
-  negros (`black_block_fraction`, sospechoso ≥1 %) para franjas de ancho parcial.
-- Veredicto: `bandas-en-bytes-de-foto`, `bandas-solo-en-miniaturas-guardadas`,
-  `incompleto-o-dañado`, `bytes-limpios` o `sin-fotos`. `bytes-limpios` exige
-  evidencia completa: todos los bancos leídos, tamaños coherentes, checksums
-  válidos, todos los JPEG decodificados y sin problemas de estructura. Cualquier
-  excepción queda en `summary.incidencias`. Código de salida: 0 limpio, 1 con
-  bandas, 2 incompleto.
-- Un JPEG malformado o un error por entrada no detiene el resto del banco.
-- Salidas: nunca coinciden con un banco de entrada (misma ruta, enlace
-  simbólico o hardlink), ni caen en la carpeta de un banco de entrada, ni usan
-  un nombre de archivo de guardado, ni entran en `save`, `save-tx`,
-  `save-backup`, `GameData` o `newsnapGameData`. Se comprueba antes de leer y
-  otra vez al escribir cada archivo. El informe JSON no contiene imágenes;
-  `--export-flagged` copia solo los JPEG marcados a una carpeta local.
+- Opens banks 3 (`00c31e53dde3ac51`, photos) and 4 (`4f342de95be7450e`, thumbnails) with
+  `shared_read`; computes the file's SHA-256 before and after (`unchanged_after_read`).
+- Per slot: magic, lengths, Adler-32 and CRC-32 separately, metadata, padding after EOI.
+  Unlike `saves.saved_jpegs`, it does not stop at the first damaged entry.
+- Per JPEG: segment walk (SOF, sampling, DRI, RST sequence, EOI), full decode with Pillow,
+  SOF vs. decoded dimensions.
+- Pixels: black rows/columns (≥98 % with max channel ≤24) classed `edge`/`interior` and their
+  8/16 alignment; the share of fully black 16×16 blocks (`black_block_fraction`, suspicious at
+  ≥1 %) for partial-width bands.
+- Verdict: `bandas-en-bytes-de-foto` (bands in photo bytes),
+  `bandas-solo-en-miniaturas-guardadas` (bands only in saved thumbnails),
+  `incompleto-o-dañado` (incomplete or damaged), `bytes-limpios` (clean bytes) or `sin-fotos`
+  (no photos). `bytes-limpios` requires complete evidence: every bank read, consistent sizes,
+  valid checksums, every JPEG decoded and no structure problems. Any exception is kept in
+  `summary.incidencias`. Exit code: 0 clean, 1 with bands, 2 incomplete.
+- A malformed JPEG or a per-entry error does not stop the rest of the bank.
+- Outputs: never match an input bank (same path, symbolic link or hardlink), never land in an
+  input bank's folder, never use a save file name, and never go into `save`, `save-tx`,
+  `save-backup`, `GameData` or `newsnapGameData`. This is checked before reading and again when
+  writing each file. The JSON report contains no images; `--export-flagged` copies only the
+  flagged JPEGs to a local folder.
 
 ```
-.venv\Scripts\python -X utf8 tools\audit_saved_photos.py <copia-de-perfil> --out build\photo-audit\informe.json --export-flagged build\photo-audit\flagged
+.venv\Scripts\python -X utf8 tools\audit_saved_photos.py <profile-copy> --out build\photo-audit\report.json --export-flagged build\photo-audit\flagged
 ```
 
-## Resultados locales (NVIDIA)
+## Local results (NVIDIA)
 
-Comando: todos los perfiles con `save/` bajo `build/` más sus `save-tx/work`
-→ `build/photo-audit/all-build-copies.json` (1 min 34 s).
+Command: every profile with `save/` under `build/` plus their `save-tx/work` →
+`build/photo-audit/all-build-copies.json` (1 min 34 s).
 
-- 150 bancos leídos, 0 errores de cabecera, 0 tamaños incoherentes, 0 archivos
-  modificados por la lectura.
-- 136 bancos solo con posiciones vacías (954 posiciones de foto, 252 de miniatura).
-- 14 perfiles (`v03-final-native-smoke` … `v05-original-pacing-warm-02`)
-  comparten las mismas 2 fotos de la ruta del tutorial de la 0.3:
+- 150 banks read, 0 header errors, 0 inconsistent sizes, 0 files modified by reading.
+- 136 banks with only empty slots (954 photo slots, 252 thumbnail slots).
+- 14 profiles (`v03-final-native-smoke` … `v05-original-pacing-warm-02`) share the same 2
+  photos from 0.3's tutorial route:
 
-| Banco | Pos. | SHA-256 (16) | Tamaño | JPEG | Bytes | Bandas | Bloques negros |
+| Bank | Slot | SHA-256 (16) | Size | JPEG | Bytes | Bands | Black blocks |
 |---|---|---|---|---|---|---|---|
-| fotos | 0 | `8c17e804a8352074` | 1080×720 | baseline 4:2:0, sin DRI | 379 697 | ninguna | 0 % |
-| fotos | 1 | `62553a0656964a2c` | 1080×720 | baseline 4:2:0, sin DRI | 434 350 | ninguna | 0 % |
-| miniaturas | 0 | `5cf214065a29b1ea` | 240×200 | baseline 4:2:0, sin DRI | 39 984 | ninguna | 0 % |
-| miniaturas | 1 | `505f067149be2290` | 240×200 | baseline 4:2:0, sin DRI | 38 395 | ninguna | 0 % |
+| photos | 0 | `8c17e804a8352074` | 1080×720 | baseline 4:2:0, no DRI | 379 697 | none | 0 % |
+| photos | 1 | `62553a0656964a2c` | 1080×720 | baseline 4:2:0, no DRI | 434 350 | none | 0 % |
+| thumbnails | 0 | `5cf214065a29b1ea` | 240×200 | baseline 4:2:0, no DRI | 39 984 | none | 0 % |
+| thumbnails | 1 | `505f067149be2290` | 240×200 | baseline 4:2:0, no DRI | 38 395 | none | 0 % |
 
-Inspección visual de la foto 1 y su miniatura: imagen completa y coherente.
-`newsnapGameData/profile` (solo lectura, sin tocar) tiene los bancos vacíos y
-sin cambios desde las 04:26; las fotos del informe del propietario (16:53:29) no
-están en este equipo.
+Visual inspection of photo 1 and its thumbnail: complete, coherent image.
+`newsnapGameData/profile` (read-only, untouched) has empty banks, unchanged since 04:26; the
+photos from the owner's report (16:53:29) are not on this machine.
 
-## Geometría de las franjas en la captura AMD
+## Geometry of the bands in the AMD screenshot
 
-Captura `build/user-reports/clipboard-b8af3c5e-….png` (1600×901; la vista
-previa ocupa 601×401 px ≈ 1080×720 × 0,556):
+Screenshot `build/user-reports/clipboard-b8af3c5e-….png` (1600×901; the preview covers
+601×401 px ≈ 1080×720 × 0.556):
 
-- Transiciones verticales cada ≈26,7 px de pantalla = **48 filas de foto**
-  (15 franjas). No hay cortes a media franja.
-- Dentro de una franja el corte horizontal cae en x ≈ 215, 285, 503, 573, 791,
-  861 px de foto (no es una rejilla de teselas en X).
-- Recorriendo la imagen como 15 franjas de 1080×48 concatenadas, los tramos
-  **válidos** son ≈[70, 1080), [4102, 5112), [8134, 9144), [12166, 13176): unos
-  **1010 px de franja válidos cada 4032**, es decir, ≈1 de cada 4 tramos
-  contiguos; el resto es negro puro (canal máx. ≤6).
-- Mapa de 15×15 (`.` válido, `#` negro, `?` mixto/tapado por la UI):
+- Vertical transitions every ≈26.7 screen px = **48 photo rows** (15 strips). No cuts in the
+  middle of a strip.
+- Inside a strip the horizontal cut falls at x ≈ 215, 285, 503, 573, 791, 861 photo px (not a
+  tile grid in X).
+- Walking the image as 15 concatenated 1080×48 strips, the **valid** runs are ≈[70, 1080),
+  [4102, 5112), [8134, 9144), [12166, 13176): about **1010 valid px every 4032**, i.e. ≈1 in 4
+  contiguous runs; the rest is pure black (max channel ≤6).
+- 15×15 map (`.` valid, `#` black, `?` mixed/covered by the UI):
 
 ```
 .........?.....
@@ -109,70 +103,65 @@ previa ocupa 601×401 px ≈ 1080×720 × 0,556):
 ###??##########
 ```
 
-Lectura (hipótesis para orientar pruebas de FOTO-01, **no una causa
-determinada**): el contenido válido parece estar en su sitio y el resto en
-negro, con periodicidad en un orden por franjas de 48 filas. Una explicación
-compatible es una copia/subida/readback troceado en el que solo llega parte de
-los trozos (rangos de buffer, páginas sucias, trabajos paralelos incompletos).
-La medición procede de una captura reescalada y no excluye por sí sola errores
-de pitch, de presentación o del JPEG. Prueba sugerida: buscar en el renderer
-qué recorre la imagen de 1080×720 en franjas de 48 filas o en trozos de
-≈1008×48 px (≈193 536 bytes en RGBA8) y volcar la textura de captura.
+Reading (a hypothesis to guide FOTO-01 tests, **not a determined cause**): the valid content
+seems to be in its place and the rest black, with a periodicity in a 48-row strip order. A
+compatible explanation is a chunked copy/upload/readback in which only part of the chunks
+arrives (buffer ranges, dirty pages, incomplete parallel jobs). The measurement comes from a
+rescaled screenshot and does not by itself exclude pitch, presentation or JPEG errors.
+Suggested test: find in the renderer what walks the 1080×720 image in 48-row strips or
+≈1008×48 px chunks (≈193 536 bytes in RGBA8) and dump the capture texture.
 
-## Relación con otras tareas
+## Relation to other tasks
 
-- **FOTO-01**: punto sugerido para instrumentar primero: la textura de captura
-  sin comprimir y su readback en AMD, antes del codificador JPEG.
-- **TUTO-01**: el mensaje «sin un sujeto que se vea claramente» aparece con las
-  mismas fotos corruptas. Es solo una coincidencia observada; no hay prueba de
-  que la evaluación lea esos píxeles.
-- La comparación foto↔miniatura del informe es solo orientativa: las miniaturas
-  son recortes 6:5 con desplazamiento horizontal distinto por foto (120 y 192 px
-  en las dos muestras), no una reducción de la foto.
+- **FOTO-01**: suggested point to instrument first: the uncompressed capture texture and its
+  readback on AMD, before the JPEG encoder.
+- **TUTO-01**: the «without a clearly visible subject» message appears with the same corrupt
+  photos. It is only an observed coincidence; there is no proof the evaluation reads those
+  pixels.
+- The report's photo↔thumbnail comparison is only indicative: thumbnails are 6:5 crops with a
+  different horizontal offset per photo (120 and 192 px in the two samples), not a reduction
+  of the photo.
 
-## Pruebas
+## Tests
 
 ```
 .venv\Scripts\python -X utf8 -m unittest tests.test_photo_audit tests.test_photos
 ```
 
-25 pruebas OK (20 en `tests/test_photo_audit.py`: bandas interiores/de
-borde/columna tras JPEG, franja de ancho parcial, todo negro, estructura y
-truncado, banco limpio sin modificar, bandas en foto, bandas solo en miniatura,
-entrada con checksum inválido sin ocultar el resto, clave errónea, negativa a
-escribir dentro del guardado, y las regresiones de la revisión).
+25 tests OK (20 in `tests/test_photo_audit.py`: interior/edge/column bands after JPEG, a
+partial-width strip, all black, structure and truncation, a clean bank left unmodified, bands
+in a photo, bands only in a thumbnail, an entry with an invalid checksum without hiding the
+rest, a wrong key, refusal to write inside the save, and the review's regressions).
 
-## Respuesta a la revisión de RTX tester (`photo-audit-review.md`)
+## Answer to the RTX tester's review (`photo-audit-review.md`)
 
-1. **Salida sobre entrada (P1)** — corregido: `check_output`/`safe_write`
-   comparan cada salida con todos los bancos descubiertos. Regresiones:
-   `--out` igual al banco, en su carpeta, hardlink al banco, nombre de banco en
-   otra carpeta, exportación dentro de la carpeta de entrada.
-2. **JPEG malformado aborta (P2)** — corregido: longitudes mínimas de SOF/DRI,
-   analizador protegido y errores conservados por entrada. Regresiones con SOF
-   C0 y DRI de longitud 2, solos y dentro de un banco con otra foto válida.
-3. **Veredicto limpio con JPEG ilegible (P1)** — corregido: veredicto
-   `incompleto-o-dañado` y salida 2. Regresión con el JPEG exacto de la revisión.
-4. **Fuerza de las inferencias** — rebajadas a hipótesis en este informe.
+1. **Output over input (P1)** — fixed: `check_output`/`safe_write` compare each output with
+   every discovered bank. Regressions: `--out` equal to the bank, in its folder, a hardlink to
+   the bank, a bank name in another folder, an export inside the input folder.
+2. **Malformed JPEG aborts (P2)** — fixed: minimum SOF/DRI lengths, a protected parser and
+   errors kept per entry. Regressions with SOF C0 and DRI of length 2, alone and inside a bank
+   with another valid photo.
+3. **Clean verdict with an unreadable JPEG (P1)** — fixed: verdict `incompleto-o-dañado` and
+   exit 2. Regression with the review's exact JPEG.
+4. **Strength of the inferences** — lowered to hypotheses in this report.
 
-Tras las correcciones se repitió la auditoría sobre tres perfiles
-representativos (`v03-jump-fixed`, `v05-original-color-chain`,
-`v04-production-neutral-fsr31`): `bytes-limpios`, evidencia completa.
+After the fixes the audit was repeated on three representative profiles (`v03-jump-fixed`,
+`v05-original-color-chain`, `v04-production-neutral-fsr31`): `bytes-limpios`, complete
+evidence.
 
-## Límites
+## Limits
 
-- Ningún byte generado en AMD ha sido auditado. El veredicto «bytes limpios»
-  vale solo para NVIDIA RTX 4060 y para 2 fotos de una única ruta.
-- La geometría AMD se mide sobre una captura de pantalla reescalada (±2 px de
-  foto); los tamaños de trozo son aproximados.
-- La detección de bloques negros puede marcar escenas legítimamente muy
-  oscuras (cuevas, noche); `--export-flagged` existe para revisarlas a ojo.
-- No se modificó `saves.py`, `photos.py` ni ningún punto de integración.
+- No byte generated on AMD has been audited. The «clean bytes» verdict holds only for the
+  NVIDIA RTX 4060 and 2 photos from a single route.
+- The AMD geometry is measured on a rescaled screenshot (±2 photo px); the chunk sizes are
+  approximate.
+- Black-block detection can flag legitimately very dark scenes (caves, night);
+  `--export-flagged` exists to review them by eye.
+- `saves.py`, `photos.py` and every integration point were left unchanged.
 
-## Siguiente paso propuesto (propietario, AMD)
+## Proposed next step (owner, AMD)
 
-1. Con el juego cerrado, copiar el perfil a una carpeta de trabajo y ejecutar
-   la herramienta sobre la copia. Si el guardado tiene fotos, el veredicto
-   decide entre captura (bytes) y vista previa.
-2. Si no llegó a guardarse ninguna foto (softlock del tutorial), la prueba
-   decisiva es un volcado de la textura de captura desde el renderer (FOTO-01).
+1. With the game closed, copy the profile to a working folder and run the tool on the copy. If
+   the save has photos, the verdict decides between capture (bytes) and preview.
+2. If no photo got saved (tutorial softlock), the decisive test is a dump of the capture
+   texture from the renderer (FOTO-01).
