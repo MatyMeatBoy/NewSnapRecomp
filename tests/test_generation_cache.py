@@ -247,6 +247,12 @@ class BuildCacheIntegrationTests(TestCase):
             sdk=root/'sdk'
             (sdk/'bin').mkdir(parents=True)
             for name in ('SDL3.dll','libopus-0.dll','ac_xlate.exe','ac_xlate.id'):(sdk/'bin'/name).write_bytes(b'fixture tool')
+            # Real tool verification against a controlled public fixture pin.
+            tool = b'fixture tool'
+            tool_id = 'a' * 64
+            (sdk/'bin/ac_xlate.id').write_text(tool_id + '\n',encoding='ascii')
+            (root/'profiles/translator-windows.json').write_text(json.dumps(dict(
+                format=1,platform='windows-x64',size=len(tool),sha256=hashlib.sha256(tool).hexdigest(),identity=tool_id)))
             calls={'generate':0,'compile':0}
             def adapt(destination,**kwargs):
                 for name in ('recomp/gen.py','tools/build_game.py'):
@@ -265,7 +271,8 @@ class BuildCacheIntegrationTests(TestCase):
                 else:
                     calls['compile']+=1
                     (output/'newsnap.exe').write_bytes(b'newly compiled fixture')
-            with patch.object(builder,'ROOT',root),patch.object(builder,'adapt_sources',side_effect=adapt),\
+            with patch('newsnap.translator.PIN',root/'profiles/translator-windows.json'),\
+                 patch.object(builder,'ROOT',root),patch.object(builder,'adapt_sources',side_effect=adapt),\
                  patch.object(builder,'stage_runtime_shaders',return_value=True),patch.object(builder,'run_logged',side_effect=run),\
                  patch.object(builder,'verify_random_range_original') as verify_bridge,\
                  patch('newsnap.upstream.extractor',return_value=SimpleNamespace(index_romfs=lambda _:[])),\

@@ -1,0 +1,17 @@
+{
+  "format": 1,
+  "platform": "windows-x64",
+  "size": 3371008,
+  "sha256": "e5705d9e82f248e72815afece928988c9c18fb99829a421651fc1c389de9f174",
+  "identity": "b9ccfec46b187eee1f6c3c281ad7ce4574a4877f7b334286b080bf3ee270902e",
+  "provenance": {
+    "donor_commit": "248e0b29f308ca84a2d2092019cc60e7fc50ae85",
+    "semantics_upstream_commit": "c0e66fe4c1d532e728444c3ade6ff390f734151b",
+    "dotnet_sdk": "10.0.404",
+    "native_aot": true,
+    "semantic_patches": {
+      "0013-bitfield-defined-ranges.patch": "924f122dbf258d018f496b20091e39182ed3a61d933f9d2719d5ef47227b9681",
+      "0014-funnel-defined-shifts.patch": "404b9d5f9160c8fecbebfcb63ab55c860a85017f04817da345421c6459e2914c"
+    }
+  }
+}
