@@ -130,3 +130,110 @@ integration, compiler dependencies and runtime acceptance belong to the
 coordinator. The microbenchmark figures above remain historical CPU-only
 measurements: no benchmark was rerun during the reserved GPU acceptance, and no
 new FPS or physical AMD claim follows from restoring this code.
+
+## 0.6 native integration, functional control and bounded A/B, 2026-11-14
+
+Private evidence uses the same rebuilt executable throughout:
+`018d87d6485fcdd6261a099af2a9fc6bd2272b165e63a13afefd8640a9a58a7f`.
+It was produced by the isolated offline-kit consumer recorded in
+`build/v06-offline-package/verification.json`, with recipe revision `8f4510ba`.
+The later `82e01064` revision changes packaging/tests/documentation, not runtime
+or native generation inputs; this does not relabel the native producer.
+
+The compiled resource checksum function `f_700015fe90` in
+`build/v06-crc-native-disassembly.txt` contains the startup-flag branch, slicing
+table accesses and scalar fallback. Independent review compared all 313 emitted
+instruction-byte rows in that dump against the actual PE image with the SHA above.
+This demonstrates inclusion in the tested native function, rather than assuming
+that a header change necessarily affected its objects.
+
+### Functional RTX control, separate from timing
+
+The same SHA completed the 540-second functional route in
+`build/v06-final-photo540/run.json`: exit 0, boot passed, no fatal, source profile
+unchanged and one `slicing-by-eight` startup log. Its log records 32,260 presented
+frames, zero unimplemented NVN calls, validation errors, shader failures and
+skipped draws. This was a functional run with captures and concurrent staging
+I/O, not a performance benchmark.
+
+`build/v06-final-photo540/photo-audit.json` reports `bytes-limpios`: two saved
+1080x720 JPEGs and two 240x200 thumbnails, with no checksum/structure/decode
+failures or detected black bands/blocks under the auditor's stated thresholds.
+This is a separate saved-byte control on RTX 4060; it neither establishes AMD
+acceptance nor proves CRC caused or resolved an earlier rendering defect. No new
+GPU readback-pair equality result is claimed for this run.
+
+### Same-binary CRC A/B protocol
+
+The valid experiment is **only** `build/v06-crc-ab-fullscreen/`. It ran two
+20-second warmups, CRC OFF then ON, followed by four measured 20-second runs in
+reversed order: OFF/ON, then ON/OFF. `AC_SNAP_RANDOM_RANGE=1` stayed fixed.
+The initial copied profile and input route hashes match in every run. After the
+warmups, one common application-cache snapshot was sealed and its 1,258-file
+inventory restored before each measured run. GPU-driver/OS caches were not
+copied or reset; warmups and reversed order reduce that confound without proving
+identical driver-cache state.
+
+All six receipts verify the exact executable SHA before/after each run, one CRC
+startup message matching its toggle, random-range ON, successful boot/exit and
+zero validation/shader/unimplemented counters. Actual presentation was FIFO;
+swapchain and source picture were 1920x1080, scale 1, native Original at render
+100%, TV/docked and a 60 FPS cap. Environment settings match apart from CRC and
+private output-folder paths. GetSystemPowerStatus reports AC connected and
+battery saver off before/after all six runs. Protected owner/private sources
+compare byte-identically before/after the experiment.
+
+There were no screenshots, readback, thumbnails, core diagnostics, sampling or
+new present instrumentation. The existing `perf,present` log and thumbnail-free
+flight CSV remained enabled equally. The CSV contains frames 1–1030, not the
+entire run; whole-run statistics below use the game-queued present intervals in
+the log. Those and the host-present call timestamps are CPU observations, not
+physical display timestamps or FreeSync confirmation.
+
+The first attempt, `build/v06-crc-ab/`, is preserved and excluded. Its first OFF
+warmup was correctly rejected for actual 1920x1055 extent. Background test mode
+intentionally suppresses startup fullscreen. The new harness uses
+`AC_BACKGROUND_WINDOW=0` with `AC_FULLSCREEN=1`; no native window-policy change
+was needed. No statistics from that rejected attempt enter this comparison.
+
+### Observed intervals, including regressions
+
+Milliseconds, whole measured game-queued interval series:
+
+| Run/order | Samples | Mean | p50 | p95 | p99 | Maximum | >25 ms | >50 ms | >100 ms |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| Pair 1 OFF, first | 1,187 | 17.052 | 16.649 | 19.556 | 38.678 | 368.367 | 31 | 8 | 1 |
+| Pair 1 ON, second | 1,189 | 16.945 | 16.656 | 19.150 | 32.163 | 300.667 | 21 | 7 | 1 |
+| Pair 2 ON, first | 1,187 | 17.022 | 16.642 | 19.514 | 30.432 | 337.114 | 17 | 7 | 1 |
+| Pair 2 OFF, second | 1,181 | 17.090 | 16.654 | 19.786 | 40.109 | 302.479 | 28 | 9 | 2 |
+
+Pooled OFF/ON values are p99 **39.903/32.037 ms**, about 19.7% lower in these
+samples, with median **16.651/16.652 ms** essentially unchanged. Counts above
+25/50/100 ms are **59/17/3 OFF** versus **38/14/2 ON**. p99 decreases in both
+orders, by 6.514 and 9.677 ms respectively. These are observations from this short
+route, not a broad FPS improvement claim.
+
+The maximum is not uniformly improved: Pair 2 ON is **337.114 ms**, worse than
+OFF **302.479 ms** by **34.635 ms**. The pooled maxima (368.367 OFF, 337.114 ON)
+must not hide that result. Host-present call maxima also worsen in Pair 1
+(50.448 OFF versus 65.097 ON), despite lower game-queued p99. In the sampled
+steady window, frames 600–1030, p99 changes 19.367→19.199 ms in Pair 1 but
+19.620→19.745 ms in Pair 2. There is no consistent steady-window gain established.
+
+All measured flight windows record zero skipped shader/pipeline draws and zero
+new shader translations; each records 95 pipeline creations. These counts do not
+prove zero driver work or zero pipeline wait. Thread wait categories can overlap
+and must not be added as exclusive wall-time components or used alone to assign
+a stall to the GPU.
+
+Raw receipts, logs, CSV and `comparison.json` remain private. Independent review
+recomputed per-run and pooled percentiles from the logs with NumPy and checked
+log hashes, phase/order, same binary/profile/route, common cache maps, actual mode/
+extent and power observations. No validity discrepancy was found.
+
+This is one RTX 4060 Laptop, two reversed pairs and a short route. Thermal state,
+driver caches and scheduling noise are not fully controlled; millisecond tails
+still reach hundreds of milliseconds. No general FPS gain, complete-game
+acceptance, physical AMD RX 6900 XT improvement, VRR status or resolution of the
+owner's photo/color/animation reports follows from it. The CRC scalar opt-out
+remains `AC_SNAP_CRC32_SLICE8=0`.
