@@ -24,11 +24,19 @@ class BuildProgressTests(unittest.TestCase):
         for line in ['[2/5] CC C:/private/owner.c','\x1b[32m[2/5] CC thing\x1b[0m']:
             value=parse_progress_line(line)
             self.assertEqual((value.stage,value.current,value.total),('compile',2,5))
+            self.assertEqual(value.label,'Compilando · lote actual')
             self.assertNotIn('private',value.label)
         for line in ['[7/5] bad','[1/0] bad','FATAL: private details','random output']:
             self.assertIsNone(parse_progress_line(line))
         generated=parse_progress_line('emitted 12/143 chunks, 2s')
         self.assertEqual((generated.stage,generated.current,generated.total),('generate',12,143))
+        # Donor compilation starts separate Ninja invocations for each batch.
+        # Expose its actual counters rather than inventing an aggregate total.
+        first=parse_progress_line('[199/200] CC batch one')
+        second=parse_progress_line('[1/83] CC batch two')
+        self.assertEqual((first.current,first.total),(199,200))
+        self.assertEqual((second.current,second.total),(1,83))
+        self.assertEqual(second.ratio,1/83)
 
     def script(self,folder,body):
         path=folder/'child.py';path.write_text(body)
