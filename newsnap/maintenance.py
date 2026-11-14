@@ -22,6 +22,7 @@ from .version import VERSION, RUNTIME_API, RUNTIME_CAPABILITIES
 RUNTIME_FILES = ('newsnap.exe', 'SDL3.dll', 'libopus-0.dll', 'ac_xlate.exe',
                  'ac_xlate.id', 'romfs-index.bin', 'libxess.dll', 'nvngx_dlss.dll',
                  'upscalers/amd_fidelityfx_loader_vk.dll', 'upscalers/amd_fidelityfx_upscaler_vk.dll',
+                 'upscalers/amd_fidelityfx_framegeneration_vk.dll',
                  'upscalers/license.md', 'upscalers/3rdpartynotice.md',
                  'licenses/NVIDIA-DLSS.txt', 'licenses/NVIDIA-DLSS-receipt.json',
                  'licenses/FidelityFX-SDK-1.1.4-LICENSE.txt',

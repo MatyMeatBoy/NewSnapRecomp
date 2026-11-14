@@ -31,7 +31,7 @@ SUPERSAMPLE_SCALES = ('125', '133', '150', '175', '200', '250', '300', 'display'
 
 CHOICES = {'vk_present': ('mailbox', 'fifo', 'immediate', 'fifo_relaxed'),
            'operation_mode': ('docked', 'handheld'), 'render_scale': ('game', '50', '60', '70', '80', '90', '100') + SUPERSAMPLE_SCALES,
-           'upscaler': ('fsr', 'bilinear'), 'aniso': ('game', '2', '4', '8', '16', 'auto'), 'shadow_scale': ('1', '2', '4'),
+           'upscaler': ('fsr', 'bilinear'), 'aniso': ('game', '2', '4', '8', '16', 'auto'), 'shadow_scale': ('1', '2', '4'), 'frame_gen': ('off', 'fsr'),
            'aspect': ('fit', 'stretch'), 'color_preset': ('default', 'vivid', 'clarity', 'custom')}
 RANGES = {'volume': (0, 100, True), 'mouse_sens': (0, 10, False), 'sharpness': (0, 100, True),
           'color_brightness': (-30, 30, True), 'color_contrast': (70, 150, True),
@@ -56,9 +56,9 @@ CONTROL_DEFAULTS = {'mouse_sens': '1', 'motion': '1', 'gyro_sens': '2.5', 'pad_l
                     'lstick_deadzone': '', 'rstick_deadzone': '', **BINDING_DEFAULTS}
 DEFAULTS.update(CONTROL_DEFAULTS)
 DEFAULTS.update(lang='', audio_prefill_ms='20', perf_overlay='off')
-DEFAULTS.update(upscaling='off', upscaling_quality='quality')
+DEFAULTS.update(upscaling='off', upscaling_quality='quality', frame_gen='off')
 ENV_UI_OVERRIDES = ENV_UI_OVERRIDES | {'upscaling', 'upscaling_quality'}
-SECTIONS.update(upscaling='display', upscaling_quality='display')
+SECTIONS.update(upscaling='display', upscaling_quality='display', frame_gen='display')
 SECTIONS.update({key: 'input' for key in CONTROL_DEFAULTS})
 SECTIONS.update(lang='language', audio_prefill_ms='audio', perf_overlay='display')
 CHOICES.update(lang=LANGUAGES, pad_layout=('auto', 'nintendo', 'xbox', 'playstation'),
@@ -139,6 +139,8 @@ def validate_settings(values):
 
 
 def validate_video_combination(values):
+    if values.get('frame_gen', 'off') == 'fsr' and values.get('upscaling', 'off') not in ('fsr3', 'fsr4'):
+        raise ValueError('La generación de fotogramas FSR necesita la reconstrucción AMD FSR 3.1 o FSR 4 (cualquier preset, también Nativo).')
     if values.get('upscaling', 'off') != 'off' and values.get('render_scale') in SUPERSAMPLE_SCALES:
         raise ValueError('El reescalado temporal usa su preset de calidad. Elige una escala de 100 % o menos para activarlo.')
     if values.get('operation_mode') == 'handheld' and values.get('render_scale') in SUPERSAMPLE_SCALES:
