@@ -50,12 +50,14 @@ un modo no soportado como activado.
 
 ## Si vuelve a ocurrir el bloqueo del tutorial
 
-Conservar el registro, bancos y capturas en la copia de prueba antes de intentar
-recuperación. La hipótesis comunicada por el propietario es que mouse/giroscopio
-desplazaba la cámara; no está autorizado cambiar la lógica de selección para
-aceptar fotos sin sujeto. Reiniciar una ruta sobre una copia de un respaldo
-anterior aporta una reproducción limpia; no prueba que el guardado bloqueado se
-haya recuperado. No sobrescribir la partida original para forzar ese resultado.
+Por indicación del propietario, recuperar el perfil anterior queda fuera del
+alcance y no es requisito de aceptación. La prueba pendiente se centra en fotos
+nuevas y el flujo normal de la alpha en RX 6900 XT.
+
+Si vuelve a bloquearse una prueba nueva, conservar su registro, bancos y capturas
+para investigar. La hipótesis comunicada por el propietario es que mouse/giroscopio
+desplazaba la cámara; no cambiar la lógica para aceptar fotos sin sujeto ni editar
+progreso para ocultar un fallo.
 
 ## Resultado
 
