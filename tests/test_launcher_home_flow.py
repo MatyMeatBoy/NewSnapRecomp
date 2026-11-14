@@ -31,11 +31,56 @@ class HomeLaunchFlowTests(TestCase):
         self.assertEqual(event,('maintenance_needed',None))
         self.assertTrue(empty)
 
-    def test_current_runtime_with_required_missing_shaders_reports_failure(self):
-        event,empty=self.worker(False)
-        self.assertEqual(event[0],'finished')
-        self.assertIn('Faltan las bibliotecas',event[1])
-        self.assertTrue(empty)
+    def test_fresh_rebuilt_runtime_launches_without_shader_recordings(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root=Path(temporary);data=root/'GameData';data.mkdir()
+            marker=data/'newsnap-game.json'
+            marker.write_text('{"shader_preparation_required": true}',encoding='utf-8')
+            original=marker.read_bytes()
+            app=Launcher.__new__(Launcher)
+            app.project=root;app.events=queue.Queue();app.process=None
+            app._execute_game=Mock()
+            with patch('newsnap.launcher.settings.ProfileLock',return_value=nullcontext()), \
+                 patch('newsnap.launcher.settings.is_release_layout',return_value=True), \
+                 patch('newsnap.maintenance.assess_runtime',return_value={'needs_rebuild':False}):
+                app._run_game(root/'profile',None)
+            app._execute_game.assert_called_once_with(root/'profile',None)
+            self.assertEqual(marker.read_bytes(),original)
+            events=list(app.events.queue)
+            self.assertTrue(any(e[0]=='preparation_fallback' for e in events))
+            self.assertIn(('finished',None),events)
+            self.assertFalse(any(e[0]=='maintenance_needed' for e in events))
+
+    def test_available_preparation_failure_stops_before_game_and_keeps_pending_marker(self):
+        self.preparation_outcome(1)
+
+    def test_available_preparation_success_clears_pending_only_before_game(self):
+        self.preparation_outcome(0)
+
+    def preparation_outcome(self,code):
+        with tempfile.TemporaryDirectory() as temporary:
+            root=Path(temporary);data=root/'GameData';data.mkdir()
+            marker=data/'newsnap-game.json'
+            marker.write_text('{"shader_preparation_required": true}',encoding='utf-8')
+            original=marker.read_bytes();app=Launcher.__new__(Launcher)
+            app.project=root;app.events=queue.Queue();app.process=None
+            process=SimpleNamespace(wait=Mock(return_value=code),pid=42)
+            calls=[]
+            def popen(command,**kwargs):
+                calls.append((command,settings.shader_preparation_required(root)))
+                return process
+            with patch('newsnap.launcher.subprocess.Popen',side_effect=popen), \
+                 patch('newsnap.launcher.settings.game_environment',return_value={}), \
+                 patch('newsnap.launcher.settings.game_command',return_value=['native-game']), \
+                 patch('newsnap.session_log.runtime_identity',return_value={}):
+                if code:
+                    with self.assertRaisesRegex(RuntimeError,'preparación'):
+                        app._execute_game(root/'profile',['preparation-worker'])
+                    self.assertEqual(marker.read_bytes(),original)
+                    self.assertEqual(calls,[(['preparation-worker'],True)])
+                else:
+                    app._execute_game(root/'profile',['preparation-worker'])
+                    self.assertEqual(calls,[(['preparation-worker'],True),(['native-game'],False)])
 
     def test_unloaded_home_loads_data_without_navigating_to_updates(self):
         app=SimpleNamespace(busy=False,home=SimpleNamespace(

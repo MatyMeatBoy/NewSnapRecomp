@@ -48,16 +48,35 @@ def stage_runtime_shaders(sdk_root, source, out):
 
 
 def run_logged(command, logfile, env=None):
+    from .progress import parse_progress_line, unbuffered_command, MAX_LINE_BYTES
+    environment=dict(os.environ if env is None else env)
+    environment['PYTHONUNBUFFERED']='1'
+    environment['NINJA_STATUS']='[%f/%t] '
     logfile.parent.mkdir(parents=True, exist_ok=True)
     with logfile.open('w', encoding='utf-8') as log:
-        process = subprocess.Popen([str(x) for x in command], cwd=ROOT, env=env,
+        process = subprocess.Popen(unbuffered_command(command), cwd=ROOT, env=environment,
                                    creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0),
                                    stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                    text=True, encoding='utf-8', errors='replace')
         try:
-            for line in process.stdout:
+            # Real pipes expose readline(size): cap each allocation even when a
+            # compiler emits a huge line. Iterable-only test/error wrappers
+            # retain their existing cleanup contract.
+            bounded=callable(getattr(process.stdout,'readline',None))
+            lines=iter(lambda:process.stdout.readline(MAX_LINE_BYTES+1),'') if bounded else iter(process.stdout)
+            discarding=False
+            for line in lines:
                 log.write(line)
-                if line.startswith(('main:', 'sdk:', 'total ', 'emitted ', 'emitting ', 'compile:', 'link:', 'objects verified:', 'romfs index:')):
+                log.flush()
+                oversized=len(line.encode('utf-8',errors='replace'))>MAX_LINE_BYTES
+                skip=discarding or oversized
+                discarding=(discarding or oversized) and not line.endswith('\n')
+                if skip:continue
+                update=parse_progress_line(line)
+                if update is not None and update.current is not None:
+                    print(f'[{update.current}/{update.total}] Compilación local' if update.stage=='compile'
+                          else f'emitted {update.current}/{update.total} chunks',flush=True)
+                elif len(line.encode('utf-8',errors='replace'))<=MAX_LINE_BYTES and line.startswith(('main:', 'sdk:', 'total ', 'emitted ', 'emitting ', 'compile:', 'link:', 'objects verified:', 'romfs index:')):
                     print(line.rstrip(), flush=True)
             code = process.wait()
         except BaseException:
@@ -77,7 +96,9 @@ def run_logged(command, logfile, env=None):
         finally:
             process.stdout.close()
     if code:
-        print('\n'.join(logfile.read_text(encoding='utf-8').splitlines()[-25:]))
+        with logfile.open('rb') as stream:
+            stream.seek(max(0,logfile.stat().st_size-(64<<10)))
+            print('\n'.join(stream.read(64<<10).decode('utf-8',errors='replace').splitlines()[-25:]),flush=True)
         raise ValueError(f'Build command failed ({code}); see {logfile}')
 
 
