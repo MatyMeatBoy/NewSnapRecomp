@@ -105,7 +105,7 @@ int main(void){Cpu c,before;unsigned char saved[256];
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp)/'newsnap.ini'
             path.write_text('[other]\nsentinel = keep\n')
-            for hz in ('30', '60', '90', '120', '144'):
+            for hz in ('30', '60', '90', '120', '144', 'display'):
                 self.assertEqual(validate_settings({'fps': hz}), {'fps': hz})
                 save_settings(path, {'fps': hz})
                 self.assertEqual(load_settings(path)['fps'], hz)
@@ -134,6 +134,9 @@ int main(void){
  }
  const char *bad[]={0,"","0","240","uncapped","120.0","121","-1","120x"," 120"};
  for(unsigned i=0;i<sizeof bad/sizeof bad[0];i++)if(snap_fps_parse(bad[i])!=60)return 5;
+ const double hz[]={144,100,120,165,59.94,60,75,240,0,30,119.88}, want[]={72,100,60,82.5,59.94,60,75,60,60,60,59.94};
+ for(int i=0;i<11;i++){double t=snap_fps_target("display",hz[i]);if(t<want[i]-1e-9||t>want[i]+1e-9)return 6;}
+ if(snap_fps_target("144",100)!=144||snap_fps_target(0,144)!=60)return 7;
  return 0;
 }
 ''')
@@ -142,7 +145,7 @@ int main(void){
                            check=True,capture_output=True)
             self.assertEqual(subprocess.run([str(exe)]).returncode, 0)
 
-    def test_actual_in_game_row_exposes_and_selects_all_five_rates(self):
+    def test_actual_in_game_row_exposes_and_selects_all_rates(self):
         from newsnap.adapt import adapt_sources
         with tempfile.TemporaryDirectory() as tmp:
             p=Path(tmp)
@@ -157,14 +160,14 @@ static const char *current;static int expected,rows;
 const char *menu_text(int id){return id==UI_MENU_FPS_30?"30 FPS":"60 FPS";}
 const char *cfg_get(const char *key){assert(!strcmp(key,"AC_FPS"));return current;}
 void opt_choice_list(const char *key,int,const char *const *v,const char *const *names,int n,int,int cur){
- const char *rates[]={"30","60","90","120","144"};
- assert(!strcmp(key,"AC_FPS")&&n==5&&cur==expected);
+ const char *rates[]={"30","60","90","120","144","display"};
+ assert(!strcmp(key,"AC_FPS")&&n==6&&cur==expected);
  for(int i=0;i<n;i++)assert(!strcmp(v[i],rates[i])&&names[i]&&*names[i]);rows++;
 }
 '''+body+r'''
-int main(){const char *rates[]={"30","60","90","120","144"};
- for(int i=0;i<5;i++){current=rates[i];expected=i;row_fps_limit();}
- current=nullptr;expected=1;row_fps_limit();current="240";row_fps_limit();return rows!=7;
+int main(){const char *rates[]={"30","60","90","120","144","display"};
+ for(int i=0;i<6;i++){current=rates[i];expected=i;row_fps_limit();}
+ current=nullptr;expected=1;row_fps_limit();current="240";row_fps_limit();return rows!=8;
 }
 ''')
             exe=p/'menu.exe'
@@ -220,3 +223,33 @@ int main(void){
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class LatentSyncTests(unittest.TestCase):
+    def test_present_moves_to_the_middle_of_its_refresh(self):
+        compiler = os.environ.get('NEWSNAP_CC') or shutil.which('clang')
+        if not compiler:
+            self.skipTest('no C compiler')
+        header = ROOT/'newsnap/overlays/snap_latent_sync.h'
+        with tempfile.TemporaryDirectory() as tmp:
+            p = Path(tmp)
+            (p/'fixture.c').write_text(r'''
+#include "snap_latent_sync.h"
+int main(void){
+ double T=1e9/144; uint64_t vb=1000000000000ull;
+ for(int f=0;f<2000;f++){ /* a 72 fps target with +-3 ms of jitter lands mid-refresh, two refreshes apart */
+  double jitter=((f*7919)%601-300)*1e4;
+  uint64_t at=vb+(uint64_t)(f*2*T+T*0.5+jitter);
+  uint64_t m=snap_vblank_mid_of(at,vb,T);
+  double want=vb+f*2*T+T*0.5;
+  if((double)m<want-1000||(double)m>want+1000)return 1;
+ }
+ if(snap_vblank_mid_of(123,vb,0)!=123||snap_vblank_mid_of(123,vb,1e9)!=123)return 2;
+ if(snap_vblank_mid(55,"60")!=55||snap_vblank_mid(0,"display")!=0)return 3;
+ if(!snap_latent_on("display")||snap_latent_on("144")||snap_latent_on(0))return 4;
+ return 0;
+}
+''')
+            exe = p/'latent.exe'
+            subprocess.run([compiler, str(p/'fixture.c'), '-I', str(header.parent), '-o', str(exe)], check=True, capture_output=True)
+            self.assertEqual(subprocess.run([str(exe)]).returncode, 0)
