@@ -57,7 +57,8 @@ static const char *choice="game",*mode=NULL,*upscaling="off";
 static int portable;
 const char *cfg_value(const char *key) {if(strcmp(key,"AC_RENDER_SCALE"))abort();return choice;}
 static const char *chain_knob=NULL;
-const char *cfg_get(const char *key) {if(!strcmp(key,"AC_SS_CHAIN"))return chain_knob;if(strcmp(key,"AC_SS_MODE"))abort();return mode;}
+static const char *photo_knob=NULL;
+const char *cfg_get(const char *key) {if(!strcmp(key,"AC_SS_PHOTO"))return photo_knob;if(!strcmp(key,"AC_SS_CHAIN"))return chain_knob;if(strcmp(key,"AC_SS_MODE"))abort();return mode;}
 const char *cfg_upscaling(void) {return upscaling;}
 int ov_handheld(void) {return portable;}
 void rt_log(const char *f,...) {(void)f;}
@@ -130,6 +131,15 @@ int main(void) {
   c.width=960;c.height=540;c.flags|=NVN_TEXTURE_FLAGS_IMAGE;if(host(&c,1,1,0,0)!=1) return 54;
   c.flags=NVN_TEXTURE_FLAGS_COMPRESSIBLE;chain_knob="0";if(host(&c,1,1,0,0)!=1) return 55;
   chain_knob=NULL;}
+ /* AC_SS_PHOTO=1: photo targets of plain colour scale, BC never; box read only for 8-bit RGBA/BGRA */
+ choice="200";
+ {nvn_texdesc c=rt(NVN_TEXTURE_FLAGS_COMPRESSIBLE);c.width=1080;c.height=720;
+  if(host(&c,1,1,0,0)!=1) return 60;
+  photo_knob="1";if(host(&c,1,1,0,0)!=2) return 61;
+  c.width=360;c.height=240;if(host(&c,1,1,0,0)!=2) return 62;
+  c.format=0x42;if(host(&c,1,1,0,0)!=1) return 63;
+  photo_knob=NULL;
+  if(!snap_box_read(37,4)||!snap_box_read(50,4)||snap_box_read(126,4)||snap_box_read(37,8)) return 64;}
  /* added presets and display: the monitor in full screen, the window otherwise, 1..3 */
  const char *more[]={"133","175","250","300"};float more_s[]={4.0f/3.0f,1.75f,2.5f,3};
  for(int i=0;i<4;i++){choice=more[i];if(snap_host_scale_factor()!=more_s[i]) return 34;}

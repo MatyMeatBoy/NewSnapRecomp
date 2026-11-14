@@ -17,6 +17,7 @@
 // AC_SS_MODE=engine restores the 0.2 experiment (engine resize plus a larger
 // DISPLAY image only), kept for comparison; it crops the HUD and the photos.
 #pragma once
+#include <stddef.h>
 #include <stdint.h>
 #include <string.h>
 #include "nvn_obj.h"
@@ -87,7 +88,17 @@ static inline int snap_host_scale_class(const nvn_texdesc *d, uint32_t samples, 
         const char *knob = cfg_get("AC_SS_CHAIN");
         if (knob && !strcmp(knob, "0")) chain = 0;
     }
-    if (!full && !chain) return 0;
+    // AC_SS_PHOTO=1 (experiment, off): the photo targets too (1080x720 photo, 360x240 and
+    // 240x200 thumbnails), plain 8-bit/half colour only (never the BC1 thumbnail target). CPU
+    // reads of them average the covered texels (snap_box_read), so saved photos keep their size.
+    if (!full && !chain) {
+        const char *photo = cfg_get("AC_SS_PHOTO");
+        int size = (d->width == 1080 && d->height == 720) || (d->width == 360 && d->height == 240) ||
+                   (d->width == 240 && d->height == 200);
+        int colour = d->format == NVN_FORMAT_RGBA8 || d->format == NVN_FORMAT_RGBA8_SRGB || d->format == NVN_FORMAT_BGRA8 ||
+                     d->format == NVN_FORMAT_BGRA8_SRGB || d->format == NVN_FORMAT_RGBA16F;
+        if (!(photo && !strcmp(photo, "1") && size && colour && !depth_format)) return 0;
+    }
     if ((uint32_t)d->flags & refused) return 0;
     return (d->flags & (NVN_TEXTURE_FLAGS_DISPLAY | NVN_TEXTURE_FLAGS_COMPRESSIBLE)) || depth_format;
 }
@@ -134,4 +145,12 @@ static inline float snap_output_target_scale(const nvn_texdesc *d, uint32_t samp
     // its own size and every enlarged target scales its passes.
     if (snap_ss_engine_mode() && image_scale > 1.0f && snap_output_display_class(d, samples)) return 1.0f;
     return image_scale > 0 ? image_scale : 1.0f;
+}
+
+// SS-03: CPU reads of an enlarged 8-bit RGBA/BGRA texture average the texels each of the
+// game's texels covers (vk_texture.c image_texels), instead of taking the nearest one.
+// (VkFormat values: R8G8B8A8_UNORM 37, _SRGB 43, B8G8R8A8_UNORM 44, _SRGB 50; plain ints keep
+// this header free of the Vulkan headers for its native test.)
+static inline int snap_box_read(int vk_format, size_t bpb) {
+    return bpb == 4 && (vk_format == 37 || vk_format == 43 || vk_format == 44 || vk_format == 50);
 }
