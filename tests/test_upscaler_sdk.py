@@ -24,7 +24,7 @@ class SdkIntegrityTests(unittest.TestCase):
 
     def test_pins_are_full_commit_and_hashes(self):
         self.assertEqual(len(sdk.COMMIT), 40)
-        self.assertEqual(len(sdk.FILES), 8)
+        self.assertEqual(len(sdk.FILES), 12)   # + FG-01 frame generation DLL and headers
         for name, (size, digest) in sdk.FILES.items():
             self.assertNotIn('..', Path(name).parts)
             self.assertGreater(size, 0)
