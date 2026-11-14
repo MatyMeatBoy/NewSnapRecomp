@@ -101,7 +101,7 @@ def adapt_sources(destination, *, patch_output=None):
              '{"LANG", "", "en-US|ja|fr|de|es-419|es|it|fr-CA|ko|zh-Hant|zh-Hans", RESTART}'),
             ('{"ANISO", "auto", "auto|game|2|4|8|16", RESTART}', '{"ANISO", "game", "game|2|4|8|16", RESTART}'),
             ('{"ASPECT", "wide", "fit|stretch|wide", LIVE}', '{"ASPECT", "fit", "fit|stretch", LIVE}'),
-            ('"game|50|67|75|100|125|150|200"', '"game|50|60|70|80|90|100|125|150|200"'),
+            ('"game|50|67|75|100|125|150|200"', '"game|50|60|70|80|90|100|125|133|150|175|200|250|300|display"'),
             ('"mailbox|fifo|immediate"', '"mailbox|fifo|fifo_relaxed|immediate"'),
         ],
         'runtime/vk_pipeline.c': [

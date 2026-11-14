@@ -1,5 +1,59 @@
 # Snap supersampling: implementation contract
 
+## SS-02 (2026-11-14): host scaling replaces the engine resize
+
+**Current implementation; the sections below are history.** On the RX 6900 XT the
+0.2 engine resize produced the picture in the top-left quarter of the window: the
+engine grew the scene, a DISPLAY-only host image was enlarged, but the HUD and the
+final composition kept drawing at 1920x1080 coordinates. Photos and thumbnails
+came out cut and striped (owner screenshots 2026-11-14 11:56-12:00).
+
+The game now stays at its own 1920x1080 and the runtime enlarges its render
+targets on the host, the way emulators and Witch Time scale resolution
+(reference table below). `newsnap/overlays/snap_output_scale.h` classifies:
+
+- scaled: docked 2D single-sample targets that are DISPLAY, COMPRESSIBLE or
+  depth/stencil, not CPU-written (`tex_mirrored`), not storage images
+  (`IMAGE`), linear, sparse or video; of size 1920x1080 or an exact 16:9 size
+  down to 192x108 (`AC_SS_CHAIN=0` keeps the smaller ones native);
+- kept: photo targets (1080x720, 360x240, 240x200), CPU textures, shadow maps
+  (they have their own `AC_SHADOW_SCALE`).
+
+Measured classes (`NEWSNAP_HOST_SCALE_TRACE=1`, 300 s photo route): 1920x1080
+RGBA16F scene, DEPTH32F, D32F_S8, RGBA8 DISPLAY/compressible; 960x540 RGBA16F x2,
+DEPTH32F, a six-level RGBA16F pyramid; 192x108 RGBA16F; three DEPTH32F 1024x1024
+sun shadow maps.
+
+The runtime's existing scaled-image path (built for enlarged shadow maps) does
+the rest: pass viewports/scissors (`vk_exec.c` `pass_scale`), `gl_FragCoord`,
+integer texel fetches and size queries through the translator's render scale
+(`vk_exec_draw.c` `support_scales`, which used to run only with mip skip),
+copies (`vk_exec_xfer.c`), CPU reads, and the presenter shows the larger DISPLAY
+image. `snap_supersample.c` (engine resize) now runs only with
+`AC_SS_MODE=engine`, kept for comparison.
+
+Settings: `render_scale` 125, 133, 150, 175, 200, 250, 300, or `display` (the
+scale matching the monitor height in full screen or the window height, 1-3).
+TV mode and upscaling off only (the launcher refuses other combinations).
+`shadow_scale` 1/2/4 now also matches Snap's DEPTH32F 1024x1024 sun maps and is
+no longer pinned to 1 by the neutral policy (default stays 1).
+
+Evidence, RX 6900 XT, window 1600x900, photo route 540 s
+(`tests/routes/photo-tutorial-expedition.txt`):
+
+| Run | Result | 1% low per minute (fps) | frames > 25 ms per minute |
+|---|---|---|---|
+| 0.8.0, engine 200 % (`fs-ss200`) | HUD/picture in a quarter, photos cut | 32-55 | 9-64 |
+| host 200 % (`ss200host5`) | full picture, photos and thumbnails intact, exit 0 | 49-56 | 1-19 |
+| host 200 % + 16:9 chain + shadows 2x (`chain200`) | same, finer ground shadows, exit 0 | 52-58 | 0-17 |
+
+Two earlier runs ended in device loss while another game crashed the driver
+on the same PC (owner); they are not attributed to this change.
+
+Not yet verified: RTX; 125/133/150/175/250/300 and `display`; full screen;
+photo scores compared against 100 % on the same shots; first-load cost of the
+larger targets.
+
 ## 0.2 implementation update
 
 The shipped direction is native engine resizing, restricted to TV mode. The
