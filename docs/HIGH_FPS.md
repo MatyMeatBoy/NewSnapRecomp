@@ -1,6 +1,192 @@
-# High frame rate investigation — 2026-11-13
+# High frame rate options and investigation
 
-**Status: more than 60 presents/s with correct game timing has not been demonstrated.** A host frame cap controls presentation frequency; it does not establish that Snap's simulation, photography or scripts are independent of that frequency. Keep 120/144/unlimited experimental until the checks below pass. No guest FPS patches were applied during this investigation.
+## FPS-01 implementation — 2026-11-14
+
+The launcher and in-game video menu offer **30 / 60 / 90 / 120 / 144 FPS**.
+60 remains the default; there is no unlimited or 240 FPS option. Higher limits
+are experimental. They can be changed live because they alter pacing, without
+recreating rendering resources. A new private runtime is required: its receipt
+must advertise `high-fps-presets`, so a new launcher cannot silently use an old
+runtime that still caps at 60.
+
+`newsnap/high_fps_adapt.py` lifts the ordinary interval-1 NVN host ceiling. It
+preserves authored intervals of 2 or more and never enables Astral's `fps60`
+patch. The strict parser falls back to 60 for unsupported environment/INI values.
+There is no vendor-specific rate policy: the BC block-view, shader-math and
+presentation fixes from 0.8 remain in effect. RTX 4060 results do not validate
+the RX 6900 XT or FreeSync.
+
+The script's 60 Hz tick estimate previously advanced by one tick per present.
+Above 60 it now uses the clamped presentation delta, avoiding 2x/2.4x playback
+of frame-number scripts. This remains a presentation-derived script clock,
+including the existing 66.7 ms clamp; it is not an independently observed game
+clock. The inherited log now calls its estimate `presentation clock`, rather
+than claiming measured simulation speed.
+
+### Read-only observations
+
+The exact main SHA-256/build ID below is checked by the owner build before
+generation, and the patch table checks original instructions. The probes replay
+the original store and leave all Cpu registers and guest memory unchanged:
+
+| Probe | Exact main site / original word | Opt-in diagnostic |
+| --- | --- | --- |
+| Timer after its channel updates, before epoch store | `6ac134 / f9000668` | `NEWSNAP_TIMER_TRACE=1` |
+| Rail progress after its real store | `4c1df0 / bd007261` | `NEWSNAP_RAIL_TRACE=1` |
+| UI Player::SetState entry | `79a6d0 / d10403ff` | `NEWSNAP_UI_TRACE=1` |
+| UI event callback entry | `6c1d90 / d10203ff` | `NEWSNAP_UI_TRACE=1` |
+
+`NEWSNAP_TIMER_PATCH=0` disables all observation sites. Logging is off by
+default. The timer reports float and integer sums, mode and pause counts. The
+rail probe checks readable objects, finite progress/length and a valid range;
+it logs at most 1,024 samples with monotonic timestamps and object/reset identity.
+It does not set progress, change vehicle speed or skip a scene.
+
+The UI probes accept bounded printable short/long libc++ strings, reject invalid
+descriptors and record at most 2,048 events per thread. They read scene/state
+identities and events 2/3/5/6/7; per-frame event 22 is deliberately omitted.
+State dwell and entered-to-ready intervals can be compared in real seconds.
+They are state observations, not proof of every visual tween or HUD blink.
+
+`tools/check_fps_rail.py` compares crossings of the same progress interval using
+monotonic timestamps interpolated between samples. It rejects incomplete runs,
+changed source saves and mismatched executable, input route, seed, cache, GPU or
+settings receipts. It does not bridge rail resets. For example, with private
+run folders and receipts:
+
+```text
+python tools/check_fps_rail.py build/fps01/rail60a build/fps01/rail120 --to-progress 80
+```
+
+This measures rail speed only. It cannot certify animation phases, input repeat,
+audio synchronization, pose/score equivalence, photo persistence or display cadence.
+
+### Reference audit and boundaries
+
+The [Snap reference investigation](https://github.com/finalpantasy/new-pokemon-snap-recomp/blob/839128e031eb224455f8715fce755cf3cf12b9f6/docs/high-fps-plan.md)
+and its [rail observation](https://github.com/finalpantasy/new-pokemon-snap-recomp/blob/839128e031eb224455f8715fce755cf3cf12b9f6/host/mods/neofilm.cpp)
+provided candidates, subsequently checked against the local original module.
+The rail comment's `4c2df0` offset does **not** match this module: local inspection
+finds the stated load/add/store at `4c1de8..4c1df0`. No speed/film/progression mod
+from that reference is enabled or copied.
+
+Both timer callers and their indirect callbacks remain under investigation.
+The 14 ms sleep loop is separate from the other caller; there is no basis for
+globally shortening SleepThread or changing the shared 1/60 constant. The observed
+timer channels use mode 0, but other consumers cannot be inferred from that alone.
+In particular, integer milliseconds truncate each update. A fractional carry
+would change their consumers; no carry patch is applied without attribution.
+Menu/HUD animation, blink, cooldown and button-repeat timing need separate checks.
+
+Gyro polling/integration uses its own real-time clock. The FPS option does not
+increase the sensor worker rate or multiply sensitivity. Audio's device clock is
+also preserved. These code boundaries do not replace physical input/audio tests.
+
+[TotK's frame timing implementation](https://github.com/valentderah/totk-pc-recomp/blob/main/runtime/frame_rate.c)
+illustrates separate pacing and simulation contracts, rather than transferable
+Snap offsets. The [Vulkan presentation specification](https://docs.vulkan.org/refpages/latest/refpages/source/VkPresentModeKHR.html)
+explains why a requested cap is not an achieved display rate: FIFO waits for the
+display; mailbox availability, immediate/tearing and VRR remain separate concerns.
+
+### Current local evidence
+
+Private evidence is under `build/fps01/`, excluded from source control. Preliminary
+60/120/144 runs lasted 100 seconds, 90 lasted 120 seconds, and a 120 FPS run lasted
+360 seconds and reached photo selection after the expedition. They exited 0 and
+preserved the source profile. Screenshots show the scene, HUD and thumbnails;
+photo submission/scoring/persistence were not established by those runs. They
+use different intermediate builds and are **not** an equivalence comparison.
+
+The final comparison uses one executable, copied profile, route and cache seed.
+All five 180-second runs exited 0 without a fatal and left the source profile
+unchanged. The exact private executable SHA-256 is
+`2b43d2ee9a519fb19e2b7bfa307b990495b55c4e28713767103c13bb5656a3a6`.
+Settings: RTX 4060 Laptop / NVIDIA 616.92, docked 100%, original/upscaling off,
+640×360 window, immediate presentation, same warmed shader-cache seed. These
+are functional timing checks, not comparative performance benchmarks.
+
+| Private run | Requested cap | Rail progress 10→80, wall seconds | Difference from first 60 |
+| --- | ---: | ---: | ---: |
+| `matrix60a` | 60 | 87.970909 | reference |
+| `matrix120` | 120 | 87.970181 | −0.00083% |
+| `matrix144` | 144 | 87.969785 | −0.00128% |
+| `matrix90` | 90 | 87.970683 | −0.00026% |
+| `matrix60b` | 60 | 87.968725 | −0.00248% |
+
+Each high-rate result lies inside the two 60 FPS measurements. Interpolated
+crossings are estimates between logged samples; the extra decimal places are
+not a claim of sub-frame physical measurement accuracy. The final 120-present
+window reported 60/120/144/90/60 FPS respectively. This establishes achieved
+guest presentation rates in those windows, not a guarantee for all frames or
+the physical panel's display rate.
+
+All reported timer modes remained `0/0/0`, with no fixed-mode or paused samples.
+The scene sequence `loading → skit_directing → loading` was observed in every
+run; the skit state dwell was 36.969–37.154 seconds. The named page states and
+entered-to-ready events were **not** recovered in this scenario. This does not
+validate every menu/HUD animation. Reviewed screenshots show complete scene,
+HUD, subject label and thumbnails at all four caps, but differing dialogue/photo
+counts at the same script-clock screenshot confirm that these replays are not
+an exact photo/pose/score-equivalence test. No scoring/progression bypass was
+introduced to make the selection succeed.
+
+Verification: the local Windows suite passed 483 tests (16 tool/platform skips),
+then the actual compiled in-game FPS row passed its additional native test for
+all five values and invalid/default selection. GitHub CI passed 493 tests
+(34 skips on Linux). Native build, exact patch-word checks, content-index check
+and independent read-only reviews passed. FPS-01 remains **REVIEW**, not complete
+hardware/gameplay acceptance. AMD/FreeSync, physical controls/audio, full photo
+evaluation/persistence and broader UI/HUD timing remain open.
+
+A separate warm-start
+attempt (`rail120`) exited 70 before the first frame with
+`SwitchToFiber(0): not an initialized fiber`. That is the guest fiber-token
+validation, not Windows rejecting a host fiber and not an out-of-memory finding.
+The cause and any relationship to FPS are unproven; do not turn null into a
+successful fiber switch to hide it.
+Four subsequent copied-profile boot controls (120, 60, 120, 144 FPS, three
+seconds each after boot) exited 0. This does not identify or fix that isolated
+failure; keep it visible during further testing.
+
+### Integration with Internal x2 — NVIDIA
+
+After the timing matrix, `main` integrated SS-02 in `e3899f7` (PR #21).
+PR #20 merges that revision and preserves its host-scaling implementation.
+The matrix above predates that merge; its measurements must not be relabelled
+as measurements of the combined binary or of 4K performance.
+
+The combined runtime builds successfully and passes 485 Windows tests
+(16 skips); its GitHub CI passes 494 tests (34 Linux skips). Its private SHA-256
+is `f9a4491efd5646184f337e1a24644d919acc471c06baca0feceff115c76c6245`.
+Three further 90-second RTX 4060 runs exited 0 and preserved the source profile:
+
+| Private run | Configuration | Runtime-reported result |
+| --- | --- | --- |
+| `merged144native` | 144 FPS, docked 100% | 12,762 presents; final 30.2 s window 144.0 FPS |
+| `merged120ss200` | 120 FPS, docked 200%, upscaling off | 10,592 presents; 3840×2160 host targets; final 39.3 s window 117.1 FPS |
+| `merged120ss200warm` | Same 120/x2 route, cache from preceding x2 run | 10,626 presents; final 30.1 s window 118.8 FPS |
+
+All three report zero unimplemented calls, validation errors, shader failures
+and skipped draws. Reviewed x2 screenshots show the entire scene, HUD, species
+label and photo thumbnail. This validates the observed NVIDIA combination;
+it does not establish AMD acceptance, full album/scoring coverage or flawless
+behavior across every scene.
+
+The first x2 run recorded a 6,764.4 ms shader-translation wait. The repeated
+x2 run reused its observed shader/cache inputs and recorded no translation wait;
+its final window had two frames over 25 ms and none over 50 ms. The windows are
+different and are not a paired performance benchmark. This supports retaining
+and preparing the observed cache when testing Internal x2 on NVIDIA, rather
+than treating first-use translation as steady-state GPU cost. Residual pacing
+spikes remain; no driver-specific clock, colour or scheduling workaround was
+introduced without an identified cause. The requested 120 cap is not a promise
+of locked 120 FPS at 4K on this GPU.
+
+## Historical static investigation — 2026-11-13
+
+At the time of the investigation below, more than 60 presents/s with correct
+game timing had not been demonstrated. The acceptance criteria remain useful;
+the current implementation/evidence above supersedes historical status claims.
 
 ## Scope and provenance
 

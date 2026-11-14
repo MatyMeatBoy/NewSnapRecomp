@@ -1,0 +1,7 @@
+# Observe the verified 2.0.1 timer before its final epoch store.
+# No guest register or memory mutation. Original instruction is replayed.
+set snap_timer_trace NEWSNAP_TIMER_PATCH 1
+site snap_timer_trace main 6ac134 f9000668 @fn:snap_timer_observe f9000668
+site snap_timer_trace main 4c1df0 bd007261 bd007261 @fn:snap_rail_observe
+site snap_timer_trace main 79a6d0 d10403ff @fn:snap_ui_state_observe d10403ff
+site snap_timer_trace main 6c1d90 d10203ff @fn:snap_ui_event_observe d10203ff

@@ -116,7 +116,7 @@ def validate_settings(values):
         elif key in ('fullscreen', 'motion', 'rumble_triggers'):
             valid = value in ('0', '1')
         elif key == 'fps':
-            valid = value in ('30', '60')
+            valid = value in ('30', '60', '90', '120', '144')
         elif key in CHOICES:
             valid = value in CHOICES[key]
         elif key == 'window_size':
