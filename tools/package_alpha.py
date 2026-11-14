@@ -52,7 +52,7 @@ def private_files(target, profile, version):
              'romfs-index.bin', 'shader-programs.bin', 'shader-answers.bin', 'pipeline-keys.bin')
     for name in names:
         copy_file(ROOT / 'build/updated' / name, runtime / name)
-    ini = ROOT / 'build/updated/astralchain.ini'
+    ini = ROOT / 'build/updated/newsnap.ini'
     save_settings(runtime / ini.name, load_settings(ini))
     shutil.copytree(ROOT / 'build/extracted/updated/exefs', runtime / 'exefs')
     copy_file(ROOT / 'build/extracted/updated/romfs/romfs.bin', runtime / 'romfs/romfs.bin')
