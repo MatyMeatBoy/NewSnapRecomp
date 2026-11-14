@@ -98,7 +98,47 @@ photo submission/scoring/persistence were not established by those runs. They
 use different intermediate builds and are **not** an equivalence comparison.
 
 The final comparison uses one executable, copied profile, route and cache seed.
-Results are recorded below after the matrix completes. A separate warm-start
+All five 180-second runs exited 0 without a fatal and left the source profile
+unchanged. The exact private executable SHA-256 is
+`2b43d2ee9a519fb19e2b7bfa307b990495b55c4e28713767103c13bb5656a3a6`.
+Settings: RTX 4060 Laptop / NVIDIA 616.92, docked 100%, original/upscaling off,
+640×360 window, immediate presentation, same warmed shader-cache seed. These
+are functional timing checks, not comparative performance benchmarks.
+
+| Private run | Requested cap | Rail progress 10→80, wall seconds | Difference from first 60 |
+| --- | ---: | ---: | ---: |
+| `matrix60a` | 60 | 87.970909 | reference |
+| `matrix120` | 120 | 87.970181 | −0.00083% |
+| `matrix144` | 144 | 87.969785 | −0.00128% |
+| `matrix90` | 90 | 87.970683 | −0.00026% |
+| `matrix60b` | 60 | 87.968725 | −0.00248% |
+
+Each high-rate result lies inside the two 60 FPS measurements. Interpolated
+crossings are estimates between logged samples; the extra decimal places are
+not a claim of sub-frame physical measurement accuracy. The final 120-present
+window reported 60/120/144/90/60 FPS respectively. This establishes achieved
+guest presentation rates in those windows, not a guarantee for all frames or
+the physical panel's display rate.
+
+All reported timer modes remained `0/0/0`, with no fixed-mode or paused samples.
+The scene sequence `loading → skit_directing → loading` was observed in every
+run; the skit state dwell was 36.969–37.154 seconds. The named page states and
+entered-to-ready events were **not** recovered in this scenario. This does not
+validate every menu/HUD animation. Reviewed screenshots show complete scene,
+HUD, subject label and thumbnails at all four caps, but differing dialogue/photo
+counts at the same script-clock screenshot confirm that these replays are not
+an exact photo/pose/score-equivalence test. No scoring/progression bypass was
+introduced to make the selection succeed.
+
+Verification: the local Windows suite passed 483 tests (16 tool/platform skips),
+then the actual compiled in-game FPS row passed its additional native test for
+all five values and invalid/default selection. GitHub CI passed 493 tests
+(34 skips on Linux). Native build, exact patch-word checks, content-index check
+and independent read-only reviews passed. FPS-01 remains **REVIEW**, not complete
+hardware/gameplay acceptance. AMD/FreeSync, physical controls/audio, full photo
+evaluation/persistence and broader UI/HUD timing remain open.
+
+A separate warm-start
 attempt (`rail120`) exited 70 before the first frame with
 `SwitchToFiber(0): not an initialized fiber`. That is the guest fiber-token
 validation, not Windows rejecting a host fiber and not an out-of-memory finding.
