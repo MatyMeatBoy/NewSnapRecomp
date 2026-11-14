@@ -278,7 +278,9 @@ class ProfileLock:
 
 
 def game_command(root, profile):
-    return [str(runtime_dir(root) / 'newsnap.exe'), '--profile', str(Path(profile)), '--boot']
+    # --boot is the runtime's bounded startup probe: it exits successfully at
+    # the first NVN call. Interactive play uses its normal mode instead.
+    return [str(runtime_dir(root) / 'newsnap.exe'), '--profile', str(Path(profile))]
 
 
 def validate_runtime_data(root):
