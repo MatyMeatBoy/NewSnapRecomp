@@ -386,7 +386,8 @@ static void hudless_configure_locked(uint64_t id, uint32_t w, uint32_t h, VkComm
         *used = VK_NULL_HANDLE;
         return;
     }
-    if (state != (*used != VK_NULL_HANDLE)) {
+    static int changes;
+    if (state != (*used != VK_NULL_HANDLE) && changes++ < 8) {   // menus have no tonemap pass: no HUD-less image there
         state = *used != VK_NULL_HANDLE;
         rt_log("frame generation: %s", state ? "HUD-less image from the tonemapped scene (no HUD trails)"
                                               : "no HUD-less image this frame");
