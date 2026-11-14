@@ -43,17 +43,17 @@ La cola siguiente conserva únicamente investigación o aceptación pendientes.
 ## Tareas y reservas
 
 **Coordinación inmediata: FOCO-01 está HECHA por confirmación del propietario
-en RX 6900 XT. No seguir trabajando en el enfoque ni duplicar ese fix.** MatyMeatBoy
-puede tomar **KEYBOARD-CRASH** (P0), continuar **FOTO-02** coordinando FOTO-01 o
-tomar **HEAD-INTRO**. RTX tester lleva 404/kit local, autodetección de datos, Home y
-consolas. La oscuridad/saturación sigue abierta; no cerrar COLOR-01 por el arreglo
-del recuadro. Reporte completo: `docs/bugs/RX6900XT-REPORTES.md`.
+en RX 6900 XT; no duplicar ese fix.** MatyMeatBoy lleva FOTO-01 (bandas, cierres y
+diagnóstico GPU) y enviará PR al terminar. FOTO-02, la herramienta de auditoría,
+ya está en el historial. RTX tester integró PR4/5 del launcher y espera el turno GPU
+para su aceptación interactiva final. El propietario confirma que el primer nivel
+0.6 ya no se ve oscuro y parece funcionar a60FPS; esa confirmación no cierra las
+fotos ni constituye una validación completa AMD/VRR/mando. Reporte histórico:
+`docs/bugs/RX6900XT-REPORTES.md`.
 
 | ID | Prioridad | Estado | Responsable | Trabajo y archivos reservados |
 |---|---|---|---|---|
-| LAUNCH-POSTBUILD-06 | P0 | EN CURSO | RTX tester · 2026-11-14 | Propietario confirma recompilación0.6 OK pero Iniciar expedición no abre; EXE directo sí. Repro: shader_preparation_required=true sin bibliotecas/registros bloquea antes de Popen. Root reserva launcher.py/launcher_settings.py/maintenance_ui.py/home_ui.py + tests flujo. Worktree launcher-feedback; no modificar datos originales ni release0.6 publicada. |
-| UI-PROGRESS-06 | P1 | EN CURSO | RTX tester · 2026-11-14 | Mostrar etapas/actividad y porcentaje medido, unidades realizadas/total y tiempo transcurrido; sin porcentaje inventado en verificación, enlace o shaders sin denominador. Root UI; worker reserva progress.py/maintenance.py/build.py y tests de telemetría a coordinar. |
-| UI-SNAP-06 | P2 | EN CURSO | RTX tester · 2026-11-14 | Mejorar Inicio con imágenes promocionales oficiales de Snap solicitadas, composición fotográfica y detalles del launcher ReKHCoM. Sin capturas/guardados privados, sin animación pesada durante juego. Root reserva nuevo hero_ui.py/assets/launcher + fuentes/licencias/empaquetado. |
+| LAUNCH-POSTBUILD-06 | P0 | REVISIÓN | RTX tester · PR4/5 integrados | Dos causas corregidas: marcador de shaders sin registros bloqueaba el primer inicio; --boot ejecutaba una sonda que salía0 en primera NVN. PR4/5 integrados, CI y regresiones rojo→verde/revisión independiente. Prueba congelada anterior reprodujo exactamente el cierre0; queda observar ventana/frames en modo interactivo con el congelado corregido, cuando el turno GPU de MatyMeatBoy termine. No modificar GameData original ni la release0.6 publicada. |
 | POOL-BOUNDS-01 | P1 | REVISIÓN | RTX tester / investigación · 2026-11-14 | Condición de solapamiento reproducida en CPU. Logging limitado a 16 color + 4 DS y experimento AC_SNAP_POOL_BOUNDS=1 integrado, apagado por defecto. Cinco pruebas nativas/sintaxis/concurrencia pasan; no es fix AMD ni prueba de causa. Ver docs/bugs/pool-allocation-bounds.md. |
 | HEAD-INTRO | P1 | REVISIÓN | MatyMeatBoy / RTX tester · PR #3 | PR y correcciones de revisión integrados: medida RTX de una toma, sin causa identificada ni fix. Intervención de timer concreta no cambia esa trayectoria; no descarta universalmente GPU/pacing/CRC. Tool conserva segmentos/paridad al descartar pares; diez tests y cuatro mediciones guardadas verificadas. Pendiente referencia comparable y JSON auditable de 30 FPS. docs/bugs/head-intro-stutter.md. |
 | KEYBOARD-CRASH | P0 | REVISIÓN | MatyMeatBoy / integración RTX tester · PR #2 | PR integrado con bool exacto false, cuatro overrides de cuenta no fundamentados retirados y lectura de variante12bytes. Cuatro tests nativos/headerreal pasan. Se conserva triage nuevo de main y se acotan inferencias docs. Recorrido RTX540s por fotos/evaluación/primera expedición y60s del binario final pasan; causa del teclado/cierre AMD no acreditada. docs/bugs/pr2-applet-contracts.md. |
