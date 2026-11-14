@@ -83,7 +83,7 @@ class HomePanel:
         if self.launcher.busy:return
         chosen=filedialog.askdirectory(parent=self.launcher.root,title='Elige tu carpeta GameData',mustexist=True)
         if not chosen:return
-        self._use_data(chosen)
+        HomePanel._use_data(self,chosen)
 
     def import_dump(self):
         """Import the base game (NSP or XCI), the 2.0.1 update (NSP) and prod.keys into GameData.
