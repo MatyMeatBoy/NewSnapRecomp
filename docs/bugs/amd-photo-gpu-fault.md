@@ -1,6 +1,45 @@
 # FOTO-01 · Fotos con bandas y cierres «write invalid» en RX 6900 XT (0.6)
 
-Estado: **EN CURSO** · Responsable: Claude · 2026-11-14
+Estado: **REVISIÓN** · Responsable: Claude · 2026-11-14
+**Causa encontrada y corregida (tercera ronda, abajo):** vistas de bloques de imágenes BC 2D en el
+controlador AMD RDNA 1/2. Probado físicamente en la RX 6900 XT en una sesión.
+
+## Tercera ronda: causa y corrección (RX 6900 XT, 0.7.0-tester, sesión en el PC del propietario)
+
+- **Prueba 1** (`1-todo-conservador`): sigue fallando y termina en `device fault … write invalid`.
+  Ninguna sospecha de la tabla de abajo (replay asíncrono, omisión de dibujos, ASTC, FSR 4,
+  alias, prefetch, memoria importada, fifo) es la causa.
+- **Prueba 6** (volcado F12, `passes.txt`, último pase de interfaz): la miniatura dentro del nivel
+  es una textura `VK_FORMAT_BC1_RGBA_UNORM_BLOCK` (vk133) de 360×240 con `gpu_owned 1, uploads 0`.
+  El juego **la codifica a BC1 dibujando** a través de una vista sin comprimir de sus bloques
+  (90×60, formato 95 RG32UI). El marco, la placa y el retrato son texturas BC3 subidas una vez
+  (`uploads 1`) que nadie dibuja.
+- El donor ya documenta (issue #5) que el controlador AMD de RDNA 2 escribe **fuera de la
+  memoria** de una imagen `BLOCK_TEXEL_VIEW_COMPATIBLE`, y por eso dibuja los volúmenes BC 3D en
+  una imagen intermedia (`vk_exec.c bc_target`). Las BC 2D seguían usando vistas de bloques.
+  Esto explica a la vez la miniatura «1 de cada 4 tramos» (bloque 4×4), las tiras en texturas
+  vecinas que nadie dibuja y los `write invalid`. Las capas de tiras de la interfaz son una
+  deducción a partir de la desaparición conjunta, no una medición de direcciones.
+
+**Cambio** (`newsnap/bc_block_views_adapt.py`, `tests/test_bc_block_views.py`): nuevo
+`AC_BLOCK_VIEWS` (`block_views` en el INI). Por defecto vale `0` en la rama de controlador AMD
+RDNA 1/2 (`vk_caps.amd_sc`) y `1` en el resto, así que en NVIDIA no cambia nada. Con `0`, las BC 2D
+se crean sin vistas de bloques. Sus dibujos van a la imagen intermedia del donor, generalizada a
+2D (una capa por capa de la textura). Esa imagen se refresca desde la textura al empezar cada pase
+y se copia de vuelta al terminarlo. Un borrado completo fuera de pase ya no cae solo en la imagen
+intermedia.
+
+**Prueba física** (RX 6900 XT, 26.10.1, FSR 4 Native AA, `mailbox`→`fifo`, shadow activo, runtime
+compilado con el kit 0.7.0-tester más este adaptador; el adaptador produce byte a byte las mismas
+fuentes probadas): el log muestra `vk: 2D BC textures are drawn through stand-ins (AC_BLOCK_VIEWS=0,
+AMD RDNA 1/2 driver)` y `2D BC render target 360x240 (vk format 133) … 90x60 x 1 stand-in (format
+95)`. Miniatura completa; marco, placa y retrato limpios; la pantalla «Elige qué fotos quieres
+mostrarle al profesor» muestra la foto 1080×720 y su miniatura completas (capturas del propietario);
+sin `device fault` en la sesión.
+
+**Límites:** una sesión; faltan más niveles, el álbum y los «cuadrados» del tutorial. No se ha
+ejecutado en RTX (allí el valor por defecto no cambia); control sugerido: `AC_BLOCK_VIEWS=0` con la
+ruta de fotos de 540 s.
 **Causa no acreditada.** Este informe deja un experimento opt-in sin probar en AMD y un diagnóstico
 siempre activo en el log para acotar la próxima sesión en la RX 6900 XT.
 No cambia el modo de memoria predeterminado de ninguna GPU.
