@@ -1,5 +1,6 @@
 """Explicit, local, bounded diagnostic exports. Never execute or upload anything."""
 import hashlib
+import heapq
 import json
 import os
 from pathlib import Path
@@ -18,7 +19,6 @@ MAX_TOTAL_BYTES = 2 << 20
 MAX_JSON_BYTES = 1 << 20
 MAX_NATIVE_BYTES = 256 << 20
 MAX_LOG_FILES = 12
-MAX_DIRECTORY_ENTRIES = 256
 LOG_NAMES = ('newsnap.log', *(f'newsnap.{i}.log' for i in range(1,5)),
              'astralchain.log', 'totk.log', *(f'totk.{i}.log' for i in range(1,5)))
 SESSION = r'\d{8}-\d{6}-[0-9a-f]{8}'
@@ -169,6 +169,34 @@ def _publish(temporary, destination):
         os.link(temporary,destination)
 
 
+def _recent_history(logdir, cancel_event):
+    """Scan one directory completely, keeping only four logs/two observations.
+
+    Name filtering precedes metadata access. Memory stays constant regardless
+    of unrelated files or the number of historical sessions; no files move or
+    disappear as a side effect of selection.
+    """
+    recent,observations=[],[]
+    _cancel(cancel_event)
+    _no_links(logdir)
+    if logdir.is_dir():
+        with os.scandir(logdir) as entries:
+            for entry in entries:
+                _cancel(cancel_event)
+                is_log=LAUNCH_LOG.fullmatch(entry.name)
+                if not is_log and not DISPLAY_FILE.fullmatch(entry.name):continue
+                path=logdir/entry.name
+                _no_links(path)
+                try:info=entry.stat(follow_symlinks=False)
+                except FileNotFoundError:continue  # Concurrent log rotation.
+                if not stat.S_ISREG(info.st_mode):continue
+                heap,limit=(recent,4) if is_log else (observations,2)
+                record=(info.st_mtime_ns,path)
+                if len(heap)<limit:heapq.heappush(heap,record)
+                elif record>heap[0]:heapq.heapreplace(heap,record)
+    return recent,observations
+
+
 def export_diagnostics(project, destination, *, cancel_event=None):
     """Create a new ZIP atomically; never replace an existing destination.
 
@@ -204,17 +232,7 @@ def export_diagnostics(project, destination, *, cancel_event=None):
         summary['runtime']={'sha256':value.hexdigest(),'size':total}
     else:summary['runtime']={'status':'unavailable_or_exceeds_hash_limit'}
     logdir=runtime/'logs'
-    recent=[];observations=[]
-    if logdir.is_dir():
-        with os.scandir(logdir) as entries:
-            for number,entry in enumerate(entries):
-                _cancel(cancel_event)
-                if number>=MAX_DIRECTORY_ENTRIES:break
-                if LAUNCH_LOG.fullmatch(entry.name) or DISPLAY_FILE.fullmatch(entry.name):
-                    path=logdir/entry.name;_no_links(path)
-                    if not path.is_file():continue
-                    record=(path.stat().st_mtime,path)
-                    (observations if DISPLAY_FILE.fullmatch(entry.name) else recent).append(record)
+    recent,observations=_recent_history(logdir,cancel_event)
     stored=[]
     for _,path in sorted(observations,reverse=True)[:2]:
         metadata=_json(path,display_status.MAX_BYTES)
