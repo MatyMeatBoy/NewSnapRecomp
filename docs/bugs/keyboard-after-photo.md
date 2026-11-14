@@ -24,7 +24,7 @@ sube a Git. Salida de `tools/triage_game_log.py`:
 
 | Dato | Valor en el log | Lectura |
 |---|---|---|
-| Carpeta de ejecución | `D:\Games\NewSnapRecomp` (ejecutable, `exefs`, `romfs` y `astralchain.ini` en la raíz) | Disposición de la prueba portátil 0.1.x, no `GameData` |
+| Carpeta de ejecución | La carpeta del port del propietario (ejecutable, `exefs`, `romfs` y `astralchain.ini` en la raíz) | Disposición de la prueba portátil 0.1.x, no `GameData` |
 | Conjuntos de parches | `patches: snap_render on` | 0.2–0.4 imprimen además `snap_supersample`; 0.5 añade `snap_random_range` |
 | Línea `vk: final SDR byte transfer` | ausente | Existe desde la corrección de color de la 0.5 |
 | Escalado | `dlaa: temporal anti-aliasing FSR 3 Native AA`, `FSR scales 1920x1080 to 2560x1440 (sharpness 80)` | Configuración antigua (`astralchain.ini`, 19 claves) activa en esa sesión |
@@ -68,7 +68,7 @@ qué lo abrió ni se puede excluir actividad que ese log no registre.
 ## Por qué se ejecutó un runtime antiguo
 
 No determinado aquí; es trabajo de LAUNCH-404 y AUTO-DATA (Codex). Lo que el log
-establece: la sesión arrancó desde `D:\Games\NewSnapRecomp\` con la disposición
+establece: la sesión arrancó desde la carpeta del port del propietario con la disposición
 portátil antigua. Si el launcher 0.5 no pudo descargar el kit (404) y se
 «inició a la fuerza», se lanzó el ejecutable que ya había allí. Convendría que
 el launcher se negara a iniciar un runtime cuya versión no sea la esperada, o
