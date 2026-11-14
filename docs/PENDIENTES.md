@@ -117,3 +117,35 @@ ART-01 tomada por RTX tester para integrar el original localizado; no duplicar e
 - Home/launcher y canales de actualización comprobados; opciones FSR coherentes.
 - Pruebas automáticas, nativas, integración, revisión independiente y evidencias
   de hardware pendientes explícitas. Una tarea en REVISIÓN no cumple esta puerta.
+
+## Futuras (pedidas por el propietario, después de 0.7.1)
+
+Orden sugerido. Ninguna cambia la lógica del juego; cada una necesita medida antes de darla
+por buena.
+
+1. **Pestaña «Mods» en el launcher.**
+   - Llevar a ella el giroscopio (`motion`, ya existe y está activo por defecto) y la
+     sensibilidad del ratón.
+   - Añadir `gyro_sens`: por defecto 2,5, rango 0,1–10, ajustable en vivo. El propietario siente
+     la base actual como un «2» de shooter y la quiere en «5». Plan: escalar el giroscopio antes
+     de integrarlo en `motion_fusion.c` y, si la escala no es 1, sin la corrección por gravedad.
+   - Texto de ayuda sobre mandos compatibles sin drivers: Pro, Joy-Con, DS4, DualSense y 8BitDo
+     en modo Switch (en modo X-input no envían giroscopio).
+   - Proponer un layout de teclado para este modo.
+2. **FPS altos con presets 30/60/90/120/144/240 y libre**, solo si la lógica del juego no
+   cambia. Base: `docs/HIGH_FPS.md` (temporizador con canales fijos a 1/60 por medir).
+   - Antes, medir la sensación de que algunas animaciones van a 30 fps. Puede ser judder de
+     60 fps en 100 Hz con `fifo` (PACE-AMD-01) o animaciones a mitad de ritmo propias del juego.
+3. **Pacing en AMD (PACE-AMD-01):**
+   - Tirones al girar la cámara rápido.
+   - Pruebas: monitor a 120 Hz o FreeSync, y traza de presentación.
+   - Ajustes del sistema a probar (no son del código): reloj mínimo en Adrenalin, MPO.
+4. **Renderizado interno y sombras.**
+   - Escala ×2 «como otros juegos»: hoy existe 125/150/200 % experimental solo en TV
+     (`docs/SUPERSAMPLING.md`); falta validar fotos y puntuación a esa escala.
+   - Sombras de más resolución o calidad: existe `AC_SHADOW_RES`/`AC_SHADOW_SCALE`, sin medir en
+     Snap.
+5. **Fotos a mayor resolución** que 1080×720 en el álbum (mod opcional). Requiere ver cómo
+   guarda y puntúa el juego.
+6. **CRISTAL-01:** A/B de `AC_SPIRV_NMINMAX` y `AC_SPIRV_DOMAIN_CLAMP` para atribuir la causa, y
+   control en RTX.
