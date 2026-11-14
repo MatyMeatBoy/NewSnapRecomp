@@ -103,11 +103,31 @@ static inline int snap_host_scale_class(const nvn_texdesc *d, uint32_t samples, 
     return (d->flags & (NVN_TEXTURE_FLAGS_DISPLAY | NVN_TEXTURE_FLAGS_COMPRESSIBLE)) || depth_format;
 }
 
+// SS-03 (AC_HD_PHOTOS, on by default): the 360x240 RGBA8 picture each photo
+// thumbnail is encoded from is drawn 3x larger, 1080x720 like the photo itself,
+// at every internal resolution. snap_hd_photo.c keeps a copy for the thumbnail.
+static inline int snap_hd_photo_scale_on(void) {
+    const char *v = cfg_get("AC_HD_PHOTOS");
+    return !(v && !strcmp(v, "0"));
+}
+
+static inline float snap_hd_photo_scale(const nvn_texdesc *d, uint32_t samples, int mirrored, int depth_format) {
+    const uint32_t refused = NVN_TEXTURE_FLAGS_VIDEO_DECODE | NVN_TEXTURE_FLAGS_IMAGE | NVN_TEXTURE_FLAGS_LINEAR |
+                             NVN_TEXTURE_FLAGS_SPARSE | NVN_TEXTURE_FLAGS_LINEAR_RENDER_TARGET;
+    if (!snap_hd_photo_scale_on() || mirrored || depth_format || samples != 1 || d->samples > 1) return 1.0f;
+    if (d->target != NVN_TEXTURE_TARGET_2D || d->depth > 1 || d->width != 360 || d->height != 240) return 1.0f;
+    if (d->format != NVN_FORMAT_RGBA8 || ((uint32_t)d->flags & refused)) return 1.0f;
+    return 3.0f;
+}
+
 // format_usable: a colour format stored as the game's (no expansion or ASTC
 // conversion), or any depth/stencil format.
 static inline float snap_output_image_scale_ex(const nvn_texdesc *d, uint32_t samples, int format_usable,
                                                uint32_t max_dimension, int mirrored, int depth_format) {
-    if (!format_usable || ov_handheld()) return 1.0f;
+    if (!format_usable) return 1.0f;
+    float hd = snap_hd_photo_scale(d, samples, mirrored, depth_format);
+    if (hd > 1.0f) return d->width * hd <= max_dimension && d->height * hd <= max_dimension ? hd : 1.0f;
+    if (ov_handheld()) return 1.0f;
     float scale;
     int take;
     if (snap_ss_engine_mode()) {
