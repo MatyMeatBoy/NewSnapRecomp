@@ -1,70 +1,64 @@
-# Pista para FOTO-01: imágenes de color enlazadas a la memoria del pool
+# Lead for FOTO-01: colour images bound to pool memory
 
-2026-11-13 · MatyMeatBoy · **Hipótesis sin comprobar en AMD.** No toca archivos
-reservados; es una observación para quien lleve FOTO-01.
+2026-11-13 · MatyMeatBoy · **Hypothesis not checked on AMD.** Touches no reserved files; it is an
+observation for whoever owns FOTO-01.
 
-> **Aviso (añadido tras recibir el log AMD):** el log cercano a la captura de
-> las 22:39 sugiere un runtime anterior, sin hash que determine la identidad
-> exacta (ver `keyboard-after-photo.md`). No se establece la versión de la
-> captura de las 16:53. **Falta repetir con runtime identificado en AMD**.
-> La hipótesis de abajo sigue siendo comprobable
-> (el enlace de imágenes al pool no cambió entre versiones), pero lo primero es
-> repetir la prueba con la 0.5 real.
+> **Note (added after receiving the AMD log):** the log near the 22:39 screenshot suggests an
+> earlier runtime, without a hash that pins the exact identity (see
+> `keyboard-after-photo.md`). The version of the 16:53 screenshot is not established.
+> **The test must be repeated with an identified runtime on AMD.** The hypothesis below is
+> still testable (image binding to the pool did not change between versions), but the first
+> step is to repeat the test with the real 0.5.
 
-## Observaciones nuevas
+## New observations
 
-1. **El patrón de franjas es idéntico en dos fotos distintas.** La captura de
-   las 16:53 (`clipboard-b8af3c5e`) y la de las 22:39
-   (`rx6900xt-0.5/album-bands-amd.png`) muestran contenido diferente pero las
-   mismas celdas válidas y negras, en las mismas posiciones. Esto es compatible
-   con disposición de memoria; una carrera o trabajo parcial determinista
-   tampoco quedan excluidos. La medición de la primera captura está en
-   `photo-bands-cpu.md` (15 franjas de ≈48 filas, tramos válidos contiguos).
-2. **Una foto de Pikachu se ve completa en la pantalla de evaluación**
-   (`evaluation-good-amd.png`). Falta comprobar identidad del slot/JPEG y las
-   texturas concretas; la captura aislada no demuestra que sean los mismos bytes.
-3. En RTX 4060 las transferencias de registro son de 1080×720 y 240×200 en
-   formato 37 (RGBA8), sin diferencias fuente/buffer (trazas de RTX tester).
+1. **The band pattern is identical in two different photos.** The 16:53 screenshot
+   (`clipboard-b8af3c5e`) and the 22:39 one (`rx6900xt-0.5/album-bands-amd.png`) show
+   different content but the same valid and black cells, in the same positions. This fits a
+   memory layout; a deterministic race or partial work is not ruled out either. The
+   measurement of the first screenshot is in `photo-bands-cpu.md` (15 bands of ≈48 rows,
+   contiguous valid runs).
+2. **A Pikachu photo shows complete on the evaluation screen** (`evaluation-good-amd.png`).
+   The slot/JPEG identity and the specific textures still need checking; the single
+   screenshot does not show they are the same bytes.
+3. On the RTX 4060 the recorded transfers are 1080×720 and 240×200 in format 37 (RGBA8),
+   with no source/buffer differences (the RTX tester's traces).
 
-## Punto del código que encaja
+## The point in the code that fits
 
-`vk_texture.c`, `bind_pool_memory`: una imagen cuyo almacenamiento está en un
-pool solo-GPU se **enlaza dentro de la memoria del pool**, en la dirección que
-el juego le dio. El donor ya documenta el riesgo en RDNA2 (la familia de la
-RX 6900 XT): el controlador pide para la imagen más bytes que su
-almacenamiento NVN, y la cola cae sobre la siguiente textura del heap. La
-guarda actual solo cubre profundidad/stencil:
+`vk_texture.c`, `bind_pool_memory`: an image whose storage is in a GPU-only pool is **bound
+inside the pool's memory**, at the address the game gave it. The donor already documents the
+risk on RDNA2 (the RX 6900 XT's family): the driver asks for more bytes for the image than
+its NVN storage, and the tail falls on the next texture in the heap. The current guard only
+covers depth/stencil:
 
 ```c
 if ((e->f.depth || e->f.stencil) && req.size > guest_size) return 0;
 ```
 
-El comentario del donor dice que las imágenes de color «se quedan en su sitio»
-porque en una RX 9070 no se vio que la GPU escribiera el exceso. Eso no se ha
-medido en RDNA2 ni con los tamaños de Snap (1080×720 y 240×200 no son tamaños
-de Astral Chain). Si en la RX 6900 XT `req.size > guest_size` para una imagen
-de color, dos `VkImage` quedan enlazadas a memoria solapada: Vulkan deja su
-contenido indefinido en cuanto se escribe una, y el resultado sería justo un
-patrón fijo en el orden de teselas del controlador.
+The donor's comment says colour images «stay in place» because on an RX 9070 the GPU was not
+seen writing the excess. That has not been measured on RDNA2 or with Snap's sizes (1080×720
+and 240×200 are not Astral Chain sizes). If on the RX 6900 XT `req.size > guest_size` for a
+colour image, two `VkImage`s are bound to overlapping memory: Vulkan leaves their content
+undefined as soon as one is written, and the result would be exactly a fixed pattern in the
+driver's tile order.
 
-## Cómo comprobarlo sin suponer nada
+## How to check it without assuming anything
 
-- **Medición (decisiva, barata):** registrar en cada intento de enlace
-  `addr`, tamaño, formato, `req.size`, `req.alignment`, `guest_size` y si se
-  enlazó. En NVIDIA dará la línea base; en AMD dirá si alguna imagen de color
-  de la ruta de fotos excede su almacenamiento. Diagnóstico opt-in, sin cambiar
-  comportamiento.
-- **Experimento A/B:** un interruptor que no enlace ninguna imagen cuyo
-  `req.size` supere `guest_size` (misma regla que profundidad, sin excepción por
-  fabricante). La ruta alternativa «memoria propia» ya existe y se usa cuando
-  falla la alineación o el tipo de memoria. Si las franjas desaparecen en AMD
-  con el interruptor y vuelven sin él, la causa queda establecida.
-- **Control en RTX:** forzar memoria propia para todas las imágenes de color y
-  repetir la ruta de 540 s; valida que la alternativa no rompe fotos,
-  evaluación ni tutorial antes de pedírselo al propietario.
+- **Measurement (decisive, cheap):** log on each bind attempt `addr`, size, format,
+  `req.size`, `req.alignment`, `guest_size` and whether it was bound. On NVIDIA it gives the
+  baseline; on AMD it tells whether any colour image on the photo route exceeds its storage.
+  Opt-in diagnostics, no behaviour change.
+- **A/B experiment:** a switch that binds no image whose `req.size` exceeds `guest_size`
+  (the same rule as depth, with no per-vendor exception). The «own memory» fallback already
+  exists and is used when alignment or memory type fail. If the bands disappear on AMD with
+  the switch and come back without it, the cause is established.
+- **RTX control:** force own memory for every colour image and repeat the 540 s route; it
+  validates that the fallback does not break photos, evaluation or the tutorial before asking
+  the owner.
 
-## Límites
+## Limits
 
-- No hay medición de `req.size` en AMD: la hipótesis puede ser falsa.
-- No explica por sí sola el color saturado (COLOR-01).
-- No se ha comprobado qué textura concreta usa la pantalla de selección.
+- There is no measurement of `req.size` on AMD: the hypothesis may be false.
+- It does not by itself explain the saturated colour (COLOR-01).
+- Which texture the selection screen uses has not been checked.

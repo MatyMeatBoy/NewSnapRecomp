@@ -1,99 +1,95 @@
-# Traspaso: depuración directa en la RX 6900 XT
+# Handoff: debugging directly on the RX 6900 XT
 
-2026-11-14 · Para la sesión que trabaje en el PC con AMD. Resume lo que ya se
-sabe y qué hacer primero, para no repetir pruebas. Detalle y evidencia en
-`amd-photo-gpu-fault.md` e `integration-07.md`.
+2026-11-14 · For the session working on the AMD PC. Summarises what is already known and what
+to do first, so tests are not repeated. Detail and evidence in `amd-photo-gpu-fault.md` and
+`integration-07.md`.
 
-## Qué falla (solo en la RX 6900 XT, controlador 26.10.1, rama RDNA 1/2)
+## What fails (only on the RX 6900 XT, driver 26.10.1, RDNA 1/2 branch)
 
-1. **Miniatura de la foto dentro del nivel** con franjas negras de patrón fijo:
-   1 de cada 4 tramos con imagen, igual en fotos distintas. Las fotos guardadas
-   salen igual.
-2. **Tiras en la interfaz:** retrato del profesor, placa del nombre, marco del
-   visor. Con presentación `fifo` el retrato sale bien.
-3. **Cuadrados** que GPU-WRITE-01 había corregido en el tutorial, de vuelta.
-4. **Cierres** con `vk: device fault … write invalid`: tres logs, los tres con
-   FSR 4 Native AA activo, uno de ellos con shadow activo.
+1. **The photo thumbnail inside the level** with fixed-pattern black bands: 1 in 4 runs
+   with image, the same in different photos. Saved photos come out the same.
+2. **Strips in the interface:** the professor's portrait, the name plate, the viewfinder
+   frame. With `fifo` presentation the portrait comes out fine.
+3. **Squares** that GPU-WRITE-01 had fixed in the tutorial, back again.
+4. **Closes** with `vk: device fault … write invalid`: three logs, all three with FSR 4 Native
+   AA on, one of them with shadow on.
 
-En RTX 4060 nada de esto ocurre con el mismo runtime.
+On the RTX 4060 none of this happens with the same runtime.
 
-## Ya descartado (no repetir)
+## Already ruled out (do not repeat)
 
-| Hipótesis | Cómo se descartó |
+| Hypothesis | How it was ruled out |
 |---|---|
-| Importación por puntero de host | `shadow = 1` en AMD: mismo aspecto y otro fault |
-| Fence equivocado al leer la foto | El juego usa `QueueFenceSync`; traza en RTX |
-| ASTC sin soporte nativo, por sí solo | La RTX tampoco lo tiene y usa el mismo decodificador |
-| Alias de imágenes con memoria de pool | Snap no usa pools físicos ni virtuales |
-| FSR 4 como causa de las franjas | Con el escalador apagado la miniatura sigue rota |
+| Host-pointer import | `shadow = 1` on AMD: same look and another fault |
+| Wrong fence when reading the photo | The game uses `QueueFenceSync`; trace on RTX |
+| ASTC without native support, by itself | The RTX lacks it too and uses the same decoder |
+| Image aliasing with pool memory | Snap uses neither physical nor virtual pools |
+| FSR 4 as the cause of the bands | With the upscaler off the thumbnail is still broken |
 
-No reproducido en RTX forzando el camino de AMD (no vale como descarte en AMD):
-`AC_GPL=0` con caché de pipelines vacía; FSR 3.1 Native AA; la combinación
-conservadora completa.
+Not reproduced on RTX forcing the AMD path (does not count as ruled out on AMD): `AC_GPL=0`
+with an empty pipeline cache; FSR 3.1 Native AA; the complete conservative combination.
 
-## Primer paso en AMD: volcado del fotograma
+## First step on AMD: frame dump
 
-Es el dato que falta. Con el defecto visible:
+This is the missing data. With the defect visible:
 
 ```
 set AC_DUMP_KEY=1
 set AC_DUMP_N=2
-newsnap.exe        (F12 con la miniatura rota en pantalla)
+newsnap.exe        (F12 with the broken thumbnail on screen)
 ```
 
-`dump/passes.txt` lista cada pase, sus destinos, texturas (dirección, estado de
-mirror, número de subidas) y los shaders; los PNG muestran qué pase produce ya
-la imagen rota. Buscar la textura 1080×720 RGBA8 de la foto: si el PNG del pase
-que la dibuja ya tiene franjas, el fallo está en ese pase (shader, pipeline,
-destino); si sale completa y la que se muestrea después no, está entre medias
-(copia, alias, subida desde memoria).
+`dump/passes.txt` lists each pass, its targets, textures (address, mirror state, number of
+uploads) and the shaders; the PNGs show which pass already produces the broken image. Look
+for the photo's 1080×720 RGBA8 texture: if the PNG of the pass that draws it already has
+bands, the failure is in that pass (shader, pipeline, target); if it comes out complete and
+the one sampled later does not, it is in between (copy, alias, upload from memory).
 
-`AC_DUMP_DRAWS=<seq>` parte ese pase dibujo a dibujo. `AC_TRACE=gfx` da una
-línea por fotograma con pases, dibujos, copias y dispatch.
+`AC_DUMP_DRAWS=<seq>` splits that pass draw by draw. `AC_TRACE=gfx` gives one line per frame
+with passes, draws, copies and dispatches.
 
-## Segundo paso: descarte por ajustes (`tools/pruebas-amd/`)
+## Second step: ruling out by settings (`tools/pruebas-amd/`)
 
-Seis `.bat` en orden. El primero aplica todas las sospechas a la vez; si con él
-sigue fallando, ninguna lo es y solo queda el volcado. Cada log lleva una línea
-`amd_diag:` con los ajustes efectivos.
+Six `.bat` files in order. The first applies every suspicion at once; if it still fails with
+it, none of them is the cause and only the dump remains. Each log carries an `amd_diag:` line
+with the effective settings.
 
-Sospechas, de más a menos probable según las capturas (estimación, no medida):
+Suspicions, from most to least likely according to the screenshots (estimate, not measured):
 
-1. Carrera con la reproducción en su propio hilo (`AC_REPLAY_ASYNC=0`).
-2. Dibujos omitidos mientras compila su pipeline: en RDNA 2 la biblioteca de
-   pipelines está apagada y `AC_PIPE_SKIP=fullscreen` omite en lugar de esperar
-   (`AC_PIPE_SKIP=strict`). Probar también `AC_GPL=1`, que es el camino de NVIDIA.
-3. Decodificador ASTC por cómputo (`AC_ASTC=cpu`), para las tiras de interfaz.
-4. Shaders de cómputo del juego: dentro del nivel hay 10–40 dispatch por
-   fotograma. En AMD el traductor usa subgrupos de 64 (32 fijado en cómputo) y
-   buffers de almacenamiento con alineación 4; en NVIDIA 32 y 16. Sin ajuste
-   propio: mirar en el volcado las imágenes y buffers que escriben.
-5. FSR 4 solo para los cierres (`AC_UPSCALING=fsr3`).
+1. A race with replay on its own thread (`AC_REPLAY_ASYNC=0`).
+2. Draws skipped while their pipeline compiles: on RDNA 2 the pipeline library is off and
+   `AC_PIPE_SKIP=fullscreen` skips instead of waiting (`AC_PIPE_SKIP=strict`). Also try
+   `AC_GPL=1`, which is the NVIDIA path.
+3. The compute ASTC decoder (`AC_ASTC=cpu`), for the interface strips.
+4. The game's compute shaders: inside the level there are 10–40 dispatches per frame. On AMD
+   the translator uses subgroups of 64 (32 fixed in compute) and storage buffers with
+   alignment 4; on NVIDIA 32 and 16. No setting of its own: check in the dump the images and
+   buffers they write.
+5. FSR 4 only for the closes (`AC_UPSCALING=fsr3`).
 
-## Reproducir sin pasar el tutorial a mano
+## Reproducing without playing the tutorial by hand
 
-`tests/routes/photo-tutorial-expedition.txt` recorre tutorial, registro de dos
-fotos, evaluación y la primera expedición (540 s a 60 fps) con entradas
-programadas. Requiere un perfil **copiado** que ya haya pasado la configuración
-inicial:
+`tests/routes/photo-tutorial-expedition.txt` goes through the tutorial, registration of two
+photos, evaluation and the first expedition (540 s at 60 fps) with scripted input. It needs a
+**copied** profile that has already passed initial setup:
 
 ```
 set AC_INPUT=none
-set AC_INPUT_SCRIPT=<ruta al archivo de ruta>
+set AC_INPUT_SCRIPT=<path to the route file>
 set AC_FPS=60
 set AC_VK_PRESENT=fifo
-newsnap.exe --exefs <GameData>\exefs --romfs <GameData>\romfs --profile <copia del perfil> --seconds 540
+newsnap.exe --exefs <GameData>\exefs --romfs <GameData>\romfs --profile <profile copy> --seconds 540
 ```
 
-Las fotos se registran hacia el fotograma 20178 y 20988; la expedición empieza
-hacia el 21170. `AC_SHOTS=w330-535:5` con `AC_SHOTS_DIR` guarda capturas (frenan
-el juego: no sirven para medir ritmo).
+The photos are registered around frames 20178 and 20988; the expedition starts around 21170.
+`AC_SHOTS=w330-535:5` with `AC_SHOTS_DIR` saves screenshots (they slow the game down: not
+useful to measure pacing).
 
-## Reglas que siguen vigentes
+## Rules still in force
 
-- No tocar partidas, fotos, imports ni claves del propietario: trabajar sobre
-  copias en `build/`. No subir datos del juego, volcados ni ejecutables.
-- No cambiar la lógica del juego para saltar pasos.
-- Una prueba en AMD no valida NVIDIA ni al revés; anotar siempre GPU,
-  controlador y la línea `amd_diag:`.
-- Una sola prueba GPU a la vez.
+- Do not touch the owner's saves, photos, imports or keys: work on copies in `build/`. Do not
+  upload game data, dumps or executables.
+- Do not change game logic to skip steps.
+- A test on AMD does not validate NVIDIA or vice versa; always note GPU, driver and the
+  `amd_diag:` line.
+- One GPU test at a time.
