@@ -22,6 +22,10 @@ El repo es privado (consulta de GitHub confirmada). Que una descarga funcione en
 el PC de desarrollo con gh autenticado no acredita un PC sin esas credenciales.
 No incluir tokens/credenciales en paquetes ni cambiar visibilidad del repo.
 
+El propietario también observa diferente suavidad entre la prueba local y la
+6900 XT/FreeSync; Astral Chain es su referencia. Seguimiento y comparación:
+`docs/bugs/presentation-amd-nvidia.md`. Comparar cadencia efectiva, no solo FPS.
+
 ## Capturas y límites de inferencia
 
 Copias privadas en `build/user-reports/rx6900xt-0.5/`, con SHA256 y ruta original
