@@ -3,8 +3,10 @@
 **Integración en `main`; entregas por PR temático.** Las ramas auxiliares
 0.4/0.5 ya se integraron y eliminaron; no recrearlas. Preparar PR de Claude en
 un worktree aislado, conservando el checkout compartido en `main`.
-La release/tag `v0.4.0-alpha` permanece inmutable. La 0.5 está en desarrollo y
-**no se publica hasta resolver y validar todos los fallos reportados**.
+La release/tag `v0.4.0-alpha` permanece inmutable. Por petición posterior del
+propietario se prepara **`v0.5.0-alpha` limitada**, sin declararla estable ni dar
+por verificados los casos AMD/mando/FreeSync o los picos de pacing pendientes.
+Las filas de aceptación física conservan su estado hasta disponer de evidencia.
 
 Leer este archivo antes de tomar trabajo. Los responsables de la tabla tienen
 reservados sus archivos; confirmar aquí un cambio de responsable antes de editar.
@@ -38,6 +40,7 @@ resuelta solo por cambiar un ajuste o por compilar.
 
 | ID | Prioridad | Estado | Responsable | Trabajo y archivos reservados |
 |---|---|---|---|---|
+| RELEASE-05 | P0 | EN CURSO | Codex · 2026-11-13 | Publicar `v0.5.0-alpha` limitada por solicitud del propietario. Reservados versión/metadata Windows, documentación y empaquetado de entrega. Verificar artefactos públicos exactos, kit local/actualización, nueva aceptación del binario alpha y checks remotos; AMD/mando/FreeSync conservan pendientes. No subir runtime privado ni modificar la 0.4. |
 | FOTO-01 | P0 | REVISIÓN | Codex / agente de captura | Bandas negras en fotos y miniaturas; aislar captura GPU → readback → JPEG → textura de preview. Reservados `newsnap/color_transfer_adapt.py`, `tests/test_color_transfer.py`, `newsnap/photo_readback_adapt.py`, `tests/test_photo_readback.py`; coordinar seams del renderer. |
 | FOTO-02 | P0 | REVISIÓN | Claude · 2026-11-13 | **PR #1 revisado e integrado: los tres hallazgos están corregidos, 25 pruebas OK y límites de inferencia corregidos.** Validación con bytes AMD pendiente; ver `docs/bugs/photo-audit-review.md`. Resultado local: dos fotos NVIDIA únicas en bancos duplicados; sin bytes AMD que auditar aún. Auditoría CPU independiente de fotos guardadas: comprobar JPEG/bancos/CRC/dimensiones, determinar si las bandas están en bytes guardados o solo en preview. Archivos nuevos `tools/audit_saved_photos.py`, `tests/test_photo_audit.py`, informe `docs/bugs/photo-bands-cpu.md`. No modificar `saves.py`/`photos.py` sin coordinar. |
 | FOCO-01 | P0 | LIBRE · CLAUDE | Sin asignar | Indicador de enfoque corrupto que sigue a Pikachu en Original: identificar draw/shader/textura del HUD y proponer fix verificable. Reservar nuevo `newsnap/focus_adapt.py`, `tests/test_focus.py`; no tocar adaptadores de color/readback ajenos. |
