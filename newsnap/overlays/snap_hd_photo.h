@@ -8,4 +8,4 @@ void snap_hd_photo_pass(VkCommandBuffer cb, const VkTexImage *img);
 VkImageView snap_hd_photo_view(VkImage bc, VkImageView fallback);
 void snap_hd_photo_gone(VkImage bc);
 // FG-02 (snap_fsr_fg.c): the tonemapped scene before the interface, as frame generation's HUD-less image.
-void snap_fg_hudless_pass(VkCommandBuffer cb, const VkTexImage *img);
+void snap_fg_hudless_pass(VkCommandBuffer cb, const VkTexImage *img, VkFormat view);

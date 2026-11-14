@@ -334,15 +334,15 @@ static int hl_slot_locked(int i, uint32_t w, uint32_t h, VkCommandBuffer cb) {
     return 1;
 }
 
-void snap_fg_hudless_pass(VkCommandBuffer cb, const VkTexImage *img) {
-    { static int dbg; if (img && img->width >= 1000 && dbg++ < 60) rt_log("fg hudless dbg: pass fmt %d %ux%u type %d layers %u src %d", (int)img->format, img->width, img->height, (int)img->type, img->layers, hl_src != VK_NULL_HANDLE); }
+void snap_fg_hudless_pass(VkCommandBuffer cb, const VkTexImage *img, VkFormat view) {
     if (!img || !snap_fg_enabled() || img->type != VK_IMAGE_TYPE_2D || img->layers > 1) return;
-    if (img->format == VK_FORMAT_R8G8B8A8_SRGB && img->width >= 640) {   // a full-size tonemapped target begins
+    // The tonemap pass draws the full-size RGBA8_SRGB image through an sRGB view; the interface pass then draws into
+    // the same image (same storage) through a UNORM view. At that second begin the image holds the scene without HUD.
+    if (img->format == VK_FORMAT_R8G8B8A8_SRGB && view == VK_FORMAT_R8G8B8A8_SRGB && img->width >= 640) {
         hl_src = img->image, hl_w = img->width, hl_h = img->height;
         return;
     }
-    { static int dbg; if (hl_src && dbg++ < 6) rt_log("fg hudless dbg: next pass fmt %d %ux%u (src %ux%u)", (int)img->format, img->width, img->height, hl_w, hl_h); }
-    if (!hl_src || img->format != VK_FORMAT_R8G8B8A8_UNORM || img->width != hl_w || img->height != hl_h) return;
+    if (!hl_src || img->image != hl_src || view != VK_FORMAT_R8G8B8A8_UNORM) return;
     VkImage src = hl_src;
     hl_src = VK_NULL_HANDLE;
     plat_mutex_lock(&fg_lock);
@@ -359,7 +359,6 @@ void snap_fg_hudless_pass(VkCommandBuffer cb, const VkTexImage *img) {
         vkCmdPipelineBarrier(cb, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0, 1, &mb, 0, NULL, 0, NULL);
         HL[i].id = id;
     }
-    { static int dbg; if (dbg++ < 6) rt_log("fg hudless dbg: copy id %llu ctx %d slot img %d", (unsigned long long)id, G.ctx != NULL, HL[i].img != VK_NULL_HANDLE); }
     plat_mutex_unlock(&fg_lock);
 }
 
@@ -374,7 +373,6 @@ static void hudless_configure_locked(uint64_t id, uint32_t w, uint32_t h, VkComm
     cf.generationRect.width = (int32_t)w;
     cf.generationRect.height = (int32_t)h;
     cf.frameID = id;
-    { static int dbg; if (dbg++ < 6) rt_log("fg hudless dbg: present id %llu slot id %llu %ux%u vs %ux%u", (unsigned long long)id, (unsigned long long)HL[i].id, HL[i].w, HL[i].h, w, h); }
     if (HL[i].img && HL[i].id == id && HL[i].w == w && HL[i].h == h) {
         barrier(cb, HL[i].img, VK_IMAGE_LAYOUT_GENERAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
                 VK_ACCESS_MEMORY_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT);
@@ -471,5 +469,5 @@ VkImage snap_fg_present_source(VkCommandBuffer cb, VkImage src, VkFormat fmt, in
     return VK_NULL_HANDLE;
 }
 void snap_fg_release(void) {}
-void snap_fg_hudless_pass(VkCommandBuffer cb, const VkTexImage *img) { (void)cb; (void)img; }
+void snap_fg_hudless_pass(VkCommandBuffer cb, const VkTexImage *img, VkFormat view) { (void)cb; (void)img; (void)view; }
 #endif
