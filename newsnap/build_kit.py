@@ -1,5 +1,7 @@
 """Acquire the public build kit matching the installed launcher, never owner data."""
 import hashlib
+from contextlib import contextmanager
+import errno
 import json
 import os
 from pathlib import Path
@@ -7,6 +9,7 @@ import re
 import shutil
 import stat
 import tempfile
+import time
 from urllib.parse import quote
 from urllib.error import HTTPError
 import zipfile
@@ -14,6 +17,8 @@ import zipfile
 from . import updater
 from .maintenance import _cancel, _json, digest, verify_build_kit
 from .version import VERSION
+from .paths import data_dir
+from .launcher_settings import load_profile
 
 MAX_ARCHIVE_BYTES = 2 << 30
 MAX_EXPANDED_BYTES = 6 << 30
@@ -187,6 +192,81 @@ def _bundled_archive(root, revision, cancel_event):
     return archive
 
 
+CACHE_INTEGRITY_ERRORS = (ValueError, FileNotFoundError, updater.UpdateError)
+
+
+@contextmanager
+def _publication_lock(cache, revision, cancel_event):
+    """Serialize final directory switches; OS releases the lock on process exit."""
+    path=cache/f'.publish-{VERSION}-{revision}.lock'
+    updater._no_links(path)
+    with path.open('a+b') as stream:
+        if not stat.S_ISREG(os.fstat(stream.fileno()).st_mode):
+            raise updater.UpdateError('Build-kit publication lock is not a regular file')
+        if not stream.tell():
+            stream.write(b'\0');stream.flush()
+        deadline=time.monotonic()+30
+        while True:
+            _cancel(cancel_event)
+            try:
+                stream.seek(0)
+                if os.name=='nt':
+                    import msvcrt
+                    msvcrt.locking(stream.fileno(),msvcrt.LK_NBLCK,1)
+                else:
+                    import fcntl
+                    fcntl.flock(stream,fcntl.LOCK_EX|fcntl.LOCK_NB)
+                break
+            except OSError as error:
+                if error.errno not in (errno.EACCES,errno.EAGAIN,errno.EDEADLK):raise
+                if time.monotonic()>=deadline:
+                    raise updater.UpdateError('Another build-kit publication is still running') from error
+                time.sleep(.05)
+        try:
+            yield
+        finally:
+            stream.seek(0)
+            if os.name=='nt':
+                msvcrt.locking(stream.fileno(),msvcrt.LK_UNLCK,1)
+            else:
+                fcntl.flock(stream,fcntl.LOCK_UN)
+
+
+def _publish_candidate(candidate, target, root, revision, cancel_event, *, repair):
+    cache=target.parent
+    # Both operands are children we own, and no recursive cleanup ever touches
+    # target or quarantine. Failed caches remain available for diagnosis.
+    if target.name!=f'{VERSION}-{revision}' or candidate.parent.parent!=cache:
+        raise updater.UpdateError('Invalid build-kit publication boundary')
+    updater._no_links(target);updater._no_links(candidate)
+    with _publication_lock(cache,revision,cancel_event):
+        _cancel(cancel_event)
+        quarantine=None
+        if target.exists():
+            try:
+                return _verify(target,root,revision,cancel_event)
+            except CACHE_INTEGRITY_ERRORS as error:
+                if isinstance(error,updater.DownloadCancelled):raise
+                if not repair:raise
+            # Cancellation is accepted before switching; finish/restore the
+            # directory transaction once the previous generation is moved.
+            _cancel(cancel_event)
+            quarantine=Path(tempfile.mkdtemp(prefix='.invalid-build-kit-',dir=cache))
+            target.rename(quarantine/'kit')
+        try:
+            candidate.rename(target)
+        except OSError:
+            if target.exists():
+                # An uncooperative/older publisher may have won the race.
+                # Return only a fully verified generation, never overwrite it.
+                return _verify(target,root,revision,cancel_event)
+            if quarantine is not None:
+                (quarantine/'kit').rename(target)
+                quarantine.rmdir()
+            raise
+        return target
+
+
 def ensure_build_kit(root, progress=None, cancel_event=None):
     """Return an exactly verified offline cache, or acquire this installed release.
 
@@ -207,12 +287,25 @@ def ensure_build_kit(root, progress=None, cancel_event=None):
     resolved = cache.resolve()
     if resolved == root or resolved.is_relative_to(root):
         raise updater.UpdateError('Build-kit cache must be outside the installation and owner data')
-    cache.mkdir(parents=True, exist_ok=True)
     target = cache / f'{VERSION}-{revision}'
+    for owner in (data_dir(root).resolve(),load_profile(root).resolve()):
+        if resolved==owner or resolved.is_relative_to(owner) or owner.is_relative_to(target.resolve()):
+            raise updater.UpdateError('Build-kit cache must not contain or alias owner data')
+    cache.mkdir(parents=True, exist_ok=True)
+    updater._no_links(target)
+    bundled=None
     if target.exists():
         progress('Verificando las herramientas guardadas…')
-        return _verify(target, root, revision, cancel_event)
-    bundled = _bundled_archive(root, revision, cancel_event)
+        try:
+            return _verify(target, root, revision, cancel_event)
+        except CACHE_INTEGRITY_ERRORS as error:
+            if isinstance(error,updater.DownloadCancelled):raise
+            # Never turn a cache error into an implicit network acquisition.
+            # A complete exact offline bundle is required for automatic repair.
+            bundled=_bundled_archive(root,revision,cancel_event)
+            if bundled is None:raise
+    if bundled is None:
+        bundled = _bundled_archive(root, revision, cancel_event)
     if bundled is None:
         progress('Buscando las herramientas de esta versión…')
         name, urls = _release(root, revision, tag)
@@ -238,11 +331,7 @@ def ensure_build_kit(root, progress=None, cancel_event=None):
         _extract(archive, candidate, revision, cancel_event)
         _verify(candidate, root, revision, cancel_event)
         _cancel(cancel_event)
-        # Concurrent callers may already have published a verified generation.
-        if target.exists():
-            return _verify(target, root, revision, cancel_event)
-        candidate.rename(target)
-        return target
+        return _publish_candidate(candidate,target,root,revision,cancel_event,repair=bundled is not None)
     except updater.DownloadCancelled as error:
         # Keep maintenance's public cancellation type without an updater import
         # dependency on maintenance (which also imports build/runtime modules).

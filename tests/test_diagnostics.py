@@ -15,6 +15,20 @@ from newsnap.maintenance import MaintenanceCancelled
 
 
 class DiagnosticsTests(unittest.TestCase):
+    def test_export_contains_readable_session_diagnosis_without_paths(self):
+        (self.logs/'newsnap.log').write_text(
+            '[host] patches: snap_render on (page 0x7002891000)\n'
+            'FATAL: rt_dispatch: no function at guest pc 0x7002c73060 (sdk+0x273060): not a function start\n'
+            '[newsnap_launcher] {"event":"exit","exit_code":70}\n')
+        export_diagnostics(self.root,self.destination)
+        contents=self.read_zip()
+        analysis=json.loads(contents['analysis/newsnap.log.json'])
+        self.assertEqual(analysis['verdict'],'fatal-runtime')
+        self.assertEqual(analysis['fatal']['known'],'jpeg-longjmp')
+        self.assertEqual(analysis['observed_exit_code'],70)
+        self.assertEqual(analysis['runtime']['identity_basis'],'log-inference-not-executable-hash')
+        self.assertNotIn(str(self.root),json.dumps(analysis))
+
     def setUp(self):
         self.temp=tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
