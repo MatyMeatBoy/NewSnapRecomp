@@ -290,21 +290,31 @@ int main(void) {
  VkMemSpan destination={.buffer=(VkBuffer)(uintptr_t)buffer,.offset=16};
  VkBufferImageCopy region={.bufferOffset=16,.bufferRowLength=PITCH/4,.imageExtent={W,H,1}};
  uint64_t size=PITCH*(H-1)+W*4;
+ // No setting: the copy statistics still reach the log, without any file.
  snap_photo_trace_t2b(&ex,&s,size,&region,&destination);
- if(files||copies||allocations||pending_fn)return 1;
- enabled=1;snap_photo_trace_t2b(&ex,&s,size,&region,&destination);
- if(files||copies!=2||allocations!=2||ex.recorded!=2||!pending_fn)return 2;
+ if(files||copies!=2||allocations!=2||ex.recorded!=2||!pending_fn)return 1;
  pending_fn(pending_arg);pending_fn=NULL;
- if(files!=2||destroyed!=2||!strstr(logline,"mismatch_bytes=0")||!strstr(logline,"black_rows=0/0"))return 3;
+ if(files||destroyed!=2||!strstr(logline,"mismatch_bytes=0")||!strstr(logline,"black_rows=0/0")||
+    !strstr(logline,"black_tiles16=0/0 of 48")||!strstr(logline,"[none] (log only)"))return 7;
+ enabled=1;snap_photo_trace_t2b(&ex,&s,size,&region,&destination);
+ if(files||copies!=4||allocations!=4||ex.recorded!=4||!pending_fn)return 2;
+ pending_fn(pending_arg);pending_fn=NULL;
+ if(files!=2||destroyed!=4||!strstr(logline,"mismatch_bytes=0")||!strstr(logline,"black_rows=0/0"))return 3;
  if(first_pixel[0]!=88||first_pixel[1]!=1||first_pixel[2]!=17||first_pixel[3]!=255)return 4;
  // Deliberately corrupt one padded destination row. Source staging stays intact.
  memset(buffer+16+17*PITCH,0,W*4);
  snap_photo_trace_t2b(&ex,&s,size,&region,&destination);pending_fn(pending_arg);
  if(strstr(logline,"mismatch_bytes=0")||!strstr(logline,"black_rows=0/1"))return 5;
- // Six more captures reach the cap; the ninth adds no allocations or GPU work.
- for(int i=0;i<6;i++){snap_photo_trace_t2b(&ex,&s,size,&region,&destination);pending_fn(pending_arg);}
+ // A band over part of the rows 32..47: no fully black row more, one run of black tiles in the buffer only.
+ memset(buffer+16+32*PITCH,0,PITCH*16);
+ for(int y=32;y<48;y++)memset(buffer+16+(size_t)y*PITCH,0x40,16*4);
+ snap_photo_trace_t2b(&ex,&s,size,&region,&destination);pending_fn(pending_arg);
+ if(!strstr(logline,"black_rows=0/1")||!strstr(logline,"black_tiles16=0/7 of 48")||
+    !strstr(logline,"buffer_black_runs=1 [y32:x16-127]"))return 8;
+ // Four more captures reach the cap of eight with files; the ninth adds no allocations or GPU work.
+ for(int i=0;i<4;i++){snap_photo_trace_t2b(&ex,&s,size,&region,&destination);pending_fn(pending_arg);}
  int old=allocations;snap_photo_trace_t2b(&ex,&s,size,&region,&destination);
- if(allocations!=old||allocations!=16||destroyed!=16||files!=16)return 6;
+ if(allocations!=old||allocations!=16||destroyed!=16||files!=14)return 6;
  return 0;
 }
 '''
