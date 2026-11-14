@@ -3,16 +3,15 @@
 Read this before taking work. History and the previous Spanish board:
 [PENDIENTES-HECHOS.md](PENDIENTES-HECHOS.md). Rules: [AGENTS.md](../AGENTS.md).
 
-## Current state (2026-11-14, after 0.8.2-tester): read first
+## Current state (2026-11-14, after 0.8.3-tester): read first
 
-- `main` = 0.8.2-tester: AMD RDNA 1/2 fixes (FOTO-01, CRISTAL-01), gyro (GYRO-01/02), windowed
+- `main` = 0.8.3-tester (adds NSP/XCI import in the launcher, IMPORT-01): AMD RDNA 1/2 fixes (FOTO-01, CRISTAL-01), gyro (GYRO-01/02), windowed
   present (PRESENT-WIN-01), internal resolution by host scaling (SS-02), high FPS 90/120/144
   (FPS-01, Codex), FSR frame generation off by default with refresh fallback (FG-01/02).
 - Owner hardware: RX 6900 XT, 100 Hz monitor, FreeSync. Codex: RTX 4060.
 - Owner's queue for **0.8.3** (Claude, in this order, no questions needed): high-resolution
   photos mod (SS-03), pacing/loading in extended modes, ultrawide (if feasible), VRR,
-  launcher import of NSP/NSZ/XCI/XCZ and extracted `exefs`/`romfs` folders, remaining docs in
-  English.
+  NSZ/XCZ import, remaining docs in English.
 - Release recipe: bottom of this file.
 
 ## Tasks
@@ -22,7 +21,8 @@ acceptance), DONE (moved to the history file).
 
 | ID | P | State | Owner | Summary |
 |---|---|---|---|---|
-| SS-03 | P1 | IN PROGRESS | Claude | Higher-resolution photos. CPU reads of enlarged colour now average (box filter); `AC_SS_PHOTO=1` (off) enlarges photo targets as an experiment. Next: find which texture the selection/album shows (the big photo is the 360×240 thumbnail) and whether saving/scoring is unchanged. |
+| SS-03 | P1 | IN PROGRESS | Claude | Higher-resolution photos. CPU reads of enlarged colour average (box filter). `AC_SS_PHOTO=1` (off) enlarges 1080×720/360×240/240×200 colour targets, but the big photo on the selection screen comes from the 360×240 **BC1** thumbnail, which cannot be enlarged; on the RX 6900 XT its 4×4 blocks look almost flat, which may be the FOTO-01 stand-in path (90×60 block view) rather than the game. Next: RTX comparison with `AC_BLOCK_VIEWS=1`, then decide whether to point that screen at the 1080×720 photo. |
+| IMPORT-01 | P1 | REVIEW | Claude | Launcher "Importar NSP/XCI…": base NSP/XCI + update NSP + prod.keys through `newsnap import` on the build kit's Python and a bundled hactool (`tools/build_hactool.py`). Not tested end to end (no dump on the owner's disk). NSZ/XCZ next (zstandard is in the kit). |
 | PACE-AMD-01 | P1 | FREE | — | Camera-turn judder on RX 6900 XT: 60 fps on a 100 Hz FIFO display alternates 10/20 ms. Measure with present trace at 120 Hz/FreeSync before changing present modes. |
 | FG-01/02 | P2 | REVIEW | Claude | FSR frame generation (SDK 2.4, no FFX swapchain), `frame_gen = fsr`, off by default, FSR 3.1/4 only; pauses when real fps > 0.55 × refresh. No HUD-less image (HUD trails possible). Not done: DLSS-G, VRR pacing. |
 | SS-02 | P1 | REVIEW | Claude | Host-scaled internal resolution 125–300 % and "display"; 16:9 chain; `shadow_scale` for Snap's sun maps. RX 6900 XT verified at 60/120 fps. Missing: RTX, photo score comparison. [SUPERSAMPLING.md](SUPERSAMPLING.md). |
@@ -48,7 +48,7 @@ Clone at `D:\01Claude\NewSnapRecomp\repo` (`core.autocrlf=false`, `core.eol=lf`)
 Python 3.12 and `requirements-release`; SDK root `D:\01Claude\NewSnapRecomp\sdkroot`.
 Merge the PR → `python -m tools.package_build_kit --sdk-root <sdkroot>` →
 `tools/build_launcher.py` → `python -m tools.package_windows_release` →
-`gh release create` → install with `updater.stage_update/apply_update` and
+`gh release create` (build hactool once with `tools/build_hactool.py --sdk-root <sdkroot>`) → install with `updater.stage_update/apply_update` and
 `maintenance.rebuild_runtime`. Candidate builds from the repo source: run
 `newsnap.maintenance --worker` with the SDK root's Python (the kit's Python imports its own
 `../source`). Delete test profiles, work folders and captures after use.
