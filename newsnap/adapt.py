@@ -34,6 +34,7 @@ from .windowed_present_adapt import edits as windowed_present_edits
 from .fps_text_adapt import edits as fps_text_edits
 from .high_fps_adapt import edits as high_fps_edits
 from .framegen_adapt import edits as framegen_edits
+from .hd_photo_adapt import edits as hd_photo_edits
 from .crc_isa_adapt import edits as crc_isa_edits
 from .xlate_semantics_adapt import edits as xlate_semantics_edits, stage_patches as stage_xlate_patches
 from .version import VERSION
@@ -237,7 +238,7 @@ def adapt_sources(destination, *, patch_output=None):
                     present_trace_edits, pool_bounds_edits, crc_isa_edits, xlate_semantics_edits,
                     bc_block_views_edits, hid_six_axis_edits, spirv_nminmax_edits,
                     pipe_mo_keys_edits, gyro_sens_edits, windowed_present_edits, fps_text_edits,
-                    high_fps_edits, framegen_edits):
+                    high_fps_edits, framegen_edits, hd_photo_edits):
         for name, changes in adapter().items():
             edits.setdefault(name, []).extend(changes)
     for folder in ('runtime', 'recomp', 'tools'):

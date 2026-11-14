@@ -31,7 +31,7 @@ class SnapOutputTests(unittest.TestCase):
         self.assertIn('if (scale <= 1.0f && nvn_gpu_only(k->addr))', texture)
         self.assertLess(texture.index('static int tex_mirrored('), texture.index('snap_output_image_scale_ex(d,'))
         draw = staged['runtime/vk_exec_draw.c']
-        self.assertIn('if (!skip && snap_host_scale_factor() <= 1.0f) return;', draw)
+        self.assertIn('if (!skip && snap_host_scale_factor() <= 1.0f && !snap_hd_photo_scale_on()) return;', draw)
         self.assertIn('o->scale = snap_output_target_scale', staged['runtime/vk_exec.c'])
 
     def test_policy_native(self):
@@ -58,7 +58,8 @@ static int portable;
 const char *cfg_value(const char *key) {if(strcmp(key,"AC_RENDER_SCALE"))abort();return choice;}
 static const char *chain_knob=NULL;
 static const char *photo_knob=NULL;
-const char *cfg_get(const char *key) {if(!strcmp(key,"AC_SS_PHOTO"))return photo_knob;if(!strcmp(key,"AC_SS_CHAIN"))return chain_knob;if(strcmp(key,"AC_SS_MODE"))abort();return mode;}
+static const char *hd_knob="0";
+const char *cfg_get(const char *key) {if(!strcmp(key,"AC_HD_PHOTOS"))return hd_knob;if(!strcmp(key,"AC_SS_PHOTO"))return photo_knob;if(!strcmp(key,"AC_SS_CHAIN"))return chain_knob;if(strcmp(key,"AC_SS_MODE"))abort();return mode;}
 const char *cfg_upscaling(void) {return upscaling;}
 int ov_handheld(void) {return portable;}
 void rt_log(const char *f,...) {(void)f;}
@@ -113,6 +114,24 @@ int main(void) {
   if(kind==12)d.width=1000,d.height=540;            /* not 16:9 */
   if(kind==13)d.samples=4;
   if(host(&d,samples,usable,mirrored,depth)!=1) return 10+kind;
+ }
+ /* SS-03: the 360x240 RGBA8 picture behind each BC1 thumbnail is 3x at any setting, also handheld */
+ {
+  hd_knob=NULL;choice="game";
+  nvn_texdesc p=rt(0);p.width=360;p.height=240;
+  if(host(&p,1,1,0,0)!=3.0f) return 40;
+  portable=1;if(host(&p,1,1,0,0)!=3.0f) return 41;portable=0;
+  p.format=NVN_FORMAT_RGBA16F;if(host(&p,1,1,0,0)!=1) return 42;p.format=NVN_FORMAT_RGBA8;
+  if(host(&p,1,1,1,0)!=1) return 43;                     /* CPU-written: native */
+  p.flags=NVN_TEXTURE_FLAGS_IMAGE;if(host(&p,1,1,0,0)!=1) return 44;p.flags=0;
+  hd_knob="0";if(host(&p,1,1,0,0)!=1) return 45;
+  nvn_texdesc s=rt(0);s.format=NVN_FORMAT_DEPTH32F;s.width=s.height=1024;
+  if(!snap_shadow_map_class(&s)) return 46;
+  s.width=1920;s.height=1080;if(snap_shadow_map_class(&s)) return 47;   /* the scene depth is not a shadow map */
+  if(snap_shadow_scale_parse("auto")!=2||snap_shadow_scale_parse("4")!=4||snap_shadow_scale_parse("9")!=4) return 48;
+  choice="200";if(snap_shadow_scale_parse("auto")!=4) return 49;
+  choice="150";if(snap_shadow_scale_parse("auto")!=3) return 50;
+  choice="200";
  }
  nvn_texdesc d=rt(NVN_TEXTURE_FLAGS_DISPLAY);
  if(snap_output_image_scale_ex(&d,1,1,3839,0,0)!=1||snap_output_image_scale_ex(&d,1,1,3840,0,0)!=2) return 30;

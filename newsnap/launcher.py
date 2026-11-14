@@ -235,6 +235,8 @@ class Launcher:
             'Nativo · antialiasing': 'native', 'Calidad · escena 70 %': 'quality',
             'Equilibrado · escena 60 %': 'balanced', 'Rendimiento · escena 50 %': 'performance'},
             help_text='Cada proveedor usa su propio algoritmo con el preset elegido. Las escalas corresponden a los niveles reales del motor de Snap; requieren reiniciar la expedición.')
+        self._choice(video, 'Miniaturas de fotos en HD', 'hd_photos', {'Activadas · 1080×720': '1', 'Originales · 360×240': '0'},
+                     help_text='La vista previa al hacer una foto y las fotos grandes de las carpetas y la selección se muestran con la foto de 1080×720 en vez de la miniatura de 360×240 del juego. Las fotos guardadas y la puntuación no cambian. Funciona en cualquier GPU.')
         self._choice(video, 'Generación de fotogramas · FSR', 'frame_gen', {'Desactivada': 'off', 'AMD FSR · 1 fotograma generado': 'fsr'},
                      help_text='Inserta un fotograma generado entre cada dos reales: con el juego a 60 fps se muestran unos 120. Necesita FSR 3.1 o FSR 4. Solo genera si el monitor puede mostrarlo (unos 110 Hz o más a 60 fps); en un monitor más lento se pausa sola y el juego sigue a su ritmo, con cualquier modo de presentación. Añade un fotograma de latencia y los elementos del HUD que se mueven pueden dejar estela. Experimental.')
         self._choice(video, 'Escala interna de la escena', 'render_scale', {'Según el juego': 'game', **{f'{n} %': str(n) for n in (50, 60, 70, 80, 90, 100)},
@@ -244,8 +246,8 @@ class Launcher:
                      help_text='Hasta el 100 %, una escala menor favorece el rendimiento y pierde detalle. Por encima del 100 % es supersampling del modo TV: el juego dibuja a 1920 × 1080 y la imagen interna (escena, HUD y fotos) se calcula más grande y se reduce a tu ventana; aumenta el detalle y el coste de GPU (2× cuesta unas cuatro veces más píxeles). «Según la pantalla» elige la escala que coincide con la altura de tu monitor o ventana (1440p → 1,33×, 4K → 2×). Requiere el reescalador apagado y el modo TV; guardar una combinación incompatible muestra un error sin cambiar tu elección.')
         self._choice(video, 'Filtrado anisotrópico · AF', 'aniso', {'Según el juego': 'game', **{f'{n}×': str(n) for n in (2, 4, 8, 16)}, 'Automático heredado': 'auto'},
                      help_text='Mejora las texturas vistas en ángulo. El controlador y la GPU pueden limitar el nivel efectivo. Automático heredado conserva la heurística de la base, aún sin validar para Snap; elige un nivel explícito para personalizarlo.')
-        self._choice(video, 'Resolución de sombras', 'shadow_scale', {'Original (1×)': '1', 'Alta (2×)': '2', 'Muy alta (4×)': '4'},
-                     help_text='Amplía el mapa de sombras del sol (el de la vegetación y el escenario) sin cambiar su suavidad: los bordes salen más definidos. 2× cuesta poco; 4× usa unos 64 MiB más de VRAM por mapa.')
+        self._choice(video, 'Resolución de sombras', 'shadow_scale', {'Original (1×)': '1', 'Alta (2×)': '2', 'Muy alta (4×)': '4', 'Según la resolución 3D': 'auto'},
+                     help_text='Amplía todos los mapas de sombras del juego (sol, vegetación, personajes) sin cambiar su suavidad: los bordes salen más definidos. «Según la resolución 3D» los ajusta a la escala de la escena (2× a 1080p, 3× a 125–150 %, 4× desde 200 %). 2× cuesta poco; 4× usa unos 64 MiB más de VRAM por mapa. Las sombras pintadas en las texturas del escenario no cambian.')
         self._choice(video, 'Relación de aspecto · Aspect ratio', 'aspect', {'Conservar proporciones': 'fit', 'Estirar a la ventana': 'stretch'},
                      help_text='Solo cambia la presentación: conservar proporciones puede dejar bandas; estirar llena la ventana y deforma la imagen. No amplía el campo de visión.')
         self._heading(video, 'Color original del juego')
