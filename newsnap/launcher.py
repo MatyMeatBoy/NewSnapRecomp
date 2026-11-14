@@ -95,6 +95,8 @@ class Launcher:
         style.configure('TButton', padding=(15, 9), background='#e5e5d9')
         style.configure('Accent.TButton', background=GREEN, foreground=CREAM, font=('Segoe UI', 13, 'bold'), padding=(25, 14))
         style.map('Accent.TButton', background=[('active', '#245846'), ('disabled', '#84978c')])
+        style.configure('Accent.TButton',focuscolor=AMBER,focusthickness=2)
+        style.configure('Snap.Horizontal.TProgressbar',background=GREEN,troughcolor='#dedfce',borderwidth=0,thickness=9)
         style.configure('Title.TLabel', font=('Segoe UI', 20, 'bold'))
         style.configure('Muted.TLabel', foreground='#597067')
         style.configure('Status.TLabel', background='#e5e5d9', font=('Segoe UI', 10))
@@ -580,7 +582,11 @@ class Launcher:
                     deferred=True
                     self.events.put(('maintenance_needed',None));return
                 if settings.shader_preparation_required(self.project) and preparation is None:
-                    raise RuntimeError('Faltan las bibliotecas o los registros de shaders para preparar este runtime.')
+                    # A rebuilt/first-run installation need not have recordings
+                    # yet. Live shader compilation is a valid native boot path;
+                    # retain the pending marker instead of inventing a receipt.
+                    self.events.put(('preparation_fallback',
+                        'Primer inicio sin registros: los shaders se compilarán durante el juego.'))
                 if options is not None:
                     saved=settings.save_edited_settings(self.ini,self.baseline,options)
                     self.events.put(('settings_saved',saved))
@@ -601,6 +607,7 @@ class Launcher:
         env.update(getattr(self,'_session_diagnostic_env',{}))
         hidden = subprocess.CREATE_NO_WINDOW if hasattr(subprocess, 'CREATE_NO_WINDOW') else 0
         if preparation:
+            self.events.put(('progress','Preparando shaders y pipelines para esta GPU…'))
             logfile = logdir / f'launcher-prepare-{session}.log'
             with logfile.open('x', encoding='utf-8') as log:
                 self.process = subprocess.Popen(preparation, cwd=self.project, env=env, stdout=log, stderr=subprocess.STDOUT, creationflags=hidden)
@@ -611,7 +618,6 @@ class Launcher:
         logfile = None
         def run_attempt(attempt):
             nonlocal logfile
-            self.events.put(('status', 'Reiniciando expedición…' if attempt > 1 else 'Expedición en curso · cierra el juego para volver'))
             logfile = logdir / f'launcher-game-{session}-{attempt:03d}.log'
             display_file=logdir/f'launcher-display-{session}-{attempt:03d}.json'
             env['NEWSNAP_DISPLAY_STATUS']=str(display_file.resolve())
@@ -622,6 +628,8 @@ class Launcher:
                              requested_present_mode=env.get('AC_VK_PRESENT','runtime-default'))
                 started_at=time.time()
                 self.process = subprocess.Popen(command, cwd=self.project, env=env, stdout=log, stderr=subprocess.STDOUT, creationflags=hidden)
+                self.events.put(('status', 'Reiniciando expedición…' if attempt > 1 else 'Expedición en curso · cierra el juego para volver'))
+                self.events.put(('game_started',None))
                 self.events.put(('display_file',display_file,self.process.pid,started_at))
                 code=self.process.wait()
                 write_record(log,'exit',exit_code=code)
@@ -743,6 +751,14 @@ class Launcher:
                 kind = event[0]
                 if kind == 'status':
                     self.status.set(event[1])
+                elif kind == 'progress':
+                    self.home.progress.report(event[1])
+                elif kind == 'game_started':
+                    self.home.progress.finish('Juego iniciado')
+                elif kind == 'preparation_fallback':
+                    self.status.set(event[1])
+                    if hasattr(self.home,'show_preparation_note'):
+                        self.home.show_preparation_note(event[1])
                 elif kind == 'diagnostics_done':
                     self.diagnostics_running = False
                     self.diagnostics_button.configure(state='normal')
@@ -759,7 +775,10 @@ class Launcher:
                     self.reload_options()
                     self.status.set('Listo para explorar' if event[1] is None else 'La expedición se detuvo')
                     if event[1]:
+                        self.home.progress.finish('No se pudo iniciar o continuar el juego',error=True)
                         messagebox.showerror('No se pudo completar el inicio', event[1], parent=self.root)
+                    else:
+                        self.home.progress.finish('Juego cerrado · listo para iniciar otra expedición')
                     self._album_loaded=False
                     self.display.stop();self.home.refresh();self._tab_changed()
                 elif kind == 'album_locked' and event[1] == self.album_generation:
