@@ -12,7 +12,7 @@ static inline const char *snap_neutral_value(const char *name) {
     if(!strcmp(k,"COLOR_BRIGHTNESS")||!strcmp(k,"SHARPNESS")||!strcmp(k,"HDR")||
        !strcmp(k,"CONTACT_SHADOWS")||!strcmp(k,"PCSS"))return "0";
     if(!strcmp(k,"COLOR_CONTRAST")||!strcmp(k,"COLOR_SATURATION"))return "100";
-    if(!strcmp(k,"COLOR_GAMMA")||!strcmp(k,"SHADOW_SCALE"))return "1";
+    if(!strcmp(k,"COLOR_GAMMA"))return "1";   // SHADOW_SCALE is a resolution choice (SS-02), not grading
     if(!strcmp(k,"UPSCALER"))return "bilinear";
     if(!strcmp(k,"AO"))return "off";
     return 0;
