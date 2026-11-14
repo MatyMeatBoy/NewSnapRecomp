@@ -47,6 +47,20 @@ PROMOTIONAL_ASSETS = {
     'assets/launcher/snap-logo.png': (
         41783, bytes.fromhex('89504e470d0a1a0a0000000d49484452000001e40000011b08030000003cb40707'),
         '8cb13d97a86a9a2c88d29579597775aa02466ca7acbaf2dad828fe1d7997299b'),
+    # Owner-requested README screenshots (2026-11-14): runtime window captures on the
+    # owner's RX 6900 XT, no saves, photos or keys; pinned to their exact bytes.
+    'docs/images/camp-175.jpg': (
+        207798, bytes.fromhex('ffd8ffe000104a46494600010100000100010000'),
+        '61b834f8a91ae66ac356a08aa3c88ecdb7ec9bde8d63020bfc7042d419b9630c'),
+    'docs/images/display-1440p.jpg': (
+        118167, bytes.fromhex('ffd8ffe000104a46494600010100000100010000'),
+        'afacac5174a35627defd8706eb7f31fc1a87eb300c45b1daff6a26e1bf9cdb25'),
+    'docs/images/evaluation-200.jpg': (
+        74045, bytes.fromhex('ffd8ffe000104a46494600010100000100010000'),
+        '468edf07793a06a9e0a0e0353512d7dca5be327f1c9b3e6552bcf05eb45df0a4'),
+    'docs/images/expedition-200.jpg': (
+        169356, bytes.fromhex('ffd8ffe000104a46494600010100000100010000'),
+        '46da1cdc81440899c279dd6110b9dbb93c59bc130aea7c13c4dd6489a42e4dd8'),
 }
 
 
