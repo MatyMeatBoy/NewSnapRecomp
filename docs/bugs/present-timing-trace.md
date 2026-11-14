@@ -1,91 +1,81 @@
-# Trace optativo de esperas de presentación
+# Optional trace of presentation waits
 
-La evidencia AMD recibida pidió mailbox pero obtuvo FIFO; el A/B local NVIDIA
-obtuvo mailbox. Los contadores existentes juntan esperas de fences y drenaje de
-replay y pueden sumar intervalos de varios hilos. No permiten atribuir un tirón
-concreto a adquisición, presentación, GPU o reconstrucción del swapchain.
+The AMD evidence received asked for mailbox but got FIFO; the local NVIDIA A/B got mailbox.
+The existing counters lump fence waits and replay draining together and can add intervals
+from several threads. They do not allow attributing a specific hitch to acquisition,
+presentation, GPU or swapchain rebuild.
 
-`AC_SNAP_PRESENT_TRACE=1` habilita observaciones por proceso. Se lee una sola vez
-mediante el constructor del runtime, antes de arrancar hilos; cualquier otro
-valor lo deja apagado. No es una preferencia INI ni una política de sincronización.
-El launcher puede pasarlo explícitamente al proceso de una prueba. Este cambio no
-modifica el launcher ni activa el flag por defecto.
+`AC_SNAP_PRESENT_TRACE=1` enables per-process observations. It is read once through the
+runtime's constructor, before threads start; any other value leaves it off. It is not an INI
+preference or a synchronisation policy. The launcher can pass it explicitly to a test's
+process. This change does not modify the launcher or turn the flag on by default.
 
-## Qué mide
+## What it measures
 
-El adaptador `present_trace_adapt.py` usa once anclas exactas de
-`runtime/gfx_present.c`. La pareja `plat_now_ns()` rodea las operaciones reales:
+The `present_trace_adapt.py` adapter uses eleven exact anchors in `runtime/gfx_present.c`. A
+`plat_now_ns()` pair surrounds the real operations:
 
-- `acquire`: cada `vkAcquireNextImageKHR`, incluido el reintento posterior a
+- `acquire`: every `vkAcquireNextImageKHR`, including the retry after
   `VK_ERROR_OUT_OF_DATE_KHR`.
-- `fence`: la espera previa al slot y la espera adicional usada al capturar. Ambas
-  se agregan en la misma categoría; para comparar pacing, no tomar capturas.
-- `queue_present`: `vkQueuePresentKHR`. El intervalo excluye adquirir/liberar el
-  queue lock; el log se escribe después de liberarlo.
-- `rebuild`: toda la función existente de creación/reconstrucción, desde su
-  entrada hasta cada retorno, incluidos el flush pendiente, consultas, espera
-  device-idle y creación/liberación de recursos. Su resultado es el booleano
-  original, no un `VkResult`. La duración puede incluir una llamada de presentación
-  también medida aparte: **no sumar las categorías como tiempos exclusivos**.
+- `fence`: the wait before the slot and the extra wait used when capturing. Both are added to
+  the same category; to compare pacing, do not take captures.
+- `queue_present`: `vkQueuePresentKHR`. The interval excludes taking/releasing the queue
+  lock; the log is written after releasing it.
+- `rebuild`: the whole existing creation/rebuild function, from its entry to each return,
+  including the pending flush, queries, device-idle wait and resource creation/release. Its
+  result is the original boolean, not a `VkResult`. The duration can include a present call
+  also measured separately: **do not add the categories as exclusive times**.
 
-Las líneas `snap_present_trace: operation=...` contienen conteo, suma, mínimo y
-máximo en nanosegundos, número de resultados distintos del éxito y resultado de
-la última muestra. Para Vulkan, éxito significa `VK_SUCCESS` (0); `SUBOPTIMAL`,
-timeout y demás resultados cuentan como `other_results`, sin confundirlos todos
-con fallos fatales. Para rebuild, éxito significa 1. Los contadores son acumulados
-desde el inicio del proceso, no percentiles ni una ventana deslizante.
+`snap_present_trace: operation=...` lines contain count, sum, minimum and maximum in
+nanoseconds, the number of non-success results and the last sample's result. For Vulkan,
+success means `VK_SUCCESS` (0); `SUBOPTIMAL`, timeout and other results count as
+`other_results`, without treating them all as fatal failures. For rebuild, success means 1.
+The counters accumulate from process start; they are not percentiles or a sliding window.
 
-Se emite la primera muestra de cada categoría. Después, como máximo una línea
-por segundo y categoría, tras unas 120 llamadas; a 60 FPS son unos dos segundos.
-Las reconstrucciones poco frecuentes no esperan 120 llamadas, pero conservan el
-límite de un segundo. Las muestras finales que no alcanzan el siguiente umbral
-no se vuelcan al cerrar. El almacenamiento es fijo: cuatro buckets, sin listas
-de frames, hilos auxiliares ni archivos nuevos.
+The first sample of each category is emitted. After that, at most one line per second and
+category, after about 120 calls; at 60 FPS that is about two seconds. Infrequent rebuilds do
+not wait for 120 calls but keep the one-second limit. Final samples that do not reach the next
+threshold are not flushed on close. Storage is fixed: four buckets, no frame lists, helper
+threads or new files.
 
-Una línea de swapchain informa modo solicitado/efectivo, modos enumerados como
-valores Vulkan, cantidad reportada/capturada, resultado de esa consulta, imágenes
-solicitadas/reales, resultado de consulta de imágenes y extensión. Reutiliza las
-consultas que el donor ya ejecuta; no añade consultas GPU. La enumeración conserva
-el límite existente de 16 modos. Si la consulta de imágenes no termina con éxito,
-`images_actual=0` significa desconocido. Estos snapshots tienen límite de una
-línea por segundo: no constituyen un historial exhaustivo de cambios rápidos.
-No se deduce VRR, FreeSync, soporte del monitor ni presentación física de FIFO,
-mailbox, tiempos CPU o número de imágenes.
+A swapchain line reports the requested/effective mode, the enumerated modes as Vulkan values,
+the reported/captured count, that query's result, requested/real images, the image query's
+result and the extent. It reuses the queries the donor already runs; it adds no GPU queries.
+The enumeration keeps the existing limit of 16 modes. If the image query does not end in
+success, `images_actual=0` means unknown. These snapshots are limited to one line per second:
+they are not an exhaustive history of rapid changes. VRR, FreeSync, monitor support or
+physical presentation are not deduced from FIFO, mailbox, CPU times or the image count.
 
-## Contrato sin alteración de política
+## Contract without policy changes
 
-Apagado, los wrappers solo comprueban el flag y no llaman al reloj, al logger ni
-a las funciones de agregación. No se cambian timeouts, reintentos, resultados,
-conteos de imágenes usados por el donor, prioridades, sleeps, cap, colas ni el
-orden de las llamadas Vulkan. Todos los puntos están serializados por el
-`g_pl` existente; el helper no añade locks. El flag se inicializa antes de los
-hilos y nunca se modifica en vivo. Las atribuciones y el donor original quedan
-intactos.
+Off, the wrappers only check the flag and call neither the clock, the logger nor the
+aggregation functions. Timeouts, retries, results, the image counts the donor uses,
+priorities, sleeps, cap, queues and the order of Vulkan calls are not changed. Every point is
+serialised by the existing `g_pl`; the helper adds no locks. The flag is initialised before
+the threads and never changed live. Attributions and the original donor stay intact.
 
-`python -m unittest tests.test_present_trace` ejecuta tres pruebas CPU:
+`python -m unittest tests.test_present_trace` runs three CPU tests:
 
-- Fixture nativa del helper: opt-in exacto, cero consultas temporales/logs al
-  apagarlo, agregados conocidos, resultados Vulkan negativos/positivos, conteo
-  booleano de rebuild y límites de emisión.
-- Anclas sobre el donor real: ambas adquisiciones y fences siguen presentes,
-  sin duplicar llamadas ni cambiar las condiciones de salida/reintento.
-- Funciones reales adaptadas de selección de modo, flip y wrapper de rebuild con
-  Vulkan simulado: conservan fallback, orden del lock, códigos/dirty flags y
-  retornos tanto apagado como encendido. La prueba del present añade tiempo al
-  unlock deliberadamente y comprueba que queda fuera del intervalo medido.
+- The helper's native fixture: exact opt-in, zero time queries/logs when off, known
+  aggregates, negative/positive Vulkan results, boolean rebuild counting and emission limits.
+- Anchors over the real donor: both acquisitions and fences are still present, without
+  duplicating calls or changing exit/retry conditions.
+- The real adapted mode-selection, flip and rebuild-wrapper functions with simulated Vulkan:
+  they keep the fallback, lock order, codes/dirty flags and returns both off and on. The
+  present test deliberately adds time to the unlock and checks it stays outside the measured
+  interval.
 
-Antes de implementar fallaron el opt-in y la ausencia de los seams. Las tres
-pruebas pasan tras el cambio. No se ejecuta GPU ni juego. Falta integración del
-coordinador, `adapt_sources` completo, compilación y ensayo GPU serializado.
+Before the implementation the opt-in and the missing seams failed. All three tests pass after
+the change. No GPU or game is run. Missing: the coordinator's integration, a complete
+`adapt_sources`, the build and a serialised GPU run.
 
-## Experimento mínimo posterior
+## Minimal follow-up experiment
 
-Usar el mismo binario, recorrido corto conocido, resolución, estado de caché y
-perfil copiado. Bloquear un modo efectivo soportado durante cada corrida, sin
-cambiarlo en vivo ni capturar frames. Registrar drivers y modo solicitado/real.
-Comparar adquisición, fence, queue-present y reconstrucciones por separado junto
-con frametimes existentes; los valores acumulados permiten diferencias de
-conteo/suma, pero sus máximos no son p99. Exigir mejoras repetibles de colas sin
-errores, cambios de cadencia del juego ni regresión de fotografías. El trace tiene
-coste diagnóstico cuando está encendido: no presentar su resultado como un
-benchmark limpio ni como validación AMD por haberlo probado en NVIDIA.
+Use the same binary, a known short route, resolution, cache state and copied profile. Lock a
+supported effective mode during each run, without changing it live or capturing frames.
+Record drivers and requested/real mode. Compare acquisition, fence, queue-present and rebuilds
+separately along with the existing frametimes; the accumulated values allow count/sum
+differences, but their maxima are not p99. Require repeatable queue improvements without
+errors, changes in game cadence or photo regressions. The trace has a diagnostic cost when
+on: do not present its result as a clean benchmark or as AMD validation because it was tested
+on NVIDIA.
