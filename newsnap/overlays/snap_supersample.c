@@ -1,4 +1,4 @@
-// Experimental Snap 2.0.1 docked engine resize, not general texture scaling.
+// Experimental Snap 2.0.1 docked engine resize (AC_SS_MODE=engine only, SS-02).
 // Native settings are unchanged; handheld resizing is deliberately excluded.
 // The original BL is replayed AFTER this helper by the generator.
 #include <stdint.h>
@@ -21,6 +21,10 @@ void snap_supersample_resize(Cpu *c) {
                           choice && !strcmp(choice, "150") ? 150 :
                           choice && !strcmp(choice, "200") ? 200 : 0;
     if (!percentage) return; // game/native/unknown settings leave Cpu entirely untouched
+    // SS-02: the default host mode enlarges the render targets on the host and
+    // leaves the engine at its own size; only AC_SS_MODE=engine resizes it.
+    const char *mode = cfg_get("AC_SS_MODE");
+    if (!mode || strcmp(mode, "engine")) return;
     uint64_t width = c->x[2], height = c->x[3], flags = c->x[4];
     // Handheld groups are not resize-eligible in these constructors. Changing
     // its output alone produced mismatched geometry despite zero API errors.

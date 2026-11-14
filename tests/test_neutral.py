@@ -49,7 +49,7 @@ int ready(void *ctx){(void)ctx;touched_gpu++;return 1;}
 int main(void){
 assert(!adjusting());assert(C.adj[0]==0&&C.adj[1]==1&&C.adj[2]==1&&C.adj[3]==1);
 assert(!vk_fsr_rcas_on()&&!touched_gpu);
-assert(!strcmp(cfg_value("AC_HDR"),"0"));assert(!strcmp(cfg_value("shadow_scale"),"1"));
+assert(!strcmp(cfg_value("AC_HDR"),"0"));assert(!snap_neutral_value("shadow_scale"));  /* a resolution choice since SS-02 */
 assert(!strcmp(cfg_value("AC_UPSCALER"),"bilinear"));
 assert(!strcmp(cfg_value("AC_AO"),"off"));assert(!strcmp(cfg_value("AC_CONTACT_SHADOWS"),"0"));
 assert(!strcmp(cfg_value("AC_PCSS"),"0"));assert(!strcmp(cfg_value("AC_COLOR_PRESET"),"default"));

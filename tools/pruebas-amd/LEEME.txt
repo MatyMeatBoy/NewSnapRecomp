@@ -1,31 +1,20 @@
-PRUEBAS A/B PARA LA RX 6900 XT (FOTO-01)
+PRUEBAS DE NEWSNAPRECOMP
 
-Deja esta carpeta (pruebas-amd) junto a NewSnapLauncher.exe o junto a newsnap.exe y haz doble clic en una prueba.
-Cada .bat arranca el juego con un ajuste distinto solo para esa vez; newsnap.ini no se toca.
+Deja esta carpeta (pruebas-amd) junto a NewSnapLauncher.exe o junto a newsnap.exe y haz doble clic
+en una prueba. Cada .bat arranca el juego con unos ajustes solo para esa vez; newsnap.ini no se toca.
 Al cerrar el juego, el log queda en logs\pruebas\<nombre>.log.
 
-En cada prueba: entra al primer nivel, saca una foto y mira la miniatura, el retrato del
-profesor, la placa del nombre y el marco. Anota si cada cosa sale bien o mal.
+Pruebas actuales:
+  1-normal.bat        Sin ajustes extra. Referencia para comparar.
+  2-volcado-F12.bat   No arregla nada. Con un fallo en pantalla pulsa F12: crea la carpeta dump
+                      junto a newsnap.exe (contiene imagenes del juego: no subirla a GitHub).
+  3-interna-150.bat   Resolucion interna 150 % en modo TV, sin reescalador.
+  4-interna-200.bat   Resolucion interna 200 % en modo TV, sin reescalador.
 
-Hazlas en orden. La 1 decide: si con todo a la vez sale bien, sigue con 2, 3 y 4 de una en una
-para saber cual era; si con la 1 sigue mal, ve directo a la 6 (volcado). La 5 es aparte, para los cierres.
-
-Las pruebas no demuestran nada por si solas: una sola sesion buena puede ser casualidad.
-Repite la que parezca arreglarlo.
-
-Pruebas:
-  1-todo-conservador.bat  AC_REPLAY_ASYNC=0 AC_PIPE_SKIP=strict AC_ASTC=cpu AC_UPSCALING=off AC_TEX_ALIAS=0 AC_TEX_PREFETCH=0 AC_MEMORY=import AC_VK_PRESENT=fifo
-      Todas las sospechas a la vez. Si sigue fallando, salta a la 6: las pruebas 2 a 5 no hacen falta.
-  2-replay-sincrono.bat  AC_REPLAY_ASYNC=0
-      Sospecha principal: carrera entre el juego y el hilo que dibuja (el retrato cambia con el modo de presentacion).
-  3-sin-omitir-dibujos.bat  AC_PIPE_SKIP=strict
-      Camino propio de AMD RDNA2: dibujos omitidos mientras compila su pipeline (los cuadrados que volvieron).
-  4-astc-por-cpu.bat  AC_ASTC=cpu
-      Texturas de interfaz decodificadas por CPU en vez del shader de computo (marco, placa del nombre).
-  5-sin-fsr4.bat  AC_UPSCALING=fsr3
-      Para los cierres: los tres logs con fallo de GPU tenian FSR 4 activo. Juega un rato y saca fotos.
-  6-volcado-F12.bat  AC_DUMP_KEY=1 AC_DUMP_N=2
-      No arregla nada. Con el fallo en pantalla pulsa F12: se crea la carpeta dump junto a newsnap.exe.
+En las pruebas de resolucion interna: juega un rato, saca fotos y mira el HUD, la miniatura y
+la pantalla de evaluacion de fotos. Anota si algo sale cortado, con franjas o se cierra el juego.
 
 Que enviar: la carpeta logs\pruebas, la carpeta dump (si hiciste el volcado) y lo que viste.
-La carpeta dump contiene imagenes del juego: no subirla a GitHub.
+
+Para una prueba nueva: copia un .bat y cambia el nombre y las variables AC_... de la ultima linea.
+Las pruebas de descarte de FOTO-01 (0.7) se retiraron: ese fallo esta corregido.

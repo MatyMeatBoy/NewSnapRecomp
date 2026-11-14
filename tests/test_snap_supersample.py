@@ -21,7 +21,7 @@ class SnapSupersampleTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             directory = Path(temporary)
             (directory / 'cpu.h').write_text('#include <stdint.h>\ntypedef struct { uint64_t x[32],sp,pc,nzcv; unsigned char rest[128]; } Cpu;\n')
-            (directory / 'cfg.h').write_text('const char *cfg_value(const char *);\n')
+            (directory / 'cfg.h').write_text('const char *cfg_value(const char *);\nconst char *cfg_get(const char *);\n')
             (directory / 'host.h').write_text('#include <stdint.h>\ntypedef struct { uint64_t base,size; uint32_t state,attr,perm,ipc,device,pad; } RtMemoryInfo;\nuint32_t mem_query(uint64_t,RtMemoryInfo *);\nvoid rt_log(const char *,...);\n')
             (directory / 'fixture.c').write_text(r'''
 #include <stdint.h>
@@ -54,6 +54,7 @@ static int memory_unchanged_except_flag(void) {
         !memcmp(resource+0x15,resource_before+0x15,sizeof resource-0x15);
 }
 const char *cfg_value(const char *key) { if(strcmp(key,"AC_RENDER_SCALE")) abort(); return choice; }
+const char *cfg_get(const char *key) { if(strcmp(key,"AC_SS_MODE")) abort(); return "engine"; }
 void rt_log(const char *format,...) { (void)format; logs++; }
 void snap_supersample_resize(Cpu *);
 static void original_resize(Cpu *c,unsigned w,unsigned h,unsigned flags) {
