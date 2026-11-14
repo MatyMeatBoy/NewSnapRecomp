@@ -1,35 +1,36 @@
 # NewSnapRecomp
 
-Work in progress: a native Windows x64 recompilation of **New Pokémon Snap** using the infrastructure of [Astral Chain Recomp](https://github.com/captainj-sparrow/astral-chain-pc-recomp), which builds on [TotK Recomp](https://github.com/valentderah/totk-pc-recomp).
+A native Windows x64 recompilation of **New Pokémon Snap** (update 2.0.1), built on the
+infrastructure of [Astral Chain Recomp](https://github.com/captainj-sparrow/astral-chain-pc-recomp),
+which builds on [TotK Recomp](https://github.com/valentderah/totk-pc-recomp). You need your own
+legally dumped game and update; nothing from the game is distributed here.
 
-**Status:** the owner's base and update **2.0.1** import with verified integrity. A private Windows x64 executable builds, passes its memory/dispatch and loader checks, accepts a local character/name and commits the initial save. A nine-minute 1× replay captures/evaluates Pikachu (2,600 points), saves two real photographs and enters the first route. The SDK nonlocal-jump crash found after evaluation is corrected. A complete course and its photo save/reload remain unverified. No sustained gameplay FPS or stutter-free result is claimed.
+| | |
+|---|---|
+| ![Research camp at 175 % internal resolution](docs/images/camp-175.jpg) | ![Expedition at 200 % internal resolution](docs/images/expedition-200.jpg) |
+| ![Photo evaluation at 200 %](docs/images/evaluation-200.jpg) | ![Lab at 2560×1440 ("match display")](docs/images/display-1440p.jpg) |
 
-The published [**0.6 alpha**](https://github.com/MatyMeatBoy/NewSnapRecomp/releases/tag/v0.6.0-alpha)
-integrates reviewed applet contracts, portable IEEE CRC32 acceleration, complete
-recent-log selection and a checksum-bound portable build kit. Its final package
-passes isolated install/repair/offline rebuild and 416 source tests (one symlink
-permission skip). RTX photo/tutorial and final post-tutorial reload checks are
-documented in the [0.6 notes](docs/releases/0.6-alpha.md); AMD photos/color,
-FreeSync/controllers and the intro head-motion cause remain unverified.
+*Screenshots from an RX 6900 XT: internal resolution 175 %, 200 % (4K inside) and "match display" at 1440p.*
 
-The earlier **0.5 alpha** adds destination-aware SDR color transfer, stricter coherent
-host-memory imports with managed fallback, preservation of graphics storage-write
-draws, camera capture/sensor lifecycle fixes, a new Home/update flow and the
-original ReKHCoM controller sprite with Switch labels. A bit-exact resource-worker
-bridge reduced the local intro p99 from 42.970 to 25.469 ms in two reversed-order
-pairs on RTX 4060; isolated spikes remain. See [0.5 alpha notes](docs/releases/0.5-alpha.md)
-for acceptance and hardware limits. RX 6900 XT, physical controls and FreeSync
-acceptance remain pending; this is a prerelease, not a stable compatibility claim.
+## Status: [0.8.2-tester](https://github.com/MatyMeatBoy/NewSnapRecomp/releases) (prerelease)
 
-The earlier **0.4 alpha** added official Vulkan FSR 3.1/FSR 4 provider integration,
-DLSS Super Resolution and Native AA/DLAA presets, plus automatic owner-local
-runtime rebuilding after updates. See the [0.4 work board](docs/V04.md) and
-[updating guide](docs/UPDATING.md). FSR 3.1 and DLSS have executed in Snap on the
-local RTX 4060; physical RX 6900 XT/FSR 4 verification remains pending.
-The [0.3 work board](docs/V03.md) and [controller coverage](docs/CONTROLLERS.md)
-retain earlier acceptance evidence. No full-course FPS or stutter-free result is claimed.
+Playable through the tutorial, expeditions, photo evaluation and saving on the owner's
+RX 6900 XT, with NVIDIA RTX 4060 runs for earlier builds. Still a tester build: not every
+course, GPU or controller has been verified.
 
-The upstream is pinned as a submodule. Snap-specific offsets, SDK bindings, shader formats and timing must be verified against Snap; Astral Chain patches are not interchangeable.
+- **Internal resolution 125–300 % and "match display"**, rendered on the host like emulators
+  do: scene, HUD, effects, photos and thumbnails all correct ([SUPERSAMPLING.md](docs/SUPERSAMPLING.md)).
+- **30 / 60 / 90 / 120 / 144 FPS** without touching game logic ([HIGH_FPS.md](docs/HIGH_FPS.md)).
+- **AMD FSR 3.1 / FSR 4 and NVIDIA DLSS** upscaling or Native AA, and optional
+  **FSR frame generation** that pauses itself when the monitor cannot show it.
+- **Sun shadow resolution** 1×/2×/4×, anisotropic filtering, colour presets.
+- AMD RDNA 1/2 fixes (photo bands, NaN shader math, GPU faults), gyro aiming with adjustable
+  sensitivity, controller support through SDL3.
+- Launcher with automatic update and local runtime rebuild ([UPDATING.md](docs/UPDATING.md)).
+
+Work queue and how to contribute: [docs/PENDIENTES.md](docs/PENDIENTES.md) (read first) and
+[AGENTS.md](AGENTS.md). Older bug reports and release notes in `docs/bugs` and
+`docs/releases` are kept as written (many in Spanish).
 
 ## Local import
 

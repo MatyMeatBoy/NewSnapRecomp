@@ -1,27 +1,23 @@
-# Coordinación de NewSnapRecomp
+# NewSnapRecomp coordination
 
-La rama de integración es `main`; el propietario pidió integrar/eliminar las
-ramas auxiliares 0.4 y 0.5 y ahora recibir los PR de Claude. No recrear ramas
-por versión. Los PR temáticos se preparan en un worktree aislado, sin cambiar
-la rama del checkout compartido ni arrastrar cambios de otros responsables.
+The integration branch is `main`. Work arrives as themed pull requests (Claude, Codex or
+others); do not recreate per-version branches. Prepare PRs in their own branch or worktree
+without switching the shared checkout or carrying other authors' changes.
 
-Leer **[docs/PENDIENTES.md](docs/PENDIENTES.md)** antes de editar. Tomar una tarea
-LIBRE indicando responsable y archivos reservados. Respetar las reservas de
-Codex/Claude y coordinar los puntos de integración compartidos.
+Read **[docs/PENDIENTES.md](docs/PENDIENTES.md)** before editing (the "read first" section is
+the current state). To take a free task, mark it IN PROGRESS with owner and reserved files.
+Respect other owners' reservations and coordinate shared integration points
+(`launcher.py`, `adapt.py`, `build.py`, `maintenance.py`, `version.py`, packaging).
 
-La release 0.4 y sus artefactos/tag son inmutables. Por solicitud posterior del
-propietario, se autoriza publicar 0.5 como alpha limitada, documentando aceptación
-AMD/mando/FreeSync y picos de pacing pendientes. No presentar esos casos como
-resueltos ni marcar la entrega como estable. No cambiar la lógica del juego
-para saltar validaciones, progreso o tutoriales. Mantener el color/posprocesado
-original de Snap y distinguir evidencia AMD RX 6900 XT de NVIDIA RTX 4060.
+Published releases and tags are immutable. Prereleases are "tester" builds: never present
+unverified AMD/NVIDIA/controller/FreeSync cases as solved. Do not change game logic to skip
+validation, progress or tutorials. Keep Snap's original colour and post-processing. Keep
+evidence per GPU: one GPU never validates another (owner: RX 6900 XT; Codex: RTX 4060).
 
-No modificar partidas, fotos, imports o claves del propietario. Usar copias en
-`build/` para pruebas y no subir datos del juego ni ejecutables derivados.
-Conservar cambios de otros agentes; pruebas GPU serializadas y comparaciones de
-rendimiento con el mismo recorrido/resolución/estado de caché.
+Never commit the owner's saves, photos, imports, keys, game data or recompiled executables.
+Test on copies; serialize GPU tests; compare performance on the same route, resolution and
+cache state. Before implementing a fix, check how other recomps and emulators solved it
+(Astral Chain, TotK, Weeping of the Empire, Witch Time, Lichii, yuzu/Ryujinx) and cite it.
 
-Cada autor puede commitear los archivos de su reserva en su rama de PR. El
-coordinador Codex lleva la integración en `main` y la publicación. Para cerrar una
-tarea, aportar causa, cambios, pruebas ejecutadas y límites; pedir revisión antes
-de marcarla HECHA.
+Each author commits only their reserved files on their PR branch. To close a task, give
+cause, changes, tests run and limits; ask for review before marking it DONE.
