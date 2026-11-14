@@ -54,6 +54,16 @@ revisión por contratos ABI/resultados y no forma parte de esta entrega.
 La investigación del PR #3 es tooling/documentación, no corrección de animación.
 No se publica juego, ejecutable derivado, fotos, partidas ni claves.
 
-Estos controles verifican el candidato local. El cierre remoto de tag, assets,
-canal prerelease y Latest se registrará después de publicar; no se deduce de
-la existencia de estos archivos locales.
+## Cierre remoto posterior
+
+Publicada https://github.com/MatyMeatBoy/NewSnapRecomp/releases/tag/v0.5.1-alpha.
+Tag remoto resuelve exactamente e77393f4, draft=false y prerelease=true; se
+publicó con Latest=false. Los cuatro assets remotos coinciden por tamaño/digest,
+incluidos ambos sidecars. El consumidor real del updater descargó el asset
+Windows publicado y validó stage/manifiesto de 1.105 archivos. El catálogo manual
+elige 0.5.1-alpha; el filtro automático stable lo excluye (no hay stable disponible).
+Evidencia privada build/v051-published-smoke/verification.json.
+
+El PR #3 se integró después en main junto con correcciones de segmentos/paridad
+y conclusiones: solo tooling, tests y documentación; no cambia el productor
+cerrado e77393f4 ni se reescriben paquetes. El PR #2 sigue abierto para el overlay.
