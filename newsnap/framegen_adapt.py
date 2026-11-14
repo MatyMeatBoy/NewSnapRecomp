@@ -13,7 +13,7 @@ PRESENT_BEFORE = '''        vk_present_blit(j.image, VK_IMAGE_LAYOUT_GENERAL, j.
         uint64_t f = vk_sync_submit(NULL, 0);'''
 
 PRESENT_AFTER = '''        uint64_t fg_real_at = 0;
-        if (j.fg) {   // FG-01: the generated frame goes out first, halfway between the last real frame and this one
+        if (j.fg && snap_fg_rate_ok(fg_interval)) {   // FG-01: the generated frame goes out first, halfway between the last real frame and this one
             snap_fg_arm(j.fg);
             vk_present_blit(j.image, VK_IMAGE_LAYOUT_GENERAL, j.format, j.w, j.h, j.has_crop ? j.crop : NULL);
             snap_fg_arm(0);

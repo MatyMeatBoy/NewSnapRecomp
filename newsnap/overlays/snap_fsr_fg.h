@@ -30,4 +30,11 @@ void snap_fg_arm(uint64_t id);
 // the generated image (GENERAL layout, same size and format) to blit instead; else 0.
 VkImage snap_fg_present_source(VkCommandBuffer cb, VkImage src, VkFormat fmt, int w, int h);
 
+// Present thread: 1 when a generated frame fits the monitor. interval_ns: the real frames'
+// measured interval. Like Weeping of the Empire's fg_auto: frame generation only helps while
+// the real frames are at most 0.55 of the panel's rate (60 fps needs about 110 Hz or more);
+// above that the generated frames would make FIFO wait and slow the game, so only the real
+// ones are shown. A change needs 2 s of agreement. Unknown refresh: allowed.
+int snap_fg_rate_ok(uint64_t interval_ns);
+
 void snap_fg_release(void);

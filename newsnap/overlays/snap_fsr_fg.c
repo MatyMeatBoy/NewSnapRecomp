@@ -10,6 +10,21 @@
 #include "snap_fsr_sdk.h"
 #include "snap_fsr_fg.h"
 
+double gfx_window_refresh_hz(void);   // gfx_present.c
+
+#include "snap_fg_rate.h"
+
+int snap_fg_rate_ok(uint64_t interval_ns) {
+    static int state = 1;
+    static uint64_t since;
+    double real = interval_ns ? 1e9 / (double)interval_ns : 0, panel = gfx_window_refresh_hz();
+    int next = snap_fg_rate_decide(real, panel, state, kern_now_ns(), &since);
+    if (next != state)
+        rt_log("frame generation: %s (real %.1f fps, monitor %.1f Hz; generated frames need about %.0f Hz)",
+               next ? "on again" : "paused, the monitor cannot show the generated frames", real, panel, real / 0.55);
+    return state = next;
+}
+
 float snap_fg_view[16];   // vk_dlaa.c mv_pass
 
 int snap_fg_enabled(void) {
