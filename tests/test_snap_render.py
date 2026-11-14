@@ -83,7 +83,7 @@ int main(int argc,char **argv) {
   setting=supersample[i]; snap_render_select(&c); memcpy(&result,renderer+0xce8,4);
   if(result!=0||memcmp(&c,&saved,sizeof c)) return 8;
  }
- const char *invalid[]={"75","25","250","garbage"};
+ const char *invalid[]={"75","25","40","garbage"};
  const char *presets[]={"native","quality","balanced","performance"};
  const uint32_t levels[]={0,3,4,5};
  const char *backends[]={"dlss","fsr3","fsr4","auto"};

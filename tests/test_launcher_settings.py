@@ -306,13 +306,13 @@ int main(void) {
                              ['2', '110', '115', '1'])
 
     def test_video_rejects_donor_scales_and_out_of_range_color(self):
-        for key, value in [('render_scale', '75'), ('render_scale', '250'), ('render_scale', '300'),
+        for key, value in [('render_scale', '75'), ('render_scale', '400'), ('render_scale', '110'),
                            ('aspect', 'wide'), ('aniso', '3'), ('operation_mode', '4k'),
                            ('sharpness', '101'), ('color_brightness', '-31'), ('color_contrast', '69'),
                            ('color_saturation', '201'), ('color_gamma', 'nan'), ('color_gamma', '1.21')]:
             with self.subTest(key=key, value=value), self.assertRaises(ValueError):
                 settings.validate_settings({key: value})
-        for scale in ('game', '50', '60', '70', '80', '90', '100', '125', '150', '200'):
+        for scale in ('game', '50', '60', '70', '80', '90', '100', '125', '133', '150', '175', '200', '250', '300', 'display'):
             self.assertEqual(settings.validate_settings({'render_scale': scale}), {'render_scale': scale})
 
     def test_external_game_settings_survive_launcher_edit(self):

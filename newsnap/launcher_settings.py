@@ -26,8 +26,11 @@ NEUTRAL_SETTINGS = {'color_preset':'default', 'color_brightness':'0', 'color_con
 COLOR_PRESETS = {name: dict(zip(COLOR_KEYS, values)) for name, values in {
     'default': ('0', '100', '100', '1'), 'vivid': ('0', '115', '135', '0.95'),
     'clarity': ('2', '110', '115', '1')}.items()}
+# Render scales above 100 %: host supersampling in TV mode (SS-02).
+SUPERSAMPLE_SCALES = ('125', '133', '150', '175', '200', '250', '300', 'display')
+
 CHOICES = {'vk_present': ('mailbox', 'fifo', 'immediate', 'fifo_relaxed'),
-           'operation_mode': ('docked', 'handheld'), 'render_scale': ('game', '50', '60', '70', '80', '90', '100', '125', '150', '200'),
+           'operation_mode': ('docked', 'handheld'), 'render_scale': ('game', '50', '60', '70', '80', '90', '100') + SUPERSAMPLE_SCALES,
            'upscaler': ('fsr', 'bilinear'), 'aniso': ('game', '2', '4', '8', '16', 'auto'),
            'aspect': ('fit', 'stretch'), 'color_preset': ('default', 'vivid', 'clarity', 'custom')}
 RANGES = {'volume': (0, 100, True), 'mouse_sens': (0, 10, False), 'sharpness': (0, 100, True),
@@ -136,9 +139,9 @@ def validate_settings(values):
 
 
 def validate_video_combination(values):
-    if values.get('upscaling', 'off') != 'off' and values.get('render_scale') in ('125', '150', '200'):
+    if values.get('upscaling', 'off') != 'off' and values.get('render_scale') in SUPERSAMPLE_SCALES:
         raise ValueError('El reescalado temporal usa su preset de calidad. Elige una escala de 100 % o menos para activarlo.')
-    if values.get('operation_mode') == 'handheld' and values.get('render_scale') in ('125', '150', '200'):
+    if values.get('operation_mode') == 'handheld' and values.get('render_scale') in SUPERSAMPLE_SCALES:
         raise ValueError('La escala experimental superior al 100 % requiere salida TV. Elige «TV · 1920 × 1080» o reduce la escala al 100 % o menos para usar el modo portátil.')
 
 

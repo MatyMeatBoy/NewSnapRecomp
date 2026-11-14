@@ -51,6 +51,17 @@ Para cualquier modelo que retome el trabajo:
   escala en `launcher.py`.
 - **Asignado a otro modelo: FPS-01** (FPS altos 30–240, `docs/HIGH_FPS.md`). No tocar los
   archivos de SS-02 sin coordinar aquí.
+- **Cola de MatyMeatBoy después de SS-02** (pedido del propietario, 2026-11-14): pasar todo el repo a
+  inglés (docs, textos de commit/PR futuros; la interfaz del launcher mantiene sus idiomas) y
+  añadir imágenes del juego corriendo al README.
+- También pedido (2026-11-14), después de SS-02: limpiar `tools/pruebas-amd` (hecho en la rama de
+  SS-02); sombras de vegetación de más resolución (las de personajes ya se ven finas, las de plantas
+  siguen al tamaño del juego); ultrawide si es posible (el donor trae `resolution.c` wide con sitios
+  de Astral: hay que encontrar los de Snap y mantener las fotos en 16:9); frame pacing y cargas en
+  los modos extendidos; launcher con la mayor compatibilidad de volcados (NSP, NSZ, XCI, XCZ y
+  carpetas `exefs`/`romfs` ya extraídas).
+- Regla del propietario: antes de cada solución, buscar cómo lo resolvieron otros recomps y
+  emuladores (Astral, TotK, Witch Time, LAS, Lichii, Savage Wind, yuzu/Ryujinx) y citarlo.
 - Receta de release en esta máquina: sección «Receta de release» al final de este archivo.
 La cola siguiente conserva únicamente investigación o aceptación pendientes.
 
