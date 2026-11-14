@@ -1,68 +1,65 @@
-# Candidato privado 0.5.0-dev.1
+# Private candidate 0.5.0-dev.1
 
-Productor: `555d6258d982b0fd5ab3432bc1f1d9f7c6224c1c`.
-Ejecutable SHA256: `76f08005b1ffca903e5cab8fdaa5b2f46fe48c818499cd8cc2e51a7885bb527a`.
-No hay tag ni publicación 0.5. La release 0.4 permanece inmutable.
+Producer: `555d6258d982b0fd5ab3432bc1f1d9f7c6224c1c`.
+Executable SHA256: `76f08005b1ffca903e5cab8fdaa5b2f46fe48c818499cd8cc2e51a7885bb527a`.
+There is no 0.5 tag or release. The 0.4 release stays immutable.
 
-## Verificación
+## Verification
 
-- Suite Windows: 299 pruebas correctas. Después del ajuste del directorio de
-  pruebas en un checkout limpio, diez pruebas RNG correctas; CI Linux verde
-  para el productor final. Los casos privados o exclusivos de Windows no se
-  convierten en aceptación física Linux/AMD por ese resultado.
-- Compilación nativa: generación y 279 objetos verificados, enlace correcto;
-  fuentes limpias e identidad registrada antes/después. Launcher congelado:
-  1103 archivos del manifiesto y ZIP verificados, huellas iguales a las fuentes,
-  sprite original intacto y arranque de prueba con PATH mínimo correcto.
-- Instalación y reparación sobre la misma versión: 1104 archivos reemplazados
-  en cada operación sobre una instalación aislada; tres sentinelas de datos,
-  configuración y preferencias conservados. Arranque del launcher reparado OK.
-- Cierre privado: 15 archivos de runtime incluido marcador nuevo; probes
-  `--selftest` y `--probe-loader` correctos. Las identidades de launcher, kit y
-  runtime coinciden. La evaluación aislada no requiere reconstrucción; adquisición
-  del kit local exacto con inventario verificado y cero solicitudes de red.
+- Windows suite: 299 tests pass. After adjusting the test directory in a clean checkout, ten
+  RNG tests pass; Linux CI green for the final producer. Private or Windows-only cases do not
+  become physical Linux/AMD acceptance from that result.
+- Native build: generation and 279 objects verified, link correct; clean sources and
+  identity recorded before/after. Frozen launcher: 1103 manifest files and ZIP verified,
+  fingerprints equal to the sources, original sprite intact and a test start with a minimal
+  PATH correct.
+- Install and repair over the same version: 1104 files replaced in each operation on an
+  isolated installation; three data, configuration and preference sentinels kept. The
+  repaired launcher starts OK.
+- Private close: 15 runtime files including a new marker; `--selftest` and `--probe-loader`
+  probes correct. Launcher, kit and runtime identities match. The isolated evaluation needs
+  no rebuild; acquisition of the exact local kit with verified inventory and zero network
+  requests.
 
-## Fotografías del ejecutable final
+## Photos from the final executable
 
-Ejecución normal de 540 s en RTX 4060, sin `--shot`, Original y escala 100 %;
-`AC_SNAP_RANDOM_RANGE=1`. Salida 0, frame final 32302. El perfil se copia desde
-un respaldo inicial sin fotos; nunca se edita progreso ni lógica del juego.
+Normal 540 s run on an RTX 4060, without `--shot`, Original and 100 % scale;
+`AC_SNAP_RANDOM_RANGE=1`. Exit 0, final frame 32302. The profile is copied from an initial
+backup without photos; game progress or logic is never edited.
 
-Dos fotos nuevas (Pikachu y Vivillon) de 1080×720 y dos miniaturas de 240×200,
-sin filas negras y revisadas visualmente. Los bancos confirmados y transacción
-coinciden. Cuatro pares GPU fuente/buffer son idénticos byte por byte; la diferencia
-JPEG es la compresión esperada, no una comparación byteidéntica del JPEG.
+Two new photos (Pikachu and Vivillon) of 1080×720 and two 240×200 thumbnails, without black
+rows and checked visually. The confirmed banks and transaction match. Four GPU source/buffer
+pairs are byte-identical; the JPEG difference is the expected compression, not a
+byte-identical JPEG comparison.
 
-Se observaron la evaluación/tutorial posterior y la primera expedición. Los 75
-archivos protegidos de perfil/respaldo permanecieron intactos. Hubo 103 skips de
-pipelines gráficos y cero skips de traducción shader; no se desactivó async global.
-Empaquetado, reparación y probes CPU concurrentes: este ensayo no mide rendimiento.
+The later evaluation/tutorial and the first expedition were observed. The 75 protected
+profile/backup files stayed intact. There were 103 graphics pipeline skips and zero shader
+translation skips; global async was not turned off. Packaging, repair and CPU probes ran
+concurrently: this run does not measure performance.
 
-Las muestras de enfoque `cpu-read-01-f13180-source.png` y
-`cpu-read-02-f13777-source.png` muestran la retícula/nombre legibles en 1920×1080,
-sin las franjas del reporte. Son dos controles visuales locales; no certifican
-todo el movimiento/zoom ni la ruta física AMD.
+The focus samples `cpu-read-01-f13180-source.png` and `cpu-read-02-f13777-source.png` show
+the reticle/name legible at 1920×1080, without the reported bands. They are two local visual
+controls; they do not certify all motion/zoom or the physical AMD path.
 
-Evidencia privada: `build/v05-rng-positive-control-normal540/acceptance.json`,
-`photo-evidence.json`, `profile-guard.json`, capturas y bancos. El A/B de rendimiento
-separado está documentado en `cpu-asset-workers.md` y `GPU_MATRIX.md`.
+Private evidence: `build/v05-rng-positive-control-normal540/acceptance.json`,
+`photo-evidence.json`, `profile-guard.json`, screenshots and banks. The separate
+performance A/B is documented in `cpu-asset-workers.md` and `GPU_MATRIX.md`.
 
-## Puerta física pendiente
+## Pending physical gate
 
-No se han validado los reportes en la RX 6900 XT, su mando, monitor ni FreeSync.
-Retícula en movimiento/zoom, cámara en reposo/reconexión, color y fotos se verifican
-con el protocolo `v05-owner-validation.md`. Persiste un pico local aislado de
-107,692 ms en el A/B; no se declara eliminado todo el stutter.
+The reports have not been validated on the RX 6900 XT, its controller, monitor or FreeSync.
+The reticle in motion/zoom, the camera at rest/reconnection, colour and photos are checked
+with the `v05-owner-validation.md` protocol. An isolated local spike of 107.692 ms remains in
+the A/B; not all stutter is declared gone.
 
-Los paquetes privados no contienen imports, claves ni perfiles del propietario.
-El runtime recompilado sí contiene código derivado del juego: no subirlo a GitHub.
-El kit y el launcher conservan sus inventarios públicos separados. Usar una copia
-completa de GameData y verificar también la ruta del perfil en Home antes de jugar.
+The private packages contain no owner imports, keys or profiles. The rebuilt runtime does
+contain game-derived code: do not upload it to GitHub. The kit and the launcher keep their
+separate public inventories. Use a complete copy of GameData and also check the profile
+path in Home before playing.
 
-Paquete local de prueba:
-`build/NewSnapValidation-0.5.0-dev.1-555d6258-private.zip`.
-SHA256 `779fc5a90d2551e4c62bcabc30ed9f5dd534f50304917c493e290d23187f07bf`.
-Contiene 8420 archivos: launcher 1104, runtime privado 15, kit 7298 e instrucciones
-3. Inventarios, copias independientes, identidad triple, tamaños y CRC del ZIP
-verificados. El comando de inicio solo selecciona el kit local y abre el launcher;
-las instrucciones exigen copiar datos/perfil y comprobar sus rutas antes de lanzar.
+Local test package: `build/NewSnapValidation-0.5.0-dev.1-555d6258-private.zip`.
+SHA256 `779fc5a90d2551e4c62bcabc30ed9f5dd534f50304917c493e290d23187f07bf`. It contains 8420
+files: launcher 1104, private runtime 15, kit 7298 and instructions 3. Inventories,
+independent copies, triple identity, sizes and the ZIP's CRC verified. The start command only
+selects the local kit and opens the launcher; the instructions require copying data/profile
+and checking their paths before launching.

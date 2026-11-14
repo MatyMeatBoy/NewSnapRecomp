@@ -1,55 +1,49 @@
-# FOTO-01: límites de imágenes enlazadas al pool
+# FOTO-01: bounds of images bound to the pool
 
-La hipótesis de franjas AMD sigue sin confirmar. Un fixture CPU ejecutando
-`bind_pool_memory` del donor demuestra que puede admitir dos imágenes de color
-cuyos requisitos Vulkan se solapan aunque sus almacenamientos NVN sean contiguos:
-imagen A: rango NVN `[0,64)`, Vulkan `[0,128)`; imagen B: NVN y Vulkan `[64,128)`.
-La resolución comprueba el pool físico o tramo virtual contiguo completo, no
-las subasignaciones de cada textura. Profundidad/stencil ya rechaza el exceso.
-Esto prueba una condición admitida por el código; no prueba que un controlador
-AMD produzca esos requisitos, escriba el exceso o cause las fotos del usuario.
-Una geometría repetible tampoco descarta trabajo parcial o carreras repetibles.
+The AMD band hypothesis is still unconfirmed. A CPU fixture running the donor's
+`bind_pool_memory` shows it can admit two colour images whose Vulkan requirements overlap
+even though their NVN storage is contiguous: image A: NVN range `[0,64)`, Vulkan `[0,128)`;
+image B: NVN and Vulkan `[64,128)`. The resolution checks the whole physical pool or
+contiguous virtual span, not each texture's sub-allocations. Depth/stencil already rejects
+the excess. This proves a condition the code admits; it does not prove that an AMD driver
+produces those requirements, writes the excess or causes the user's photos. A repeatable
+geometry does not rule out partial work or repeatable races either.
 
-`newsnap/pool_bounds_adapt.py` proporciona un experimento sin selección por GPU.
-El integrador debe conectarlo a `adapt.py`; este módulo no se activa por sí solo.
+`newsnap/pool_bounds_adapt.py` provides an experiment without per-GPU selection. The
+integrator must wire it into `adapt.py`; this module does not activate itself.
 
-- Sin flag, conserva las decisiones del donor y registra las primeras 16
-  imágenes de color y 4 de profundidad/stencil por proceso con
-  `req.size > guest_size`, incluyendo rechazos. Los presupuestos separados
-  impiden que los rechazos de profundidad consuman la evidencia de color.
-- `AC_SNAP_POOL_BOUNDS=1` rechaza también imágenes de color con ese exceso.
-  La creación usa entonces su alternativa existente de memoria propia VMA.
-- Otros valores conservan la política original. El flag se memoriza en el
-  primer candidato de color con exceso mediante publicación atómica; se debe
-  fijar antes de iniciar el proceso, no cambiar durante la sesión.
-- No añade consultas Vulkan, lecturas del contenido guest ni instrumentación
-  por frame. Los contadores atómicos permiten un máximo total de 20 líneas,
-  incluso con concurrencia.
+- Without the flag, it keeps the donor's decisions and logs the first 16 colour images and
+  4 depth/stencil images per process with `req.size > guest_size`, rejections included.
+  Separate budgets keep depth rejections from using up the colour evidence.
+- `AC_SNAP_POOL_BOUNDS=1` also rejects colour images with that excess. Creation then uses
+  its existing fallback of VMA-owned memory.
+- Other values keep the original policy. The flag is latched at the first colour candidate
+  with excess through an atomic publication; set it before starting the process, do not
+  change it during the session.
+- It adds no Vulkan queries, guest content reads or per-frame instrumentation. Atomic
+  counters allow at most 20 lines in total, even under concurrency.
 
-Cada línea `pool_bounds:` incluye handle/dirección, formatos NVN/Vulkan,
-dimensiones NVN, tamaño guest/requerido, alineación, tipos compatibles,
-tipo de memoria seleccionado y offset/tramo disponible si llegó a resolverse.
-`span_known=0` significa que los ceros de offset/tramo no son una observación.
-`decision` identifica la salida real; `bound=1` solo aparece tras un bind exitoso.
-Los logs no indican qué bytes del rango utiliza internamente el controlador ni
-demuestran que otra textura esté viva allí. El presupuesto puede agotarse antes
-de la foto; ausencia de líneas posteriores no significa ausencia de exceso.
+Each `pool_bounds:` line includes handle/address, NVN/Vulkan formats, NVN dimensions,
+guest/required size, alignment, compatible types, selected memory type and the available
+offset/span if it got that far. `span_known=0` means the zero offset/span are not an
+observation. `decision` identifies the real exit; `bound=1` only appears after a successful
+bind. The logs do not say which bytes of the range the driver uses internally, nor show that
+another texture is alive there. The budget can run out before the photo; no later lines does
+not mean no excess.
 
-La alternativa VMA no garantiza una asignación `VkDeviceMemory` dedicada.
-Aumenta `own_bytes`, participa en el presupuesto y la expulsión del caché y
-puede limpiar a cero la imagen al inicializarla. También pierde el alias implícito
-con el buffer del pool u otras imágenes. `alias_copy` conserva ciertos aliases
-compatibles de la misma dirección base mediante staging, no todos los aliases
-parciales o con otras bases. Por eso el flag es experimental y está desactivado
-por defecto; no constituye una corrección AMD aceptada.
+The VMA fallback does not guarantee a dedicated `VkDeviceMemory` allocation. It increases
+`own_bytes`, takes part in the cache budget and eviction and may clear the image to zero on
+initialisation. It also loses the implicit alias with the pool buffer or other images.
+`alias_copy` keeps certain compatible aliases at the same base address through staging, not
+all partial aliases or those with other bases. That is why the flag is experimental and off
+by default; it is not an accepted AMD fix.
 
-Las reglas Vulkan sobre rangos solapados no garantizan conservar el contenido
-de imágenes no lineales por el mero hecho de compartir memoria. Referencia:
-[Memory Aliasing de Vulkan](https://docs.vulkan.org/spec/latest/chapters/resources.html#resources-memory-aliasing).
+Vulkan's rules on overlapping ranges do not guarantee that non-linear images keep their
+content merely by sharing memory. Reference:
+[Vulkan Memory Aliasing](https://docs.vulkan.org/spec/latest/chapters/resources.html#resources-memory-aliasing).
 
-Prueba focalizada: `python -m unittest tests.test_pool_bounds -v`. Compila y
-ejecuta la función C adaptada con Vulkan/VMA simulados: default/opt-in,
-profundidad/stencil, tamaño cero/justo, resolución, alineación, tipo, fallo de
-bind, orden/número de llamadas y límite concurrente de logs. No simula un
-controlador GPU ni mide imágenes reales. Faltan compilación nativa integrada,
-control RTX y A/B de la misma ruta en AMD con identidad verificada.
+Focused test: `python -m unittest tests.test_pool_bounds -v`. It compiles and runs the
+adapted C function with simulated Vulkan/VMA: default/opt-in, depth/stencil, zero/exact size,
+resolution, alignment, type, bind failure, order/number of calls and the concurrent log
+limit. It does not simulate a GPU driver or measure real images. Missing: integrated native
+build, RTX control and an A/B of the same route on AMD with verified identity.
