@@ -148,6 +148,40 @@ Four subsequent copied-profile boot controls (120, 60, 120, 144 FPS, three
 seconds each after boot) exited 0. This does not identify or fix that isolated
 failure; keep it visible during further testing.
 
+### Integration with Internal x2 — NVIDIA
+
+After the timing matrix, `main` integrated SS-02 in `e3899f7` (PR #21).
+PR #20 merges that revision and preserves its host-scaling implementation.
+The matrix above predates that merge; its measurements must not be relabelled
+as measurements of the combined binary or of 4K performance.
+
+The combined runtime builds successfully and passes 485 Windows tests
+(16 skips); its GitHub CI passes 494 tests (34 Linux skips). Its private SHA-256
+is `f9a4491efd5646184f337e1a24644d919acc471c06baca0feceff115c76c6245`.
+Three further 90-second RTX 4060 runs exited 0 and preserved the source profile:
+
+| Private run | Configuration | Runtime-reported result |
+| --- | --- | --- |
+| `merged144native` | 144 FPS, docked 100% | 12,762 presents; final 30.2 s window 144.0 FPS |
+| `merged120ss200` | 120 FPS, docked 200%, upscaling off | 10,592 presents; 3840×2160 host targets; final 39.3 s window 117.1 FPS |
+| `merged120ss200warm` | Same 120/x2 route, cache from preceding x2 run | 10,626 presents; final 30.1 s window 118.8 FPS |
+
+All three report zero unimplemented calls, validation errors, shader failures
+and skipped draws. Reviewed x2 screenshots show the entire scene, HUD, species
+label and photo thumbnail. This validates the observed NVIDIA combination;
+it does not establish AMD acceptance, full album/scoring coverage or flawless
+behavior across every scene.
+
+The first x2 run recorded a 6,764.4 ms shader-translation wait. The repeated
+x2 run reused its observed shader/cache inputs and recorded no translation wait;
+its final window had two frames over 25 ms and none over 50 ms. The windows are
+different and are not a paired performance benchmark. This supports retaining
+and preparing the observed cache when testing Internal x2 on NVIDIA, rather
+than treating first-use translation as steady-state GPU cost. Residual pacing
+spikes remain; no driver-specific clock, colour or scheduling workaround was
+introduced without an identified cause. The requested 120 cap is not a promise
+of locked 120 FPS at 4K on this GPU.
+
 ## Historical static investigation — 2026-11-13
 
 At the time of the investigation below, more than 60 presents/s with correct
