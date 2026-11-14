@@ -67,7 +67,7 @@ fotos ni constituye una validación completa AMD/VRR/mando. Reporte histórico:
 | COLOR-01 | P0 | REVISIÓN | RTX tester / renderer | Actualización0.6: propietario confirma que el primer nivel ya no se ve oscuro en RX6900XT y parece funcionar bien a60FPS. Confirmación acotada a esa escena; no es benchmark ni cierra fotos, otros modos o saturación de todas las escenas. Reporte anterior: saturación excesiva con ZIP0.5. Las nuevas capturas muestran HUD «AMD FSR 1, sharpness 80%»; comprobar runtime realmente iniciado al forzar lanzamiento, configuración efectiva y formato/transferencia. No bajar saturación arbitrariamente ni declarar equivalencia AMD por la prueba RTX. |
 | PACE-01 | P1 | EN CURSO | RTX tester / agente de render | Puente entero con equivalencia completa y guardas de original/receta integrado; A/B local de dos pares inversos reduce p99 42,970→25,469 ms, conserva mediana ≈16,67 ms y aún registra pico 107,692 ms. Evidencia `build/v05-rng-pacing-ab/`; archivos `random_range_adapt.py`, `snap_random_range.*`, `test_random_range.py`, `cpu-asset-workers.md`. Aceptación final alpha RTX completada; AMD pendiente y virtual-core starvation sigue documentada, sin alterar prioridades/simulación. |
 | PACE-AMD-01 | P1 | LIBRE | — · 2026-11-14 | RX 6900 XT, 0.7.1-tester: el propietario nota irregularidad al girar la cámara rápido. Compatible con judder de cadencia: el controlador AMD de Windows no ofrece `mailbox` y cae a `fifo`, y 60 fps en un monitor de 100 Hz alternan 10/20 ms. Logs: 60,0 fps de media, 1 % low 49–58, picos aislados ≤54 ms en espera de fence/present. Sin medir. Siguiente: repetir con el monitor a 120 Hz o FreeSync activo y con traza de presentación; separar cadencia del monitor de picos del runtime. No cambiar el modo de presentación sin esa medida. Ver `docs/releases/0.7.1-tester.md`. |
-| CRISTAL-01 | P1 | EN CURSO | MatyMeatBoy · 2026-11-14 | RX 6900 XT, 0.7.1-tester: el centro de cristal de la Cristalflor sale negro. Volcado F12 f47390: el pase de escena (52 dibujos) no tiene NaN; el pase siguiente, un solo dibujo transparente (vs cc2c6ed76addc42d / fs 4dbd63498689dbcc; BC5 normales, BC1 color, 2 mapas de sombra, cubemap BC6H; mezcla src 5 dst 16), deja 55.836 píxeles NaN que se ven negros. Hipótesis: semántica de coma flotante del shader traducido (p. ej. 0×∞ o rsqrt(0) que en la Switch dan 0) distinta en el controlador AMD. Sin comparación RTX del mismo plano. |
+| CRISTAL-01 | P1 | REVISIÓN | MatyMeatBoy · 2026-11-14 | **Corregido en AMD:** `newsnap/spirv_nminmax_adapt.py` reescribe cada módulo al crearlo: FMin/FMax/FClamp→NMin/NMax/NClamp (semántica de Maxwell) y Sqrt/InverseSqrt/Log2 con NMax(x,0). `AC_SPIRV_NMINMAX` y `AC_SPIRV_DOMAIN_CLAMP` activos en AMD, apagados en el resto. Prueba 10 en la RX 6900 XT: cristal correcto y 0 pases con NaN (volcado f8681); spirv-val OK en 89 shaders. Pendiente: A/B para atribuir cuál de los dos ajustes lo arregla, y control en RTX. Guía para otros recomps: `docs/bugs/amd-nan-shader-math.md`. — Historial: RX 6900 XT, 0.7.1-tester: el centro de cristal de la Cristalflor sale negro. Volcado F12 f47390: el pase de escena (52 dibujos) no tiene NaN; el pase siguiente, un solo dibujo transparente (vs cc2c6ed76addc42d / fs 4dbd63498689dbcc; BC5 normales, BC1 color, 2 mapas de sombra, cubemap BC6H; mezcla src 5 dst 16), deja 55.836 píxeles NaN que se ven negros. Hipótesis: semántica de coma flotante del shader traducido (p. ej. 0×∞ o rsqrt(0) que en la Switch dan 0) distinta en el controlador AMD. Sin comparación RTX del mismo plano. |
 | GYRO-01 | P0 | REVISIÓN | MatyMeatBoy · 2026-11-14 | Activar el giroscopio en las opciones cerraba el juego: `FATAL: ipc: hid command 82 is not implemented` (IsSixAxisSensorAtRest, llamado por el cliente hid del SDK; log de la prueba 8 en RX 6900 XT, independiente de la GPU). `newsnap/hid_six_axis_adapt.py` contesta los comandos de seis ejes 68–83 del IHidServer (ajustes aceptados, consultas con valores por defecto del SDK, reposo según el movimiento real). `tests/test_hid_six_axis.py`. Falta prueba física con el giroscopio activo. |
 | PAD-01 | P1 | REVISIÓN | RTX tester / agente de controles | Backend SDL de prueba de mandos implementado y probado con dispositivos virtuales/ABI real. Reservados `controller_probe.py`, `controller_ui.py`, `tests/test_controller_probe.py`. UI visual se integra con ART-01. |
 | VRR-01 | P1 | REVISIÓN | RTX tester / agente de render | Estado real de presentación por VK_EXT_present_timing, unknown/fixed/variable; nunca inferir VRR por FIFO/mailbox. Reservados `vrr_adapt.py`, overlays `snap_vrr*`, `display_status.py`, `display_ui.py`, tests y `docs/DISPLAY.md`. Prueba swapchain real integrada completada: API disponible, intervalo cero → unknown, sin inferir VRR. Validación FreeSync física pendiente. |
@@ -117,3 +117,35 @@ ART-01 tomada por RTX tester para integrar el original localizado; no duplicar e
 - Home/launcher y canales de actualización comprobados; opciones FSR coherentes.
 - Pruebas automáticas, nativas, integración, revisión independiente y evidencias
   de hardware pendientes explícitas. Una tarea en REVISIÓN no cumple esta puerta.
+
+## Futuras (pedidas por el propietario, después de 0.7.1)
+
+Orden sugerido. Ninguna cambia la lógica del juego; cada una necesita medida antes de darla
+por buena.
+
+1. **Pestaña «Mods» en el launcher.**
+   - Llevar a ella el giroscopio (`motion`, ya existe y está activo por defecto) y la
+     sensibilidad del ratón.
+   - Añadir `gyro_sens`: por defecto 2,5, rango 0,1–10, ajustable en vivo. El propietario siente
+     la base actual como un «2» de shooter y la quiere en «5». Plan: escalar el giroscopio antes
+     de integrarlo en `motion_fusion.c` y, si la escala no es 1, sin la corrección por gravedad.
+   - Texto de ayuda sobre mandos compatibles sin drivers: Pro, Joy-Con, DS4, DualSense y 8BitDo
+     en modo Switch (en modo X-input no envían giroscopio).
+   - Proponer un layout de teclado para este modo.
+2. **FPS altos con presets 30/60/90/120/144/240 y libre**, solo si la lógica del juego no
+   cambia. Base: `docs/HIGH_FPS.md` (temporizador con canales fijos a 1/60 por medir).
+   - Antes, medir la sensación de que algunas animaciones van a 30 fps. Puede ser judder de
+     60 fps en 100 Hz con `fifo` (PACE-AMD-01) o animaciones a mitad de ritmo propias del juego.
+3. **Pacing en AMD (PACE-AMD-01):**
+   - Tirones al girar la cámara rápido.
+   - Pruebas: monitor a 120 Hz o FreeSync, y traza de presentación.
+   - Ajustes del sistema a probar (no son del código): reloj mínimo en Adrenalin, MPO.
+4. **Renderizado interno y sombras.**
+   - Escala ×2 «como otros juegos»: hoy existe 125/150/200 % experimental solo en TV
+     (`docs/SUPERSAMPLING.md`); falta validar fotos y puntuación a esa escala.
+   - Sombras de más resolución o calidad: existe `AC_SHADOW_RES`/`AC_SHADOW_SCALE`, sin medir en
+     Snap.
+5. **Fotos a mayor resolución** que 1080×720 en el álbum (mod opcional). Requiere ver cómo
+   guarda y puntúa el juego.
+6. **CRISTAL-01:** A/B de `AC_SPIRV_NMINMAX` y `AC_SPIRV_DOMAIN_CLAMP` para atribuir la causa, y
+   control en RTX.
