@@ -145,6 +145,26 @@ variables PYTHON: salida0 en0,828s, sin procesos propios restantes;
 conservar la prueba GUI anterior del exportador; no se atribuye al binario final
 una segunda exportación que no se ejecutó.
 
+Revisión estática independiente acotada del runtime final:
+`build/v06-r1-native-review.json`. RVAs de secciones iguales; los59 bytes
+distintos de código son desplazamientos RIP en59 LEAs:58 apuntan a cadenas
+iguales y uno relocaliza una tabla con los mismos seis destinos. Secciones de
+datos/overlays y regiones comparadas coinciden; rutas de fallback locales y
+metadatos debug difieren. No se decodificó cada campo DWARF ni se afirma
+equivalencia global del fallback sin argumentos. Las pruebas y el launcher
+pasan rutas explícitas; la ejecución final sigue siendo evidencia separada.
+
+## Cierre remoto
+
+Publicada https://github.com/MatyMeatBoy/NewSnapRecomp/releases/tag/v0.6.0-alpha.
+Tag remoto82e01064 exacto, draft=false/prerelease=true/Latest=false. Cuatro
+assets remotos coinciden con el inventario cerrado por tamaño/digest. El updater
+real descarga el ZIP Windows publicado y valida su stage de1105 archivos. El
+catálogo manual acepta0.6.0-alpha y el filtro stable lo excluye, sin avisos
+automáticos alpha; no hay stable publicada. Recibo privado
+`build/v06-published-smoke/verification.json`. Los commits documentales
+posteriores no cambian el productor82e01064 ni los bytes de esos assets.
+
 Las pruebas físicas de RX 6900 XT, FreeSync y mando y los síntomas AMD reportados
 mantienen sus límites propios. La incorporación de CRC portable y la exportación
 de logs no demuestran una corrección de fotos, color o vibración de cabeza.

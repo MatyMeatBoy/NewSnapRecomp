@@ -4,7 +4,15 @@ Work in progress: a native Windows x64 recompilation of **New Pokémon Snap** us
 
 **Status:** the owner's base and update **2.0.1** import with verified integrity. A private Windows x64 executable builds, passes its memory/dispatch and loader checks, accepts a local character/name and commits the initial save. A nine-minute 1× replay captures/evaluates Pikachu (2,600 points), saves two real photographs and enters the first route. The SDK nonlocal-jump crash found after evaluation is corrected. A complete course and its photo save/reload remain unverified. No sustained gameplay FPS or stutter-free result is claimed.
 
-The **0.5 alpha** adds destination-aware SDR color transfer, stricter coherent
+The published [**0.6 alpha**](https://github.com/MatyMeatBoy/NewSnapRecomp/releases/tag/v0.6.0-alpha)
+integrates reviewed applet contracts, portable IEEE CRC32 acceleration, complete
+recent-log selection and a checksum-bound portable build kit. Its final package
+passes isolated install/repair/offline rebuild and 416 source tests (one symlink
+permission skip). RTX photo/tutorial and final post-tutorial reload checks are
+documented in the [0.6 notes](docs/releases/0.6-alpha.md); AMD photos/color,
+FreeSync/controllers and the intro head-motion cause remain unverified.
+
+The earlier **0.5 alpha** adds destination-aware SDR color transfer, stricter coherent
 host-memory imports with managed fallback, preservation of graphics storage-write
 draws, camera capture/sensor lifecycle fixes, a new Home/update flow and the
 original ReKHCoM controller sprite with Switch labels. A bit-exact resource-worker
