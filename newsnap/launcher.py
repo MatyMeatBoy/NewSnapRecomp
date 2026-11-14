@@ -187,16 +187,11 @@ class Launcher:
         save = ttk.Button(actions, text='Guardar ajustes', style='Accent.TButton', command=self.save_options)
         save.pack(side='left')
         self.save_buttons.append(save)
-        sections = ttk.Notebook(self.video_tab)
-        sections.pack(fill='both', expand=True)
-        basic_tab, advanced_tab = ttk.Frame(sections), ttk.Frame(sections)
-        sections.add(basic_tab, text='Básico')
-        sections.add(advanced_tab, text='Avanzado')
-        basic, advanced = self._scrolling_options(basic_tab), self._scrolling_options(advanced_tab)
+        video = self._scrolling_options(self.video_tab)
         from .graphics_presets import PRESETS, DESCRIPTION, matching_preset
         from .tooltip import Tooltip
         self.quality_preset = tk.StringVar(value=matching_preset(values))
-        preset_row = ttk.Frame(basic); preset_row.pack(fill='x', pady=9)
+        preset_row = ttk.Frame(video); preset_row.pack(fill='x', pady=9)
         preset_label = ttk.Label(preset_row, text='Preset de calidad gráfica', width=29)
         preset_label.pack(side='left')
         preset = ttk.Combobox(preset_row, textvariable=self.quality_preset,
@@ -204,49 +199,50 @@ class Launcher:
         preset.pack(side='left')
         preset.bind('<<ComboboxSelected>>', self._apply_quality_preset)
         Tooltip(preset_label, DESCRIPTION); Tooltip(preset, DESCRIPTION)
-        self._help(basic, 'Original · Bajo · Medio · Alto · Ultra. Pasa el ratón para ver los ajustes exactos.')
-        fullscreen = ttk.Checkbutton(basic, text='Pantalla completa', variable=self.variables['fullscreen'], onvalue='1', offvalue='0')
+        self._help(video, 'Original · Bajo · Medio · Alto · Ultra. Pasa el ratón para ver los ajustes exactos.')
+        self._heading(video, 'Pantalla y presentación')
+        fullscreen = ttk.Checkbutton(video, text='Pantalla completa', variable=self.variables['fullscreen'], onvalue='1', offvalue='0')
         fullscreen.pack(anchor='w', pady=(5, 10))
         Tooltip(fullscreen, 'Solicita pantalla completa al runtime. No cambia la resolución interna ni garantiza VRR o modo exclusivo del controlador.')
-        self._choice(basic, 'Tamaño de ventana', 'window_size', ('1280x720', '1600x900', '1920x1080', '2560x1440', '3440x1440', '3840x2160'), editable=True,
+        self._choice(video, 'Tamaño de ventana', 'window_size', ('1280x720', '1600x900', '1920x1080', '2560x1440', '3440x1440', '3840x2160'), editable=True,
                      help_text='Admite un tamaño propio como 2560x1080. Cambia la ventana, no la resolución interna ni la salida nativa.')
-        self._choice(basic, 'Salida nativa del juego', 'operation_mode', {'TV · 1920 × 1080': 'docked', 'Portátil · 1280 × 720': 'handheld'},
+        self._choice(video, 'Salida nativa del juego', 'operation_mode', {'TV · 1920 × 1080': 'docked', 'Portátil · 1280 × 720': 'handheld'},
                      help_text='El modo TV produce una salida de 1080p; el modo portátil, 720p. Una ventana 4K no convierte la salida nativa en 4K.')
-        self._choice(basic, 'Límite de FPS · Frame cap', 'fps', {'30 FPS': '30', '60 FPS': '60'},
+        self._choice(video, 'Límite de FPS · Frame cap', 'fps', {'30 FPS': '30', '60 FPS': '60'},
                      help_text='30 y 60 FPS son los límites disponibles. Más de 60 FPS sigue en investigación.')
         self.presentation = tk.StringVar(value=next(label for label, value in PRESENTATION_LABELS.items() if value == values['vk_present']))
-        row = ttk.Frame(basic)
+        row = ttk.Frame(video)
         row.pack(fill='x', pady=9)
         present_label = ttk.Label(row, text='Modo de presentación Vulkan', width=29)
         present_label.pack(side='left')
         present_choice = ttk.Combobox(row, textvariable=self.presentation, values=tuple(PRESENTATION_LABELS), state='readonly', width=31)
         present_choice.pack(side='left')
         Tooltip(present_label, PRESENTATION_HELP); Tooltip(present_choice, PRESENTATION_HELP)
-        self._help(basic, 'FIFO / Mailbox / Immediate / FIFO Relaxed. El modo efectivo y VRR se comprueban durante el juego.')
-        self._help(basic, 'La frecuencia variable depende de la pantalla y el controlador. Su presentación se comprueba durante la expedición.')
+        self._help(video, 'FIFO / Mailbox / Immediate / FIFO Relaxed. El modo efectivo y VRR se comprueban durante el juego.')
+        self._help(video, 'La frecuencia variable depende de la pantalla y el controlador. Su presentación se comprueba durante la expedición.')
         from .display_ui import DisplayPanel
-        self.display=DisplayPanel(self,basic)
-        self._choice(basic, 'Overlay de rendimiento', 'perf_overlay', {'Oculta': 'off', 'Solo FPS': 'fps', 'Completa': 'full'},
+        self.display=DisplayPanel(self,video)
+        self._choice(video, 'Overlay de rendimiento', 'perf_overlay', {'Oculta': 'off', 'Solo FPS': 'fps', 'Completa': 'full'},
                      help_text='Muestra datos del runtime. La vista completa incluye tiempos de CPU/GPU y actividad de compilación cuando están disponibles.')
-        self._heading(advanced, 'Resolución y reconstrucción')
-        self._choice(advanced, 'Reconstrucción temporal · FSR/DLSS', 'upscaling', {
+        self._heading(video, 'Resolución y reconstrucción')
+        self._choice(video, 'Reconstrucción temporal · FSR/DLSS', 'upscaling', {
             'Original': 'off', 'Automática': 'auto', 'AMD FSR 3.1': 'fsr3',
             'AMD FSR 4 · GPU compatible': 'fsr4', 'NVIDIA DLSS · RTX': 'dlss'},
             help_text='Reconstruye la escena antes del HUD. La disponibilidad depende del proveedor y del controlador; una opción no disponible conserva una alternativa compatible. FSR 4 selecciona automáticamente el modelo compatible, incluido INT8 en RX 6000/7000.')
-        self._choice(advanced, 'Preset de reconstrucción', 'upscaling_quality', {
+        self._choice(video, 'Preset de reconstrucción', 'upscaling_quality', {
             'Nativo · antialiasing': 'native', 'Calidad · escena 70 %': 'quality',
             'Equilibrado · escena 60 %': 'balanced', 'Rendimiento · escena 50 %': 'performance'},
             help_text='Cada proveedor usa su propio algoritmo con el preset elegido. Las escalas corresponden a los niveles reales del motor de Snap; requieren reiniciar la expedición.')
-        self._choice(advanced, 'Escala interna de la escena', 'render_scale', {'Según el juego': 'game', **{f'{n} %': str(n) for n in (50, 60, 70, 80, 90, 100)},
+        self._choice(video, 'Escala interna de la escena', 'render_scale', {'Según el juego': 'game', **{f'{n} %': str(n) for n in (50, 60, 70, 80, 90, 100)},
                      '1,25× (125 %) · experimental': '125', '1,5× (150 %) · experimental': '150', '2× (200 %) · experimental': '200'},
                      choice_width=31,
                      help_text='Hasta el 100 %, una escala menor favorece el rendimiento y pierde detalle; el HUD conserva su resolución de salida. 125 %, 150 % y 200 % son supersampling experimental exclusivo del modo TV: aumentan el detalle y el coste de GPU. Para modo portátil elige 100 % o menos; guardar una combinación incompatible muestra un error sin cambiar tu elección.')
-        self._choice(advanced, 'Filtrado anisotrópico · AF', 'aniso', {'Según el juego': 'game', **{f'{n}×': str(n) for n in (2, 4, 8, 16)}, 'Automático heredado': 'auto'},
+        self._choice(video, 'Filtrado anisotrópico · AF', 'aniso', {'Según el juego': 'game', **{f'{n}×': str(n) for n in (2, 4, 8, 16)}, 'Automático heredado': 'auto'},
                      help_text='Mejora las texturas vistas en ángulo. El controlador y la GPU pueden limitar el nivel efectivo. Automático heredado conserva la heurística de la base, aún sin validar para Snap; elige un nivel explícito para personalizarlo.')
-        self._choice(advanced, 'Relación de aspecto · Aspect ratio', 'aspect', {'Conservar proporciones': 'fit', 'Estirar a la ventana': 'stretch'},
+        self._choice(video, 'Relación de aspecto · Aspect ratio', 'aspect', {'Conservar proporciones': 'fit', 'Estirar a la ventana': 'stretch'},
                      help_text='Solo cambia la presentación: conservar proporciones puede dejar bandas; estirar llena la ventana y deforma la imagen. No amplía el campo de visión.')
-        self._heading(advanced, 'Color original del juego')
-        self._help(advanced, 'Salida neutra: conserva los colores y el posprocesado propios de Snap. '
+        self._heading(video, 'Color original del juego')
+        self._help(video, 'Salida neutra: conserva los colores y el posprocesado propios de Snap. '
                    'Sin perfiles de contraste, saturación, gamma, HDR añadido ni nitidez adicional del port.')
         self._audio_options()
         self._game_options()
