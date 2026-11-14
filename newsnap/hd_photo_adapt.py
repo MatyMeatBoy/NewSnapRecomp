@@ -14,6 +14,7 @@ def edits():
             ('"FPS", "FRAME_GEN", "FREEZE_IDLE",', '"FPS", "FRAME_GEN", "FREEZE_IDLE", "HD_PHOTOS",'),
             ('{"FRAME_GEN", "display"},', '{"FRAME_GEN", "display"}, {"HD_PHOTOS", "display"},'),
             ('{"FRAME_GEN", "off", "off|fsr", RESTART},', '{"FRAME_GEN", "off", "off|fsr", RESTART}, {"HD_PHOTOS", "1", "0|1", RESTART},'),
+            ('{"SHADOW_SCALE", "1", "1..4", RESTART}', '{"SHADOW_SCALE", "1", "1|2|3|4|auto", RESTART}'),
         ],
         'runtime/vk_exec.c': [
             ('#include "snap_output_scale.h"', '#include "snap_output_scale.h"\n#include "snap_hd_photo.h"'),

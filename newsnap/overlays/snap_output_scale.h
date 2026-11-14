@@ -19,6 +19,7 @@
 #pragma once
 #include <stddef.h>
 #include <stdint.h>
+#include <stdlib.h>
 #include <string.h>
 #include "nvn_obj.h"
 #include "cfg.h"
@@ -101,6 +102,29 @@ static inline int snap_host_scale_class(const nvn_texdesc *d, uint32_t samples, 
     }
     if ((uint32_t)d->flags & refused) return 0;
     return (d->flags & (NVN_TEXTURE_FLAGS_DISPLAY | NVN_TEXTURE_FLAGS_COMPRESSIBLE)) || depth_format;
+}
+
+// SS-03 shadows: every square depth map (Snap's sun map is DEPTH32F 1024x1024; others
+// may be 16/24-bit or arrays), so the shadow option enlarges all of them. The scene's
+// own depth is 16:9 and never square.
+static inline int snap_shadow_map_class(const nvn_texdesc *d) {
+    int depth = d->format == NVN_FORMAT_DEPTH16 || d->format == NVN_FORMAT_DEPTH24 ||
+                d->format == NVN_FORMAT_DEPTH24_STENCIL8 || d->format == NVN_FORMAT_DEPTH32F ||
+                d->format == NVN_FORMAT_DEPTH32F_STENCIL8;
+    int target = d->target == NVN_TEXTURE_TARGET_2D || d->target == NVN_TEXTURE_TARGET_2D_ARRAY;
+    return depth && target && d->width == d->height && d->width >= 256 && d->width <= 2048 && d->levels <= 1;
+}
+
+// AC_SHADOW_SCALE: 1..4, or "auto": shadow texels follow the 3D resolution, twice the
+// scene scale rounded up (1080p 2x, 125-150 % 3x, 200 % and above 4x).
+static inline int snap_shadow_scale_parse(const char *v) {
+    if (v && !strcmp(v, "auto")) {
+        float r = snap_host_scale_factor();
+        int s = (int)(2.0f * r + 0.999f);
+        return s < 2 ? 2 : s > 4 ? 4 : s;
+    }
+    int s = v ? atoi(v) : 1;
+    return s < 1 ? 1 : s > 4 ? 4 : s;
 }
 
 // SS-03 (AC_HD_PHOTOS, on by default): the 360x240 RGBA8 picture each photo

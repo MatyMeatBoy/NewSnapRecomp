@@ -31,7 +31,7 @@ class SnapOutputTests(unittest.TestCase):
         self.assertIn('if (scale <= 1.0f && nvn_gpu_only(k->addr))', texture)
         self.assertLess(texture.index('static int tex_mirrored('), texture.index('snap_output_image_scale_ex(d,'))
         draw = staged['runtime/vk_exec_draw.c']
-        self.assertIn('if (!skip && snap_host_scale_factor() <= 1.0f) return;', draw)
+        self.assertIn('if (!skip && snap_host_scale_factor() <= 1.0f && !snap_hd_photo_scale_on()) return;', draw)
         self.assertIn('o->scale = snap_output_target_scale', staged['runtime/vk_exec.c'])
 
     def test_policy_native(self):
