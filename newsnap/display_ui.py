@@ -47,7 +47,7 @@ class DisplayPanel:
                 mode=value['actual_present_mode'] or 'sin verificar'
                 self.monitor.configure(text=f"Pantalla: {name} · modo Vulkan efectivo: {mode}")
                 requested={'VSync · FIFO':'fifo','Mailbox':'mailbox',
-                           'Sin VSync · Immediate':'immediate','VSync adaptable · FIFO Relaxed':'fifo_relaxed'}.get(self.launcher.presentation.get())
+                           'Sin VSync · Immediate':'immediate'}.get(self.launcher.presentation.get())
                 if requested and mode not in (requested,'sin verificar'):
                     self.monitor.configure(text=f"Pantalla: {name} · modo Vulkan efectivo: {mode}. Difiere de la selección actual; puede corresponder a un ajuste pendiente de reinicio o a un fallback del runtime/controlador.")
             else:

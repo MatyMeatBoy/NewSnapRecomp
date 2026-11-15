@@ -284,7 +284,7 @@ int main(void) {
             chosen = {'operation_mode': 'handheld', 'render_scale': '70', 'upscaler': 'bilinear',
                       'sharpness': '65', 'aniso': '16', 'color_preset': 'custom',
                       'color_brightness': '-12', 'color_contrast': '125', 'color_saturation': '140',
-                      'color_gamma': '1.1', 'aspect': 'stretch', 'vk_present': 'fifo_relaxed',
+                      'color_gamma': '1.1', 'aspect': 'stretch', 'vk_present': 'immediate',
                       'window_size': '3440x1440'}
             settings.save_settings(path, chosen)
             current = settings.load_settings(path)
@@ -292,6 +292,14 @@ int main(void) {
                 self.assertEqual(current[key], value)
             self.assertIn('fov = 105', path.read_text())
             self.assertIn('custom = keep', path.read_text())
+
+    def test_fifo_relaxed_is_read_as_vsync_and_no_longer_saved(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / 'newsnap.ini'
+            path.write_text('[display]\nvk_present = fifo_relaxed\n')
+            self.assertEqual(settings.load_settings(path)['vk_present'], 'fifo')
+            with self.assertRaises(ValueError):
+                settings.validate_settings({'vk_present': 'fifo_relaxed'})
 
     def test_video_presets_write_real_color_adjustments(self):
         with tempfile.TemporaryDirectory() as folder:

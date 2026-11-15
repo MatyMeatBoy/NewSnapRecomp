@@ -29,9 +29,14 @@ class HdShadowsButton:
         waiting = len(pending(folder))
         return f'{made} mapas en HD · {waiting} por generar'
 
-    def start(self):
+    def waiting(self):
+        from .hdshadows import pending
+        return bool(pending(self.folder())) if (self.folder() / 'src').is_dir() else False
+
+    def start(self, after=None):
         if self.running or self.launcher.busy:
             return
+        self.after = after
         self.running = True
         self.cancel.clear()
         self.button.configure(state='disabled')
@@ -58,6 +63,9 @@ class HdShadowsButton:
         self.running = False
         self.button.configure(state='normal')
         self.state.set(self._summary())
+        after, self.after = getattr(self, 'after', None), None
+        if after:
+            after()
 
 
 class TexturePackButton(HdShadowsButton):
@@ -78,9 +86,14 @@ class TexturePackButton(HdShadowsButton):
         made = sum(1 for p in folder.glob('*.dds') if len(p.stem) == 16)
         return f'{made} texturas en HD · {len(pending(folder))} por generar'
 
-    def start(self):
+    def waiting(self):
+        from .texpack_gen import pending
+        return bool(pending(self.folder())) if (self.folder() / 'src').is_dir() else False
+
+    def start(self, after=None):
         if self.running or self.launcher.busy:
             return
+        self.after = after
         self.running = True
         self.cancel.clear()
         self.button.configure(state='disabled')

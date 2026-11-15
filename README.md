@@ -1,140 +1,115 @@
-# NewSnapRecomp
+<p align="center">
+  <img src="docs/logo/newsnap-logo.svg" alt="NewSnap: native PC port" width="560">
+</p>
 
-A native Windows x64 recompilation of **New Pokémon Snap** (update 2.0.1), built on the
-infrastructure of [Astral Chain Recomp](https://github.com/captainj-sparrow/astral-chain-pc-recomp),
-which builds on [TotK Recomp](https://github.com/valentderah/totk-pc-recomp). You need your own
-legally dumped game and update; nothing from the game is distributed here.
+<p align="center">
+  <img alt="Platform: Windows x64" src="https://img.shields.io/badge/platform-Windows%2010%2F11%20x64-1f4e40">
+  <img alt="Graphics: Vulkan 1.3" src="https://img.shields.io/badge/graphics-Vulkan%201.3-AC162C">
+  <img alt="Game version: 2.0.1" src="https://img.shields.io/badge/game%20version-2.0.1-dfa648">
+  <img alt="Status: stable 0.9" src="https://img.shields.io/badge/status-stable%200.9-2b5f4e">
+  <img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue">
+</p>
 
-| | |
-|---|---|
-| ![Research camp at 175 % internal resolution](docs/images/camp-175.jpg) | ![Expedition at 200 % internal resolution](docs/images/expedition-200.jpg) |
-| ![Photo evaluation at 200 %](docs/images/evaluation-200.jpg) | ![Lab at 2560×1440 ("match display")](docs/images/display-1440p.jpg) |
+<p align="center">
+  <img src="docs/images/expedition-200.jpg" alt="An expedition at 200 % internal resolution" width="760">
+</p>
 
-*Screenshots from an RX 6900 XT: internal resolution 175 %, 200 % (4K inside) and "match display" at 1440p.*
+**NewSnap** (NewSnapRecomp) is a native Windows recompilation of **New Pokémon Snap** (update 2.0.1). It runs the
+game's own code, recompiled for PC, with a Vulkan renderer and PC options: higher resolutions, 90–144 FPS, upscalers,
+frame generation and AI enhancements. It builds on [Astral Chain Recomp](https://github.com/captainj-sparrow/astral-chain-pc-recomp),
+which builds on [TotK Recomp](https://github.com/valentderah/totk-pc-recomp).
 
-## Status: [0.8.2-tester](https://github.com/MatyMeatBoy/NewSnapRecomp/releases) (prerelease)
+**Bring your own game.** You need your own dump of the game, its 2.0.1 update and your console keys. No game data,
+keys or game-derived executables are distributed here; the launcher builds the game on your PC.
 
-Playable through the tutorial, expeditions, photo evaluation and saving on the owner's
-RX 6900 XT, with NVIDIA RTX 4060 runs for earlier builds. Still a tester build: not every
-course, GPU or controller has been verified.
+## Status
 
-- **Internal resolution 125–300 % and "match display"**, rendered on the host like emulators
-  do: scene, HUD, effects, photos and thumbnails all correct ([SUPERSAMPLING.md](docs/SUPERSAMPLING.md)).
-- **30 / 60 / 90 / 120 / 144 FPS** without touching game logic ([HIGH_FPS.md](docs/HIGH_FPS.md)).
-- **AMD FSR 3.1 / FSR 4 and NVIDIA DLSS** upscaling or Native AA, and optional
-  **FSR frame generation** that pauses itself when the monitor cannot show it.
-- **Sun shadow resolution** 1×/2×/4×, anisotropic filtering, colour presets.
-- AMD RDNA 1/2 fixes (photo bands, NaN shader math, GPU faults), gyro aiming with adjustable
-  sensitivity, controller support through SDL3.
-- Launcher with automatic update and local runtime rebuild ([UPDATING.md](docs/UPDATING.md)).
+| Area | State | Notes |
+| --- | --- | --- |
+| Tutorial, expeditions, photos, scoring, saves | Works | Played on an AMD RX 6900 XT and an NVIDIA RTX 4060 |
+| Frame rate | Works | 30 / 60 / 90 / 120 / 144 FPS and a VRR mode; the interface, dialogue, input and pointer keep 60 FPS timing |
+| Resolution | Works | Internal resolution 50–300 % or by display, HUD and photos intact; ultrawide (experimental) |
+| Upscalers | Works | AMD FSR 3.1, FSR 4 (RX 6000/7000 through AMD's INT8 model) and NVIDIA DLSS; FSR frame generation |
+| AMD RDNA 1/2 | Works | Photo, shader and GPU fault fixes specific to these GPUs |
+| Online | Not available | The game runs offline, as on every Switch emulator |
 
-Work queue and how to contribute: [docs/PENDIENTES.md](docs/PENDIENTES.md) (read first) and
-[CONTRIBUTING.md](CONTRIBUTING.md). Older bug reports and release notes in `docs/bugs` and
-`docs/releases` are kept as written (many in Spanish).
+## Features
 
-## Local import
+### Picture
+- Internal resolution from 50 % to 300 %, or matched to your display; real-time shadows follow it.
+- AMD FSR 3.1 / FSR 4 and NVIDIA DLSS upscaling or native anti-aliasing (DLAA / Native AA), Automatic by default.
+- AMD FSR frame generation, with the interface kept out of the interpolation.
+- Ultrawide view (experimental): wider 3D view, interface in the middle, photos taken with the usual 16:9 view.
 
-Requires Python 3.12 and your own game files and console keys. None are included.
+### Frame rate and display
+- 60 FPS by default; 90, 120 and 144 FPS keep the game's own timing (dialogue, menus, pointer, controller).
+- **VRR mode** (FreeSync / G-SYNC): VSync with the limit just under your monitor's refresh (138 at 144 Hz).
+- Borderless window at the desktop's size by default.
+
+### NewSnap enhancements (each one can be switched off)
+- **HD photo thumbnails:** previews and photo screens show the 1080×720 photo instead of the 360×240 thumbnail.
+- **HD shadows mode** (AI, experimental): real-time shadows at their largest map and the level's light maps enlarged
+  on your PC with Real-ESRGAN.
+- **HD texture packs:** textures saved while you play and enlarged on your PC with AI, compressed to BC1/BC3.
+
+### Launcher
+- Graphics presets with **«Recomendado»** by default, sidebar navigation, status at a glance.
+- **Add to Steam** (with cover, logo and icon, for Big Picture and Steam Input) and a **desktop shortcut**.
+- Imports NSP, NSZ, XCI and XCZ; updates itself and rebuilds the game locally; keeps your compiled shaders across
+  updates that do not change them.
+
+### In-game menu (Minus + Plus)
+- Screen, Game, Sound, Controls, Menu, Enhancements and System tabs; English, Spanish, Russian, Brazilian
+  Portuguese and Simplified Chinese.
+
+## Screenshots
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/images/camp-175.jpg" alt="Research camp at 175 % internal resolution" width="100%"><br><sub>Research camp, 175 % internal resolution</sub></td>
+    <td width="50%"><img src="docs/images/expedition-200.jpg" alt="Expedition at 200 % internal resolution" width="100%"><br><sub>Expedition, 200 % (4K inside)</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/images/evaluation-200.jpg" alt="Photo evaluation at 200 %" width="100%"><br><sub>Photo evaluation at 200 %</sub></td>
+    <td width="50%"><img src="docs/images/display-1440p.jpg" alt="Lab at 2560 × 1440" width="100%"><br><sub>Lab at 2560 × 1440, «by display»</sub></td>
+  </tr>
+</table>
+
+## Install
+
+1. Download `NewSnapRecomp-<version>-windows-….zip` from [Releases](https://github.com/MatyMeatBoy/NewSnapRecomp/releases)
+   and extract the whole folder.
+2. Open `NewSnapLauncher.exe` and use **Importar NSP/XCI/NSZ…** with your base game, the 2.0.1 update and your
+   `prod.keys` (or place an already imported `GameData` folder beside the launcher).
+3. Press **Jugar**. The first start builds the game for your PC and prepares its shaders.
+
+Requirements: Windows 10/11 x64, a CPU with AVX2, a Vulkan 1.3 GPU (AMD RX 6000 or newer, NVIDIA RTX, recent Intel).
+Updating keeps your saves, photos, settings and compiled shaders.
+
+## Building from source
+
+Requires Python 3.12 and your own game files and console keys.
 
 ```powershell
 git submodule update --init
 py -3.12 -m venv .venv
 .venv\Scripts\python -m pip install -r requirements.txt
 .venv\Scripts\python -m newsnap import --base "path\base.nsp" --update "path\update.nsp" --keys "path\prod.keys" --hactool "path\hactool.exe"
-```
-
-The launcher does the same from Home → "Importar NSP/XCI/NSZ…". `--base` may be NSP, NSZ, XCI or XCZ and `--update` NSP or NSZ; compressed and cartridge dumps are rebuilt as a temporary NSP first (`newsnap/container.py`). Build hactool with `tools/build_hactool.py`. `--exefs-only` imports code modules without merging RomFS. Outputs go to `build/extracted`, with verified hashes and receipts; a second run validates input and output hashes before reuse. A stale output is refused; use another `--work` directory to preserve the earlier import.
-
-```powershell
-.venv\Scripts\python -m unittest discover -s tests -v
-```
-
-## Experimental build
-
-This development source requires the **pinned fourteen-patch NativeAOT translator**;
-the unmodified donor setup and published 0.6 build kit contain the older translator
-and are intentionally rejected before generation. A matching new public kit has
-not been published yet. Maintainers currently use a separately staged SDK whose
-`ac_xlate.exe` and `.id` match `profiles/translator-windows.json`; the original SDK
-and released 0.6 assets remain unchanged. See [translator provenance and
-verification](docs/bugs/xlate-semantics.md). A manually changed `.id` cannot make an
-old executable compatible.
-
-The verified SDK's `llvm/`, `runtime/deps/` and `bin/` directories supply the
-compiler, headers, libraries and translator. Install `glslc` and `spirv-val` for
-the host-side FSR shader build, then run:
-
-```powershell
-.venv\Scripts\python -m newsnap build --sdk-root "path\verified-sdk" --shader-tools "path\shader-tools" --jobs 8
-build\updated\newsnap.exe --selftest
-build\updated\newsnap.exe --probe-loader
-build\updated\newsnap.exe --boot
-```
-
-The executable and all game-derived C stay local. The build verifies the imported modules, RomFS and index before compiling. `--no-generate` is allowed only when a receipt binds every generated source to the current modules and generator. Control metadata is rederived from the verified NACP; editing a cached JSON cannot inject compiler definitions.
-
-The current bring-up exposes an offline network interface; online socket/TLS services report unavailable. Native game timing is retained: none of Astral Chain's instruction or FPS patches are applied.
-
-## Local launcher
-
-Windows alpha packages include `NewSnapLauncher.exe`, its dependencies and the
-original camera icon. Extract the whole Windows release and place your own
-`GameData` (or `newsnapGameData`) folder beside that executable. Python installation
-is not required. The owner-data folder contains the imported assets, locally
-generated native executable, shader inputs and profile; it is never a GitHub
-asset. Keep its runtime compatible with the selected release. See
-[0.3 alpha notes](docs/releases/0.3-alpha.md) for controls and tested limits.
-
-From a development checkout:
-
-```powershell
 .venv\Scripts\python -m newsnap launcher
+.venv\Scripts\python -m unittest discover -s tests
 ```
 
-The Spanish launcher provides profile selection, shader preparation, video and
-input settings, and a read-only photo album with export. Settings apply on the
-next game launch. Unrelated INI settings and changes made through the runtime
-menu are preserved. Window size, native docked/handheld output, internal render
-scale and final presentation scaling are separate controls; see
-[video compatibility](docs/VIDEO_COMPATIBILITY.md) for their limits.
-
-The album reads explicit exports from the profile's `photos` directory and
-committed photo containers in that profile's save. Refresh is deferred while an
-expedition holds the launcher profile lock. It excludes transaction
-folders and diagnostic screenshots. Parsing was tested with synthetic photos
-and real saved tutorial photographs. Two original 1080×720 images were decoded
-and exported byte-identically; slot-matched thumbnails are grouped with originals.
-
-Mouse left-click maps to Snap's A/photo button by default; existing custom
-bindings take precedence. See [input findings](docs/input-findings.md) for the
-distinction between the game's free aim and an input drift defect.
-
-The 30/60 presentation cap is independent of donor timing patches. Rates above
-60 remain under [investigation](docs/HIGH_FPS.md): a timer candidate has fixed
-1/60 modes whose active consumers have not yet been identified.
-
-Snap's own render-level patch is bound to the verified 2.0.1 module and original
-instruction. The patch table is part of generation provenance.
-
-## Shader preparation and performance
-
-The tools can decode the 3,138 shader libraries locally, using the original decoder in your verified executable. No proprietary decoder is included. To prepare their supported stages with default texture answers plus recorded variants:
-
-```powershell
-.venv\Scripts\python -m newsnap unpack-shaders
-.venv\Scripts\python -m newsnap prepare --all
-```
-
-The latest local test prepared 3,520 variants in the RTX 4060 driver cache, with zero translation or driver-preparation failures. Two geometry-stage entries are explicitly unsupported by the current backend. Default answers cannot establish coverage for every unseen texture type or pipeline combination. `prepare` without `--all` uses only recorded variants; startup also rebuilds recorded pipelines before guest execution.
-
-The current local-name mode uses the PC keyboard's length and character validation without Nintendo's profanity dictionary, as requested by the owner. It reaches character/name confirmation without firmware. This intentionally does not provide Nintendo's word filtering. No complete playable route or first-use coverage across the game is verified.
-
-The selected base already includes release 1.14.0 and matches upstream `main` at the latest check. See [feature compatibility](docs/UPSTREAM.md) for what is inherited, what has been exercised and what needs Snap-specific adaptation.
-
-Optimization will compare identical scenes and settings, preserving photography evaluation, event order, audio, camera motion and saves. Frame-time percentiles, startup time, memory use and compilation misses matter alongside FPS.
+Release recipe, work board and contribution rules: [docs/PENDIENTES.md](docs/PENDIENTES.md) and
+[CONTRIBUTING.md](CONTRIBUTING.md). Technical notes: [SUPERSAMPLING.md](docs/SUPERSAMPLING.md),
+[HIGH_FPS.md](docs/HIGH_FPS.md), [DISPLAY.md](docs/DISPLAY.md), [ULTRAWIDE.md](docs/ULTRAWIDE.md),
+[UPDATING.md](docs/UPDATING.md).
 
 ## Source and content boundaries
 
-Only original tools, adaptation patches, tests, documentation and the upstream gitlink belong in this repository. NSPs, keys, ExeFS/RomFS, generated C, compiled games, shader binaries/caches and save files remain local. Do not upload your built game.
+Only original tools, adaptation patches, tests and documentation belong in this repository. NSPs, keys, ExeFS/RomFS,
+generated C, compiled games, shader caches, saves and AI-enhanced game textures stay on your PC. Do not upload your
+built game.
 
-Original additions are MIT licensed. Upstream and third-party code retain their licenses and attribution; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+Original additions are MIT licensed. Upstream and third-party code keep their licenses and attribution; see
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). Pokémon and New Pokémon Snap are trademarks of their owners; this
+project is not affiliated with Nintendo, The Pokémon Company, Game Freak or Bandai Namco.

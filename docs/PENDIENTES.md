@@ -5,6 +5,7 @@ Read this before taking work. History and the previous Spanish board:
 
 ## Current state (2026-11-14, after 0.9.0 stable): read first
 
+- **Handoff (2026-11-15, after 0.9.11): [HANDOFF-0.9.12.md](HANDOFF-0.9.12.md).**
 - **0.9.7 (2026-11-15)** closes the handoff [HANDOFF-0.9.7.md](HANDOFF-0.9.7.md): dialogue and pointer above 60 fps, HD scenery shadows, launcher redesign. Notes: [releases/0.9.7.md](releases/0.9.7.md).
 
 - `main` = 0.9.4 (stable line 0.9; UI-HZ-01 done properly, replacing the broken 0.9.3 change; MENU-03) (shader cache kept across updates with the same `SHADER_EPOCH` and translator; launcher presets with «Recomendado», «Mejoras» tab, in-game Screen/Enhancements rows, window auto, internal resolution by display, TEXPACK-01 runtime; 0.8.9 experimental ultrawide, ULTRAWIDE-01; 0.8.8 FSR frame generation with a HUD-less image, FG-02; 0.8.7 HD photo thumbnails and shadow «auto», SS-03; 0.8.6 FPS «display»; 0.8.5 NSP/NSZ/XCI/XCZ import): AMD RDNA 1/2 fixes (FOTO-01, CRISTAL-01), gyro (GYRO-01/02), windowed
@@ -28,7 +29,12 @@ acceptance), DONE (moved to the history file).
 
 | ID | P | State | Owner | Summary |
 |---|---|---|---|---|
-| — | — | — | — | No open rows (2026-11-15, after 0.9.7). Closed rows and their evidence: [PENDIENTES-HECHOS.md](PENDIENTES-HECHOS.md). A row closes when it is published and verified on the owner's hardware or by its route; an issue or an owner report reopens it here. |
+| HD-SHADOW-02 | P1 | OPEN | — | The camp deck's pixelated shadows are painted into the colour textures, not the light maps (white-texture experiments). The HD shadows mode must enlarge scenery colour textures too. [HANDOFF-0.9.12.md](HANDOFF-0.9.12.md). |
+| MENU-LANG-01 | P2 | OPEN | — | In-game menu in French, German, Italian, Japanese, Korean and Traditional Chinese (Spanish done in 0.9.11). |
+| POINTER-02 | P1 | REVIEW | MatyMeatBoy | 0.9.11: real, averaged frame time on every pointer screen. If it still steps at 144 fps: position drawn only on interface steps (`cursor_mc`, see handoff). |
+| README-01 | P2 | OPEN | — | Screenshots of the enhancements and the launcher for the README. |
+| FPS-03 | P2 | OPEN | — | Throwable items above 60 fps: needs a save with fluffruit. |
+| RTX-01 | P2 | OPEN | — | HD photo thumbnails on RTX; DLSS frame generation (RTX 40/50). Needs an NVIDIA GPU. |
 
 ## Ideas after 0.8.6
 

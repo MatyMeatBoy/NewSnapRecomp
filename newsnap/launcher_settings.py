@@ -29,7 +29,7 @@ COLOR_PRESETS = {name: dict(zip(COLOR_KEYS, values)) for name, values in {
 # Render scales above 100 %: host supersampling in TV mode (SS-02).
 SUPERSAMPLE_SCALES = ('125', '133', '150', '175', '200', '250', '300', 'display')
 
-CHOICES = {'vk_present': ('mailbox', 'fifo', 'immediate', 'fifo_relaxed'),
+CHOICES = {'vk_present': ('mailbox', 'fifo', 'immediate'),
            'operation_mode': ('docked', 'handheld'), 'render_scale': ('game', '50', '60', '70', '80', '90', '100') + SUPERSAMPLE_SCALES,
            'upscaler': ('fsr', 'bilinear'), 'aniso': ('game', '2', '4', '8', '16', 'auto'), 'shadow_scale': ('1', '2', '4', 'auto'), 'frame_gen': ('off', 'fsr'), 'hd_photos': ('1', '0'), 'hd_shadows': ('0', '1'), 'tex_pack': ('1', '0'), 'tex_pack_save': ('0', '1'),
            'aspect': ('fit', 'stretch', 'ultrawide'), 'color_preset': ('default', 'vivid', 'clarity', 'custom')}
@@ -184,6 +184,10 @@ def load_settings(path):
             match = ENTRY.match(line)
             if match and (key := _key(match[2])) in DEFAULTS:
                 value = line.split('=', 1)[1].strip().strip('"')
+                if key == 'shadow_scale':
+                    value = 'auto'   # 0.9.11: shadow maps always follow the internal resolution
+                if key == 'vk_present' and value == 'fifo_relaxed':
+                    value = 'fifo'   # FIFO Relaxed is no longer offered (0.9.11): plain VSync, its closest mode
                 if key in BINDING_DEFAULTS:
                     # Do not erase legacy/user text just because this editor cannot validate it.
                     result[key] = value

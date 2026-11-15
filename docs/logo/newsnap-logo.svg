@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="200" viewBox="0 0 640 200" role="img" aria-label="NewSnap: native PC port">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1f4e40"/>
+      <stop offset="1" stop-color="#163d32"/>
+    </linearGradient>
+    <radialGradient id="lens" cx="0.4" cy="0.35" r="0.7">
+      <stop offset="0" stop-color="#9fd8ff"/>
+      <stop offset="0.45" stop-color="#2f7fb0"/>
+      <stop offset="1" stop-color="#0d2c3f"/>
+    </radialGradient>
+  </defs>
+  <rect x="4" y="4" width="632" height="192" rx="44" fill="url(#bg)"/>
+  <!-- camera body -->
+  <rect x="34" y="52" width="132" height="96" rx="24" fill="#f5f1e5"/>
+  <rect x="58" y="40" width="44" height="20" rx="8" fill="#f5f1e5"/>
+  <circle cx="100" cy="100" r="38" fill="#163d32"/>
+  <circle cx="100" cy="100" r="30" fill="url(#lens)"/>
+  <circle cx="90" cy="90" r="8" fill="#ffffff" opacity="0.85"/>
+  <circle cx="148" cy="68" r="6" fill="#dfa648"/>
+  <!-- wordmark -->
+  <text x="196" y="112" font-family="Segoe UI, Arial, sans-serif" font-size="72" font-weight="700" fill="#f5f1e5">New<tspan fill="#dfa648">Snap</tspan></text>
+  <text x="200" y="150" font-family="Segoe UI, Arial, sans-serif" font-size="20" font-weight="700" letter-spacing="4" fill="#9fb8ad">NATIVE PC PORT · VULKAN</text>
+</svg>

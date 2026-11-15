@@ -118,6 +118,8 @@ static inline int snap_shadow_map_class(const nvn_texdesc *d) {
 // AC_SHADOW_SCALE: 1..4, or "auto": shadow texels follow the 3D resolution, twice the
 // scene scale rounded up (1080p 2x, 125-150 % 3x, 200 % and above 4x).
 static inline int snap_shadow_scale_parse(const char *v) {
+    const char *hd = cfg_get("AC_HD_SHADOWS");   // HD shadows mode: every shadow, real-time ones at the largest map
+    if (hd && !strcmp(hd, "1")) return 4;
     if (v && !strcmp(v, "auto")) {
         float r = snap_host_scale_factor();
         int s = (int)(2.0f * r + 0.999f);
