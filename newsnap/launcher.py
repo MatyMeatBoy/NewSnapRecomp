@@ -236,12 +236,11 @@ class Launcher:
             'Nativo · solo antialiasing (DLAA / Native AA)': 'native', 'Calidad · escena 70 %': 'quality',
             'Equilibrado · escena 60 %': 'balanced', 'Rendimiento · escena 50 %': 'performance'},
             help_text='Cada proveedor usa su propio algoritmo con el preset elegido. Las escalas corresponden a los niveles reales del motor de Snap; requieren reiniciar la expedición.')
-        self._choice(video, 'Resolución interna', 'render_scale', {
-                     **{f'{n} %' + (' · más ligero' if n == 50 else ''): str(n) for n in (50, 60, 70, 80, 90)},
-                     '100 % · la del juego (1080p)': 'game',
-                     **{f'{n} %{note}': str(n) for n, note in ((125, ''), (133, ' · 1440p'), (150, ''), (175, ''), (200, ' · 4K'), (250, ''), (300, ' · más nítido'))},
-                     'Según la pantalla': 'display'},
-                     choice_width=31,
+        from .display_scales import primary_display_size, render_scale_choices
+        display = primary_display_size()
+        self._choice(video, 'Resolución interna', 'render_scale',
+                     render_scale_choices(display[1] if display else None, self.variables['render_scale'].get()),
+                     choice_width=34,
                      help_text='Hasta el 100 %, una escala menor favorece el rendimiento y pierde detalle. Por encima del 100 % es supersampling del modo TV: el juego dibuja a 1920 × 1080 y la imagen interna (escena, HUD y fotos) se calcula más grande y se reduce a tu ventana; aumenta el detalle y el coste de GPU (2× cuesta unas cuatro veces más píxeles). «Según la pantalla» elige la escala que coincide con la altura de tu monitor o ventana (1440p → 1,33×, 4K → 2×). Requiere el reescalador apagado y el modo TV; guardar una combinación incompatible muestra un error sin cambiar tu elección.')
         self._choice(video, 'Filtrado anisotrópico · AF', 'aniso', {'Según el juego': 'game', **{f'{n}×': str(n) for n in (2, 4, 8, 16)}, 'Automático heredado': 'auto'},
                      help_text='Mejora las texturas vistas en ángulo. El controlador y la GPU pueden limitar el nivel efectivo. Automático heredado conserva la heurística de la base, aún sin validar para Snap; elige un nivel explícito para personalizarlo.')
