@@ -1,18 +1,11 @@
-# UI-HZ-01: interface timelines at 60 steps a second of real time above 60 fps
-# (newsnap/overlays/snap_ui_pace.c). Snap 2.0.1 main build ddb900ff04a912ed42430508389853cfaf1accce.
-# The interface manager advances every movie one timeline frame per game frame:
-#   7838e4 ldr x8,[x22,#0xe0]   start of the first walk of the movie list
-#   7838f8 ldr x0,[x20,#0x10]   movie for the call at 7838fc (bl 9d0de0)
-#   790de8 ldr x8,[x8,#0xe0]    start of the second walk
-#   790dfc ldr x0,[x21,#0x10]   movie for the call at 790e00 (bl 9d0de0)
-# The begin helper runs before the original load and changes nothing in the guest. The movie
-# helper runs after the original load and, on a frame that is not due, points x0 at an empty
-# stand-in the player's first check rejects.
-# OFF BY DEFAULT since 0.9.4: holding a movie this way also skips the work that decides which clips
-# are shown, so hidden menus appear and the interface flickers every frame (owner's RX 6900 XT, camp
-# and loading screens). AC_SNAP_UI_PACE_PATCH=1 turns the sites on for investigation only.
-set snap_ui_pace AC_SNAP_UI_PACE_PATCH 0
-site snap_ui_pace main 7838e4 f94072c8 @fn:snap_ui_pace_begin f94072c8
-site snap_ui_pace main 7838f8 f9400a80 f9400a80 @fn:snap_ui_pace_movie
-site snap_ui_pace main 790de8 f9407108 @fn:snap_ui_pace_begin f9407108
-site snap_ui_pace main 790dfc f9400aa0 f9400aa0 @fn:snap_ui_pace_movie
+# UI-HZ-01: the interface handler's logic, timelines and per-frame event at 60 a
+# second above 60 fps, drawing on every frame (newsnap/overlays/snap_ui_pace.c).
+# Snap 2.0.1 main build ddb900ff04a912ed42430508389853cfaf1accce. In the interface object's handler (main+0x7835d0):
+#   783610 str x0,[sp,#0x188]   the object saved, before the first test; replaced by the store, the enter
+#                               helper (x16 = 1 run / 0 draw only) and cbz x16 -> 794b4c
+#   794b4c ldr x22,[sp,#0x188]  start of the drawing section: draws the movies (bl 9d1e80)
+#   794b90 ldr x0,[sp,#0x188]   first argument of the per-frame event 22 (bl 7a9a70); replaced by the load,
+#                               the event helper (x16 = 1 raise / 0 leave) and cbz x16 -> 795f08 (the exit)
+set snap_ui_pace AC_SNAP_UI_PACE_PATCH 1
+site snap_ui_pace main 783610 f900c7e0 f900c7e0 @fn:snap_ui_pace_enter b408a9f0
+site snap_ui_pace main 794b90 f940c7e0 f940c7e0 @fn:snap_ui_pace_event b4009bd0
