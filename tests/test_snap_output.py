@@ -59,7 +59,8 @@ const char *cfg_value(const char *key) {if(strcmp(key,"AC_RENDER_SCALE"))abort()
 static const char *chain_knob=NULL;
 static const char *photo_knob=NULL;
 static const char *hd_knob="0";
-const char *cfg_get(const char *key) {if(!strcmp(key,"AC_HD_PHOTOS"))return hd_knob;if(!strcmp(key,"AC_SS_PHOTO"))return photo_knob;if(!strcmp(key,"AC_SS_CHAIN"))return chain_knob;if(strcmp(key,"AC_SS_MODE"))abort();return mode;}
+static const char *hd_shadows_knob = "0";
+const char *cfg_get(const char *key) {if(!strcmp(key,"AC_HD_SHADOWS"))return hd_shadows_knob;if(!strcmp(key,"AC_HD_PHOTOS"))return hd_knob;if(!strcmp(key,"AC_SS_PHOTO"))return photo_knob;if(!strcmp(key,"AC_SS_CHAIN"))return chain_knob;if(strcmp(key,"AC_SS_MODE"))abort();return mode;}
 const char *cfg_upscaling(void) {return upscaling;}
 int ov_handheld(void) {return portable;}
 void rt_log(const char *f,...) {(void)f;}
@@ -131,6 +132,7 @@ int main(void) {
   if(snap_shadow_scale_parse("auto")!=2||snap_shadow_scale_parse("4")!=4||snap_shadow_scale_parse("9")!=4) return 48;
   choice="200";if(snap_shadow_scale_parse("auto")!=4) return 49;
   choice="150";if(snap_shadow_scale_parse("auto")!=3) return 50;
+  hd_shadows_knob="1";if(snap_shadow_scale_parse("1")!=4) return 51;hd_shadows_knob="0";
   choice="200";
  }
  nvn_texdesc d=rt(NVN_TEXTURE_FLAGS_DISPLAY);
