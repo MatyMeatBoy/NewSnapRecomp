@@ -239,14 +239,17 @@ class Launcher:
                      render_scale_choices(display[1] if display else None, self.variables['render_scale'].get()),
                      choice_width=34,
                      help_text='A qué resolución se dibuja el juego. 100 % es su 1920 × 1080. Por encima del 100 % la imagen se calcula más grande y se reduce a tu pantalla: más detalle a cambio de GPU (200 % cuesta unas cuatro veces más). «Según la pantalla» iguala la altura de tu monitor (1440p → 133 %, 4K → 200 %). Funciona junto con el antialiasing.')
-        self._choice(video, 'Antialiasing', 'upscaling', {
-            'Automático · el mejor para tu GPU': 'auto', 'AMD FSR 4': 'fsr4', 'AMD FSR 3.1': 'fsr3',
-            'NVIDIA DLSS · RTX': 'dlss', 'SMAA · el del juego': 'off'},
-            help_text='Suaviza los bordes y las líneas finas (marcos, escaleras, cables) combinando varios cuadros. Funciona a cualquier resolución interna, también por encima del 100 %. Automático usa DLSS en tarjetas RTX y FSR 4 o FSR 3.1 en las demás (FSR 4 elige solo el modelo compatible, también en RX 6000/7000). SMAA es el antialiasing original del juego, más ligero y menos limpio.')
+        self._choice(video, 'Antialiasing (SMAA)', 'anti_aliasing', {
+            'Alto · recomendado': 'high', 'Ultra': 'ultra', 'Medio': 'medium', 'Bajo': 'low', 'Desactivado': 'off'},
+            help_text='Suaviza los bordes dentados (marcos, escaleras, cables) antes de dibujar el HUD, así los textos siguen nítidos. Alto es el predeterminado; Ultra encuentra más bordes con algo más de GPU. Funciona a cualquier resolución interna; con más del 100 % el resultado es aún más limpio.')
+        self._choice(video, 'Escalador (FSR / DLSS)', 'upscaling', {
+            'Desactivado': 'off', 'Automático · el mejor para tu GPU': 'auto', 'AMD FSR 4': 'fsr4', 'AMD FSR 3.1': 'fsr3',
+            'NVIDIA DLSS · RTX': 'dlss'},
+            help_text='Solo para ganar FPS o para la generación de fotogramas: con un escalador, el SMAA se aparta y el escalador suaviza la imagen. Desactivado es lo normal.')
         self._choice(video, 'Escalado de rendimiento', 'upscaling_quality', {
             'Desactivado · resolución completa': 'native', 'Calidad · escena al 70 %': 'quality',
             'Equilibrado · escena al 60 %': 'balanced', 'Rendimiento · escena al 50 %': 'performance'},
-            help_text='Solo si necesitas más FPS: dibuja la escena 3D más pequeña y el antialiasing la agranda. Desactivado (lo normal) mantiene la resolución completa. Con Calidad, Equilibrado o Rendimiento la resolución interna debe ser 100 % o menos. No se usa con SMAA.')
+            help_text='Con un escalador elegido: dibuja la escena 3D más pequeña y el escalador la agranda. Con Calidad, Equilibrado o Rendimiento la resolución interna debe ser 100 % o menos.')
         self._choice(video, 'Filtrado anisotrópico · AF', 'aniso', {'Según el juego': 'game', **{f'{n}×': str(n) for n in (2, 4, 8, 16)}, 'Automático heredado': 'auto'},
                      help_text='Mejora las texturas vistas en ángulo. El controlador y la GPU pueden limitar el nivel efectivo. Automático heredado conserva la heurística de la base, aún sin validar para Snap; elige un nivel explícito para personalizarlo.')
         self._choice(video, 'Relación de aspecto · Aspect ratio', 'aspect', {'Conservar proporciones': 'fit', 'Estirar a la ventana': 'stretch', 'Ultrawide · vista más ancha (experimental)': 'ultrawide'},
@@ -258,7 +261,7 @@ class Launcher:
         self._game_options()
         self._control_options()
         self._mod_options()
-        for key in ('render_scale', 'aniso', 'upscaling'):
+        for key in ('render_scale', 'aniso', 'upscaling', 'anti_aliasing'):
             self.variables[key].trace_add('write', self._quality_preset_changed)
 
     def _auto_hd_shadows(self):

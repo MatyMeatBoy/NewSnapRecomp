@@ -61,7 +61,7 @@ class FrameGenerationSettingsTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 self.save(ini, base, upscaling='off', frame_gen='fsr')   # no upscaler: refused as a whole
             current = settings.load_settings(ini)
-            self.assertEqual((current['frame_gen'], current['upscaling']), ('off', 'auto'))   # nothing was written
+            self.assertEqual((current['frame_gen'], current['upscaling']), ('off', 'off'))   # nothing was written (the default)
 
 
 class RetiredFilesTests(unittest.TestCase):

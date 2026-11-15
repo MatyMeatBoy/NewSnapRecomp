@@ -38,6 +38,7 @@ from .hd_photo_adapt import edits as hd_photo_edits
 from .wide_adapt import edits as wide_edits
 from .texpack_adapt import edits as texpack_edits
 from .snap_menu_adapt import edits as snap_menu_edits
+from .smaa_adapt import edits as smaa_edits
 from .ui_pace_adapt import edits as ui_pace_edits
 from .crc_isa_adapt import edits as crc_isa_edits
 from .xlate_semantics_adapt import edits as xlate_semantics_edits, stage_patches as stage_xlate_patches
@@ -243,7 +244,7 @@ def adapt_sources(destination, *, patch_output=None):
                     bc_block_views_edits, hid_six_axis_edits, spirv_nminmax_edits,
                     pipe_mo_keys_edits, gyro_sens_edits, windowed_present_edits, fps_text_edits,
                     high_fps_edits, framegen_edits, hd_photo_edits, wide_edits, texpack_edits, snap_menu_edits,
-                    ui_pace_edits):
+                    ui_pace_edits, smaa_edits):
         for name, changes in adapter().items():
             edits.setdefault(name, []).extend(changes)
     for folder in ('runtime', 'recomp', 'tools'):
@@ -272,6 +273,9 @@ def adapt_sources(destination, *, patch_output=None):
     for overlay in (ROOT / 'newsnap/overlays').glob('*'):
         if overlay.is_file():
             write_changed(destination / 'runtime' / overlay.name, overlay.read_text(encoding='utf-8'))
+    for shader in (ROOT / 'newsnap/overlays/shaders').glob('*'):   # AA-04: NewSnap's own shaders (SMAA)
+        if shader.is_file():
+            write_changed(destination / 'runtime/shaders' / shader.name, shader.read_text(encoding='utf-8'))
     # Keep the donor resource filename expected by its build rule, but embed
     # this project's original camera artwork in the actual game executable.
     shutil.copy2(ROOT / 'assets/icons/newsnap.ico', destination / 'runtime/astralchain.ico')

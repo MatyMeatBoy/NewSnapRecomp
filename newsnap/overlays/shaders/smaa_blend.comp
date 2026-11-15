@@ -1,0 +1,21 @@
+#version 450
+// AA-04: SMAA neighbourhood blending in linear light (the picture read through its sRGB view), written back
+// sRGB-encoded into an RGBA8 UNORM image that snap_smaa.c copies over the picture.
+#define SMAA_PRESET_HIGH 1
+#include "smaa_common.glsl"
+layout(binding = 0) uniform sampler2D colorTex;   // sRGB view: linear values
+layout(binding = 1) uniform sampler2D blendTex;
+layout(binding = 2, rgba8) uniform writeonly image2D pictureOut;
+vec3 encode(vec3 c) {
+    c = clamp(c, 0.0, 1.0);
+    return mix(c * 12.92, 1.055 * pow(c, vec3(1.0 / 2.4)) - 0.055, step(vec3(0.0031308), c));
+}
+void main() {
+    vec2 uv;
+    ivec2 p = smaa_pixel(uv);
+    if (smaa_outside(p)) return;
+    vec4 offset;
+    SMAANeighborhoodBlendingVS(uv, offset);
+    vec4 c = SMAANeighborhoodBlendingPS(uv, offset, colorTex, blendTex);
+    imageStore(pictureOut, p, vec4(encode(c.rgb), c.a));
+}
