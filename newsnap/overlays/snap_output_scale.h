@@ -59,7 +59,15 @@ static inline float snap_ss_choice(void) { return snap_ss_parse(cfg_value("AC_RE
 
 // The host scale in force for docked full-screen targets, 1 when off.
 static inline float snap_host_scale_factor(void) {
-    if (snap_ss_engine_mode() || ov_handheld() || strcmp(cfg_upscaling(), "off")) return 1.0f;
+    if (snap_ss_engine_mode() || ov_handheld()) return 1.0f;
+    // AA-01: an upscaler in Native quality (render size = output size: anti-aliasing only) runs on the enlarged
+    // scene, so the internal resolution and its temporal anti-aliasing work together. Other qualities draw smaller
+    // and keep the game's own size.
+    if (strcmp(cfg_upscaling(), "off")) {
+        const char *q = cfg_value("AC_UPSCALING_QUALITY");
+        const char *k = cfg_get("AC_SS_WITH_UPSCALER");
+        if (!(q && !strcmp(q, "native") && !(k && !strcmp(k, "0")))) return 1.0f;
+    }
     return snap_ss_choice();
 }
 

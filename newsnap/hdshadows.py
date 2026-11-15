@@ -243,7 +243,8 @@ def enlarge(rgb, scale, work, model='realesr-animevideov3'):
     src, dst = work / 'in.png', work / 'out.png'
     Image.fromarray(pic, 'RGB').save(src)
     subprocess.run([str(ESRGAN), '-i', str(src), '-o', str(dst), '-n', model, '-s', str(scale)],
-                   check=True, capture_output=True, cwd=ESRGAN.parent)
+                   check=True, capture_output=True, cwd=ESRGAN.parent,
+                   creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))   # no console window per picture
     big = np.asarray(Image.open(dst).convert('RGB'), dtype=np.float32)
     size = (w * scale, h * scale)
     if big.shape[:2] != (size[1], size[0]):

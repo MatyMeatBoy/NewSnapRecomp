@@ -134,7 +134,8 @@ def enlarge(src, scale, max_edge, work, model='realesrgan-x4plus'):
     rgb_in, rgb_out = work / 'in.png', work / 'out.png'
     im.convert('RGB').save(rgb_in)
     subprocess.run([str(ESRGAN), '-i', str(rgb_in), '-o', str(rgb_out), '-n', model, '-s', '4'],
-                   check=True, capture_output=True, cwd=ESRGAN.parent)
+                   check=True, capture_output=True, cwd=ESRGAN.parent,
+                   creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))   # no console window per picture
     big = Image.open(rgb_out).convert('RGB').resize(target, Image.LANCZOS)
     big.putalpha(im.getchannel('A').resize(target, Image.LANCZOS))
     return big
