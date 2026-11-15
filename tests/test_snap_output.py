@@ -55,12 +55,12 @@ class SnapOutputTests(unittest.TestCase):
 #include "snap_output_scale.h"
 static const char *choice="game",*mode=NULL,*upscaling="off";
 static int portable;
-const char *cfg_value(const char *key) {if(strcmp(key,"AC_RENDER_SCALE"))abort();return choice;}
+const char *cfg_value(const char *key) {if(!strcmp(key,"AC_UPSCALING_QUALITY"))return "quality";if(strcmp(key,"AC_RENDER_SCALE"))abort();return choice;}
 static const char *chain_knob=NULL;
 static const char *photo_knob=NULL;
 static const char *hd_knob="0";
 static const char *hd_shadows_knob = "0";
-const char *cfg_get(const char *key) {if(!strcmp(key,"AC_HD_SHADOWS"))return hd_shadows_knob;if(!strcmp(key,"AC_HD_PHOTOS"))return hd_knob;if(!strcmp(key,"AC_SS_PHOTO"))return photo_knob;if(!strcmp(key,"AC_SS_CHAIN"))return chain_knob;if(strcmp(key,"AC_SS_MODE"))abort();return mode;}
+const char *cfg_get(const char *key) {if(!strcmp(key,"AC_SS_WITH_UPSCALER"))return NULL;if(!strcmp(key,"AC_HD_SHADOWS"))return hd_shadows_knob;if(!strcmp(key,"AC_HD_PHOTOS"))return hd_knob;if(!strcmp(key,"AC_SS_PHOTO"))return photo_knob;if(!strcmp(key,"AC_SS_CHAIN"))return chain_knob;if(strcmp(key,"AC_SS_MODE"))abort();return mode;}
 const char *cfg_upscaling(void) {return upscaling;}
 int ov_handheld(void) {return portable;}
 void rt_log(const char *f,...) {(void)f;}
