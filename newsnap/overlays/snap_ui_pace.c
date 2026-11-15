@@ -18,6 +18,7 @@
 // is drawn inside it, so dialogue boxes blinked; (4) holding only each sprite's enterFrame event and
 // timeline frame: the game's own frame counters ran ahead of the clips (a hint panel looped in and out).
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include "cpu.h"
@@ -114,4 +115,43 @@ void snap_event_observe(Cpu *c) {
     lines++;
     rt_log("snap_event: frame %llu object %llx event %u", (unsigned long long)__atomic_load_n(&gfx_counters.frames, __ATOMIC_RELAXED),
            (unsigned long long)c->x[0], (unsigned)c->x[1]);
+}
+
+// The interface object's state request (main+0x79bd90: x0 object, x1 the requested state name), NEWSNAP_PAD_TRACE=1:
+// the request, whether this frame is an interface step, and the guest call chain (frame records x29/x30) as main
+// offsets, to name the game code asking for each change.
+void snap_request_observe(Cpu *c) {
+    static int on = -1;
+    static unsigned lines;
+    if (on < 0) {
+        const char *trace = getenv("NEWSNAP_PAD_TRACE");
+        on = trace && !strcmp(trace, "1");
+    }
+    if (!on || lines >= 20000) return;
+    lines++;
+    char name[40] = "?";
+    uint8_t s[24];
+    if (c->x[1] && plat_mem_read(c->x[1], s, sizeof s)) {
+        uint64_t size = 0, data = 0;
+        if (s[0] & 1) { memcpy(&size, s + 8, 8); memcpy(&data, s + 16, 8); }
+        if (!(s[0] & 1) && (s[0] >> 1) < 23) { size = s[0] >> 1; memcpy(name, s + 1, size); name[size] = 0; }
+        else if (size && size < sizeof name && data && plat_mem_read(data, name, size)) name[size] = 0;
+        else if (plat_mem_read(c->x[1], name, sizeof name - 1)) name[sizeof name - 1] = 0;
+        for (char *p = name; *p; p++) if (*p < 32 || *p > 126) { *p = 0; break; }
+    }
+    char chain[200];
+    int n = 0;
+    uint64_t fp = c->x[29];
+    for (int i = 0; i < 10 && fp; i++) {
+        uint64_t rec[2];
+        if (!plat_mem_read(fp, rec, sizeof rec)) break;
+        uint64_t off = rec[1] - 0x7000000000ull;
+        n += snprintf(chain + n, sizeof chain - (size_t)n, " %llx", (unsigned long long)(off < 0x2891000ull ? off : rec[1]));
+        if (n >= (int)sizeof chain - 20 || rec[0] <= fp) break;
+        fp = rec[0];
+    }
+    chain[n] = 0;
+    rt_log("snap_request: frame %llu step %d object %llx state %s from%s",
+           (unsigned long long)__atomic_load_n(&gfx_counters.frames, __ATOMIC_RELAXED), pace.step,
+           (unsigned long long)c->x[0], name, chain);
 }

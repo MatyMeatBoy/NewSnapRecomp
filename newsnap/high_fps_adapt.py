@@ -4,7 +4,7 @@
 def edits():
     return {'runtime/cpu.h': [
         ('typedef void (*GuestFn)(Cpu *);',
-         'void snap_timer_observe(Cpu *c);\nvoid snap_rail_observe(Cpu *c);\nvoid snap_pad_observe(Cpu *c);\nvoid snap_event_observe(Cpu *c);\n'
+         'void snap_timer_observe(Cpu *c);\nvoid snap_rail_observe(Cpu *c);\nvoid snap_pad_observe(Cpu *c);\nvoid snap_event_observe(Cpu *c);\nvoid snap_request_observe(Cpu *c);\n'
          'void snap_ui_state_observe(Cpu *c);\nvoid snap_ui_event_observe(Cpu *c);\n'
          'typedef void (*GuestFn)(Cpu *);'),
     ], 'runtime/cfg.c': [
@@ -46,9 +46,11 @@ double gfx_window_refresh_hz(void);'''),
     for (int i = 0; i < N; i++) names[i] = menu_text(ids[i]);
     const char *set = cfg_get("AC_FPS");
     int cur = set && !strcmp(set, "30") ? 0 : 1;''',
-         '''    static const char *const vals[] = {"30", "60", "90", "120", "144"};
+         '''    static const char *const vals[] = {"30", "60", "90", "120", "144", "vrr"};
     enum { N = sizeof vals / sizeof *vals };
-    const char *names[N] = {menu_text(UI_MENU_FPS_30), menu_text(UI_MENU_FPS_60), "90 FPS", "120 FPS", "144 FPS"};
+    // "vrr" (VRR-02): just under the display's refresh, inside a FreeSync / G-SYNC range (138 at 144 Hz)
+    const char *names[N] = {menu_text(UI_MENU_FPS_30), menu_text(UI_MENU_FPS_60), "90 FPS", "120 FPS", "144 FPS",
+                            "VRR"};
     const char *set = cfg_get("AC_FPS");
     int cur = 1;
     for (int i = 0; set && i < N; i++) if (!strcmp(set, vals[i])) cur = i;'''),
