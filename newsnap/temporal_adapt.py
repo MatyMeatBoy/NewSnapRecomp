@@ -34,6 +34,15 @@ def edits():
          'unsigned expected_scene[2]; res_scene_size(expected_scene);\n    if (c->width == expected_scene[0] && c->height == expected_scene[1] && D.gbuf && !D.ended && ex->pass_ncolor == 1'),
         ('const VkExecTarget *t = &D.color, *z = &D.depth;',
          'const VkExecTarget *t = &D.color, *z = &D.depth;\n    uint64_t verified_camera; if (!frame_camera(&verified_camera)) return 0;'),
+    ], 'runtime/vk_fsr.c': [
+        # AA-03: an internal resolution above the window is always reduced by the area average (downscale.comp), not
+        # only with AC_UPSCALER=fsr: the bilinear blit reads 4 texels per pixel and brings back the jagged edges the
+        # supersampling and the temporal anti-aliasing removed (150 % on 1440p). Sharpening stays an FSR choice.
+        ('    int fsr = !strcmp(cfg_value("AC_UPSCALER"), "fsr") && fmt;',
+         '    int fsr_on = !strcmp(cfg_value("AC_UPSCALER"), "fsr");\n'
+         '    int fsr = (fsr_on || down) && fmt;'),
+        ('    int sharp = sharpness();\n    if (same && sharp == 0) return 0;',
+         '    int sharp = fsr_on ? sharpness() : 0;\n    if (same && sharp == 0) return 0;'),
     ], 'runtime/vk_mvprev.c': [
         ('b != 3 && n >= 48', 'b != 3 && n >= 64'),
         ('(ab < 0 || b == 14)', '(ab < 0 || b == 4)'),

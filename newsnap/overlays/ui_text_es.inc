@@ -89,7 +89,7 @@ static const char *const text_es[UI_TEXT_COUNT] = {
     [UI_MENU_AO_OFF] = "Desactivada",
     [UI_MENU_AO_LOW] = "Baja",
     [UI_MENU_AO_HIGH] = "Alta",
-    [UI_MENU_UPSCALING] = "Escalador",
+    [UI_MENU_UPSCALING] = "Antialiasing",
     [UI_MENU_UPSCALING_DESC] = "Un escalador temporal en lugar del antialiasing del juego: bordes más suaves y menos "
                                "parpadeo, y con un modo por debajo de Nativo más FPS. NVIDIA DLSS necesita una GPU NVIDIA RTX "
                                "y nvngx_dlss.dll junto a newsnap.exe; Intel XeSS, una GPU reciente y libxess.dll junto a "
@@ -102,27 +102,26 @@ static const char *const text_es[UI_TEXT_COUNT] = {
     [UI_MENU_UPSCALING_OFF] = "Desactivado", [UI_MENU_UPSCALING_AUTO] = "Automático",
     [UI_MENU_UPSCALING_UNAVAILABLE] = "no disponible aquí",
     [UI_MENU_UPSCALING_UNTIL] = "%s hasta reiniciar",
-    [UI_MENU_UPSCALING_QUALITY] = "Modo del escalador",
+    [UI_MENU_UPSCALING_QUALITY] = "Escalado de rendimiento",
     [UI_MENU_UPSCALING_QUALITY_DESC] = "Tamaño al que se dibuja la escena 3D antes de que el escalador la lleve a la "
                                        "resolución del juego (se muestra bajo el valor). Nativo la dibuja a tamaño completo, la "
                                        "más nítida (DLAA con DLSS). Calidad, Equilibrado, Rendimiento y Ultra rendimiento la "
                                        "dibujan a cerca del 67, 58, 50 y 33 % para más FPS; Ultra rendimiento es para "
                                        "3840 x 2160. Se aplica tras reiniciar.",
-    [UI_MENU_UPSCALING_NATIVE] = "Nativo", [UI_MENU_DLSS_QUALITY] = "Calidad", [UI_MENU_DLSS_BALANCED] = "Equilibrado",
+    [UI_MENU_UPSCALING_NATIVE] = "Desactivado (resolución completa)", [UI_MENU_DLSS_QUALITY] = "Calidad", [UI_MENU_DLSS_BALANCED] = "Equilibrado",
     [UI_MENU_DLSS_PERFORMANCE] = "Rendimiento", [UI_MENU_UPSCALING_ULTRA] = "Ultra rendimiento",
     [UI_MENU_UPSCALING_MODE_OFF] = "sin escalador",
-    [UI_MENU_AA] = "Antialiasing del juego",
-    [UI_MENU_AA_DESC] = "El antialiasing propio del juego, SMAA, para cuando no hay escalador. Desactivado deja los bordes "
+    [UI_MENU_AA] = "SMAA (sin FSR / DLSS)",
+    [UI_MENU_AA_DESC] = "El SMAA propio del juego; solo se usa con Antialiasing en SMAA. Desactivado deja los bordes "
                         "dentados.",
     [UI_MENU_AA_OFF] = "Desactivado",
     [UI_MENU_AA_BY_UPSCALER] = "el escalador suaviza los bordes",
     [UI_SNAP_RES] = "Resolución interna del juego",
     [UI_SNAP_RES_DESC] = "Resolución a la que se dibuja la escena 3D. 100 % es el 1920 x 1080 propio del juego: baja para "
                          "una imagen más ligera, sube (supersampling) para una más nítida que cuesta tiempo de GPU. «Según "
-                         "la pantalla» iguala la altura de la pantalla o la ventana. Por encima del 100 % no hace falta "
-                         "escalador: «Automático» pasa solo a Original y un escalador elegido debe ponerse en Original. Se "
+                         "la pantalla» iguala la altura de la pantalla o la ventana. Funciona junto con el antialiasing. Se "
                          "aplica tras reiniciar.",
-    [UI_SNAP_RES_UPSCALER] = "por encima del 100 %: pon el escalador en Original o Automático",
+    [UI_SNAP_RES_UPSCALER] = "por encima del 100 %: pon el escalado de rendimiento en Desactivado",
     [UI_SNAP_FG] = "Generación de fotogramas",
     [UI_SNAP_FG_DESC] = "Generación de fotogramas AMD FSR: un fotograma generado entre cada dos reales. La interfaz queda "
                         "fuera de la interpolación. Se pausa sola mientras el juego va más rápido que la mitad del refresco "

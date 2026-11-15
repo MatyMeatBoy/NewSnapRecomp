@@ -155,12 +155,12 @@ def validate_video_combination(values, complete=True):
     # 'display' is the default and adapts by itself: no host scale while an upscaler runs or in handheld (MENU-02).
     explicit = values.get('render_scale') in SUPERSAMPLE_SCALES and values.get('render_scale') != 'display'
     if have('frame_gen', 'upscaling') and frame_gen and upscaling not in ('fsr3', 'fsr4', 'auto'):
-        raise ValueError('La generación de fotogramas FSR necesita el escalado AMD FSR 3.1 o FSR 4, o Automático (cualquier calidad, también Nativo).')
+        raise ValueError('La generación de fotogramas necesita el antialiasing AMD FSR 4, FSR 3.1 o Automático.')
     # MENU-03: Automatic steps aside by itself above 100 % (the runtime reads it as Original); a chosen
     # upscaler does not, so that combination is still refused.
     native = values.get('upscaling_quality') == 'native'   # AA-01: Native AA works above 100 %
     if have('upscaling', 'render_scale') and upscaling not in ('off', 'auto') and explicit and not native:
-        raise ValueError('Con un escalado elegido (FSR o DLSS), la resolución interna la marca su calidad. Elige 100 % o menos, o deja el escalado en Automático.')
+        raise ValueError('El escalado de rendimiento (Calidad, Equilibrado o Rendimiento) dibuja la escena más pequeña: úsalo con una resolución interna de 100 % o menos, o ponlo en «Desactivado» para usar el antialiasing a cualquier resolución.')
     if have('frame_gen', 'upscaling', 'render_scale') and frame_gen and upscaling == 'auto' and explicit and not native:
         raise ValueError('La generación de fotogramas FSR necesita FSR, y con una resolución interna superior al 100 % el '
                          'escalado Automático no usa ninguno. Elige AMD FSR 3.1 o FSR 4 con una resolución interna de 100 % o menos.')
