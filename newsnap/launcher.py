@@ -45,8 +45,8 @@ class Launcher:
         self.page, self.album_generation, self.preview_generation = 0, 0, 0
         self.preview = None
         self.root.title(f'NewSnap · {VERSION}')
-        self.root.geometry('1020x790')
-        self.root.minsize(860, 730)
+        self.root.geometry('1180x790')
+        self.root.minsize(1000, 730)
         self.root.configure(bg=CREAM)
         self.root.protocol('WM_DELETE_WINDOW', self.close)
         self._style()
@@ -56,14 +56,13 @@ class Launcher:
                 self.root.iconbitmap(str(icon))
             except tk.TclError:
                 pass
-        header = tk.Frame(root, bg=GREEN, padx=24, pady=10)
-        header.pack(fill='x')
-        tk.Label(header, text='NewSnap', font=('Segoe UI', 24, 'bold'), fg=CREAM, bg=GREEN).pack(anchor='w')
-        tk.Label(header, text='NEW POKÉMON SNAP · PORT NATIVO', font=('Segoe UI', 10), fg=AMBER, bg=GREEN).pack(anchor='w')
+        shell = tk.Frame(root, bg=CREAM)
+        shell.pack(fill='both', expand=True)
+        main = tk.Frame(shell, bg=CREAM)
         self.status = tk.StringVar(value='Carga o verifica los datos del juego para comenzar.')
-        ttk.Label(root, textvariable=self.status, style='Status.TLabel', padding=(25, 9)).pack(side='bottom', fill='x')
-        self.tabs = ttk.Notebook(root)
-        self.tabs.pack(fill='both', expand=True, padx=22, pady=(12, 8))
+        ttk.Label(main, textvariable=self.status, style='Status.TLabel', padding=(25, 9)).pack(side='bottom', fill='x')
+        self.tabs = ttk.Notebook(main, style='Pages.TNotebook')
+        self.tabs.pack(fill='both', expand=True, padx=22, pady=(16, 8))
         self.play_tab, self.album_tab, self.options_tab, self.controls_tab = [ttk.Frame(self.tabs, padding=16) for _ in range(4)]
         for frame, title in zip((self.play_tab, self.album_tab, self.options_tab, self.controls_tab), ('Inicio', 'Álbum', 'Opciones', 'Controles')):
             self.tabs.add(frame, text=title)
@@ -74,13 +73,20 @@ class Launcher:
         self.tabs.add(self.mods_tab, text='Mejoras')
         self.update_tab = ttk.Frame(self.tabs, padding=16)
         self.tabs.add(self.update_tab, text='Actualizaciones')
+        from .sidebar_ui import Sidebar
+        self.sidebar = Sidebar(shell, self.tabs, ((self.play_tab, 'Inicio'), (self.album_tab, 'Álbum'),
+                                                  (self.options_tab, 'Opciones'), (self.controls_tab, 'Controles'),
+                                                  (self.mods_tab, 'Mejoras'), (self.update_tab, 'Actualizaciones')),
+                               version=VERSION, play=self.launch)
+        self.sidebar.pack(side='left', fill='y')
+        main.pack(side='left', fill='both', expand=True)
         from .home_ui import HomePanel
         self.home=HomePanel(self,self.play_tab)
         self._album()
         self._options()
         from .update_ui import UpdatePanel
         self.updates = UpdatePanel(self, self._scrolling_options(self.update_tab), automatic=check_updates)
-        self.tabs.bind('<<NotebookTabChanged>>',self._tab_changed)
+        self.tabs.bind('<<NotebookTabChanged>>',self._tab_changed,add='+')
         self.root.after(100, self._poll)
         self.album_status.set('Abre el álbum para cargar las fotografías del perfil.')
 
@@ -94,6 +100,8 @@ class Launcher:
         style.map('TNotebook.Tab', background=[('selected', GREEN)], foreground=[('selected', CREAM)],
                   padding=[('selected', (18, 10)), ('!selected', (18, 10))],
                   expand=[('selected', (0, 0, 0, 0)), ('!selected', (0, 0, 0, 0))])
+        style.layout('Pages.TNotebook.Tab', [])   # the sidebar (sidebar_ui.py) chooses the page
+        style.configure('Pages.TNotebook', background=CREAM, borderwidth=0, tabmargins=(0, 0, 0, 0))
         style.configure('TButton', padding=(15, 9), background='#e5e5d9')
         style.configure('Accent.TButton', background=GREEN, foreground=CREAM, font=('Segoe UI', 13, 'bold'), padding=(25, 14))
         style.map('Accent.TButton', background=[('active', '#245846'), ('disabled', '#84978c')])
@@ -236,12 +244,11 @@ class Launcher:
             'Nativo · solo antialiasing (DLAA / Native AA)': 'native', 'Calidad · escena 70 %': 'quality',
             'Equilibrado · escena 60 %': 'balanced', 'Rendimiento · escena 50 %': 'performance'},
             help_text='Cada proveedor usa su propio algoritmo con el preset elegido. Las escalas corresponden a los niveles reales del motor de Snap; requieren reiniciar la expedición.')
-        self._choice(video, 'Resolución interna', 'render_scale', {
-                     **{f'{n} %' + (' · más ligero' if n == 50 else ''): str(n) for n in (50, 60, 70, 80, 90)},
-                     '100 % · la del juego (1080p)': 'game',
-                     **{f'{n} %{note}': str(n) for n, note in ((125, ''), (133, ' · 1440p'), (150, ''), (175, ''), (200, ' · 4K'), (250, ''), (300, ' · más nítido'))},
-                     'Según la pantalla': 'display'},
-                     choice_width=31,
+        from .display_scales import primary_display_size, render_scale_choices
+        display = primary_display_size()
+        self._choice(video, 'Resolución interna', 'render_scale',
+                     render_scale_choices(display[1] if display else None, self.variables['render_scale'].get()),
+                     choice_width=34,
                      help_text='Hasta el 100 %, una escala menor favorece el rendimiento y pierde detalle. Por encima del 100 % es supersampling del modo TV: el juego dibuja a 1920 × 1080 y la imagen interna (escena, HUD y fotos) se calcula más grande y se reduce a tu ventana; aumenta el detalle y el coste de GPU (2× cuesta unas cuatro veces más píxeles). «Según la pantalla» elige la escala que coincide con la altura de tu monitor o ventana (1440p → 1,33×, 4K → 2×). Requiere el reescalador apagado y el modo TV; guardar una combinación incompatible muestra un error sin cambiar tu elección.')
         self._choice(video, 'Filtrado anisotrópico · AF', 'aniso', {'Según el juego': 'game', **{f'{n}×': str(n) for n in (2, 4, 8, 16)}, 'Automático heredado': 'auto'},
                      help_text='Mejora las texturas vistas en ángulo. El controlador y la GPU pueden limitar el nivel efectivo. Automático heredado conserva la heurística de la base, aún sin validar para Snap; elige un nivel explícito para personalizarlo.')
@@ -365,6 +372,13 @@ class Launcher:
                      help_text='Amplía todos los mapas de sombras del juego (sol, vegetación, personajes) sin cambiar su suavidad: los bordes salen más definidos. «Según la resolución 3D» los ajusta a la escala de la escena (2× a 1080p, 3× a 125–150 %, 4× desde 200 %). 2× cuesta poco; 4× usa unos 64 MiB más de VRAM por mapa. Las sombras pintadas en las texturas del escenario no cambian.')
         self._choice(content, 'Generación de fotogramas · FSR', 'frame_gen', {'Desactivada': 'off', 'AMD FSR · 1 fotograma generado': 'fsr'},
                      help_text='Inserta un fotograma generado entre cada dos reales: con el juego a 60 fps se muestran unos 120. Necesita FSR 3.1 o FSR 4. Solo genera si el monitor puede mostrarlo (unos 110 Hz o más a 60 fps); en un monitor más lento se pausa sola y el juego sigue a su ritmo, con cualquier modo de presentación. Añade un fotograma de latencia. El HUD se separa de la escena para que no deje estela. Experimental.')
+        self._choice(content, 'Sombras HD del escenario', 'hd_shadows', {'Desactivadas · originales': '0', 'Activadas (experimental)': '1'},
+                     help_text='Las sombras de plantas, rocas y escenario están pintadas en los mapas de luz de cada nivel, de baja resolución. '
+                               'Con esto activado, el juego guarda cada mapa de luz la primera vez que lo carga; «Generar sombras HD» los '
+                               'amplía en este PC con IA (Real-ESRGAN, se descarga una vez) conservando la luz y el color del juego, y la '
+                               'próxima vez que entres a ese nivel se usan los nuevos. Juega un nivel, genera, y vuelve a entrar.')
+        from .hdshadows_ui import HdShadowsButton
+        HdShadowsButton(self, content)
         self._choice(content, 'Pack de texturas HD', 'tex_pack', {'Activado si existe': '1', 'Desactivado': '0'},
                      help_text='Usa las texturas HD de la carpeta texpack junto al juego, generadas en este PC a partir de tu propio juego (herramienta tools/texpack.py). Sin pack no cambia nada.')
 
@@ -576,6 +590,7 @@ class Launcher:
         for widget in [self.play_button, self.profile_button, *self.save_buttons]:
             widget.configure(state='disabled' if busy else 'normal')
         if hasattr(self,'home'):self.home.set_busy(busy)
+        if hasattr(self,'sidebar'):self.sidebar.set_busy(busy)
         if hasattr(self,'controller_test_button'):self.controller_test_button.configure(state='disabled' if busy else 'normal')
         if hasattr(self,'trace_present_button'):self.trace_present_button.configure(state='disabled' if busy else 'normal')
 

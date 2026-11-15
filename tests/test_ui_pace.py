@@ -31,6 +31,10 @@ class UiPaceTests(unittest.TestCase):
              cbz_x16(0x783610, 0x794b4c)],
             ['site', 'snap_ui_pace', 'main', '794b90', 'f940c7e0', 'f940c7e0', '@fn:snap_ui_pace_event',
              cbz_x16(0x794b90, 0x795f08)],
+            # INPUT-HZ-01: the pad update's epilogue, the helper then the original load
+            ['site', 'snap_ui_pace', 'main', '9263ac', 'a95b7bfd', '@fn:snap_ui_pace_pad', 'a95b7bfd'],
+            # FPS-02: the pointer's frame time, the original load then the helper
+            ['site', 'snap_ui_pace', 'main', '643cc8', 'bd401e61', 'bd401e61', '@fn:snap_ui_pace_pointer'],
         ])
         self.assertIn("'snap-2.0.1-ui-pace.txt'", (ROOT / 'newsnap/build.py').read_text(encoding='utf-8'))
 
@@ -42,6 +46,8 @@ class UiPaceTests(unittest.TestCase):
         self.assertIn('ui_pace_edits', (ROOT / 'newsnap/adapt.py').read_text(encoding='utf-8'))
         self.assertIn('void snap_ui_pace_enter(Cpu *c);', declared)
         self.assertIn('void snap_ui_pace_event(Cpu *c);', declared)
+        self.assertIn('void snap_ui_pace_pad(Cpu *c);', declared)
+        self.assertIn('void snap_ui_pace_pointer(Cpu *c);', declared)
 
     def test_decision_keeps_sixty_steps_a_second_at_any_rate(self):
         compiler = self.compiler()
@@ -98,17 +104,19 @@ int main(void) {
         with tempfile.TemporaryDirectory() as tmp:
             p = Path(tmp)
             (p / 'platform').mkdir()
-            (p / 'cpu.h').write_text('#include <stdint.h>\ntypedef struct {uint64_t x[32],sp,pc,nzcv; char rest[1024];} Cpu;\n')
+            (p / 'cpu.h').write_text('#include <stdint.h>\ntypedef struct {uint64_t x[32],sp,pc,nzcv; __uint128_t v[32]; char rest[512];} Cpu;\n')
             (p / 'host.h').write_text('#include <stdint.h>\nuint64_t kern_now_ns(void); uint64_t frame_step_cap_ns(void);'
                                       ' void rt_log(const char *,...);\n')
             (p / 'gfx.h').write_text('#include <stdint.h>\ntypedef struct { uint64_t frames; } GfxStats;\n')
-            (p / 'platform/platform.h').write_text('#include <stddef.h>\n#include <stdint.h>\nint plat_mem_read(uint64_t,void *,size_t);\n')
+            (p / 'platform/platform.h').write_text('#include <stddef.h>\n#include <stdint.h>\nint plat_mem_read(uint64_t,void *,size_t);\n'
+                                                   'int plat_mem_readable(uint64_t,uint64_t);\n')
             (p / 'fixture.c').write_text(r'''
 #include <string.h>
 #include "cpu.h"
 #include "gfx.h"
 GfxStats gfx_counters;
 static uint64_t now = 1000, cap = 6944444;
+int plat_mem_readable(uint64_t a, uint64_t n) { (void)a; (void)n; return 1; }
 static int readable = 1;
 uint64_t kern_now_ns(void) { return now; }
 uint64_t frame_step_cap_ns(void) { return cap; }

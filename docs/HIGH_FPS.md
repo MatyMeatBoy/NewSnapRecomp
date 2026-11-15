@@ -1,5 +1,40 @@
 # High frame rate options and investigation
 
+## INPUT-HZ-01 a press in the middle of a dialogue line skipped it above 60 FPS — 2026-11-15
+
+**Symptom.** With the interface paced (UI-HZ-01, 0.9.4) a press while a line was being typed often completed the
+line and went on to the next one, as if A had been pressed twice. Reproduced on the RX 6900 XT at 144 fps with a
+route pressing A every 37 ticks (presses landing on every phase of the interface steps); a route pressing every 40
+ticks hid it, because 40 ticks at 144 fps is a whole number of steps and every press landed on the same phase.
+
+**How the game reads the pad.** Found with hardware data breakpoints on the pad object (`NEWSNAP_PAD_WATCH=1`,
+`NEWSNAP_PAD_WATCH_AT=<offset>`, `snap_ui_pace.c`) and the linker map (`f_<guest address>`):
+
+- `main+0x925b60` updates the pad once per game frame. It copies the per-button bytes (`+0x54..+0x73`) to
+  `+0x74..+0x93` and writes the new ones; it also keeps masks (`+0x44` held, `+0x48` pressed, `+0x4c` released,
+  `+0x50` previous) that nothing else reads.
+- The game queries it through `main+0x43c160` (held: the current bytes) and `main+0x43c2d0` (newly pressed: current
+  byte set and different from the previous frame's), with 7 and 26 callers, every game frame.
+
+**Cause.** The code that queries the pad runs on every game frame (144 a second); the interface logic steps on 60
+of them. A press first seen on a frame where the interface did not step completed the line through that code, and
+the interface took the same press on its next step as the order to go on.
+
+**Fix.** Above 60 fps the pad is sampled as the game expects, once per interface step (`snap_ui_pace_pad`, at the
+update's single epilogue `main+0x9263ac`): on frames that do not step it shows the buttons of the last step and
+nothing newly pressed or released; on a step it shows the real buttons compared with the last step's, and a press
+that came and went in between counts for that step. The interface decision is taken at the same place, once per
+game frame, so pad and handlers agree on which frames step (the presented-frame counter is advanced by the
+presentation thread and could change in the middle of a game frame). A press reaches the game at most 16.7 ms later.
+Sticks are not touched.
+
+**Evidence (RX 6900 XT, same route and save, `tools/dev/shots.py pages`).** 60 fps: complete, advance, complete…
+144, 120 and 90 fps with the fix: the identical sequence, pauses included; 250 ms presses at 144 fps match 250 ms
+presses at 60 fps. Before the fix, 144 fps: runs of consecutive advances.
+
+**Not done this way.** Holding back only the masks (`+0x44/+0x48`) changed nothing, because the game does not read
+them; the handoff's suggestion of an observer at `main+0x79bd90` never fired in this scene.
+
 ## UI-HZ-01 interface speed above 60 FPS — 2026-11-15
 
 **Cause.** The interface is a Flash-style player (ActionScript 2 names such as `gotoAndPlay`, `onEnterFrame`,

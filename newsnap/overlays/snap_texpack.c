@@ -9,6 +9,12 @@
 // channel mapping as the game's view, so any size works with the game's normalized coordinates. Same on every GPU.
 // tools/texpack.py builds a pack from a dump (Real-ESRGAN, BC7). A pack holds game-derived pictures: it is made
 // locally from the player's own game and never distributed.
+//
+// HD-SHADOW-01 (AC_HD_SHADOWS=1, off by default): the shadows of scenery and plants are baked into the levels' light
+// maps, single-level BC6H textures of 512x512 texels or less, so the shadow map scale does not reach them. With the
+// option on, each new light map is written once, as float (RGBA16F DDS), to hdshadows/src/<hash>.dds; the launcher's
+// tools/hdshadows.py enlarges them (Real-ESRGAN on a log encoding, light kept, no seams at the UV islands) into
+// hdshadows/<hash>.dds (BC6H with mips), which replace them by hash the next time they load.
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -26,6 +32,9 @@ static volatile uint32_t gen;
 static uint64_t *index_;   // sorted hashes of the pack's files
 static int nindex = -1;
 static char pack_dir[1024], dump_dir[1024];
+static uint64_t *light_index;   // HD-SHADOW-01: hdshadows/<hash>.dds
+static int nlight, light_on;
+static char light_dir[1024], light_src[1100];
 
 uint32_t snap_texpack_gen(void) { return __atomic_load_n(&gen, __ATOMIC_RELAXED); }
 
@@ -74,13 +83,25 @@ static void setup(void) {
         plat_fs_mkdir(dump_dir);
         rt_log("texpack: dumping new textures to %s", dump_dir);
     }
-    const char *on = cfg_get("AC_TEX_PACK");
-    if (on && !strcmp(on, "0")) return;
     char exe[900];
     if (!plat_exe_path(exe, sizeof exe)) return;
     char *slash = strrchr(exe, '/'), *bs = strrchr(exe, 92);   // 92: backslash
     if (bs && (!slash || bs > slash)) slash = bs;
     if (slash) *slash = 0;
+    const char *shadows = cfg_get("AC_HD_SHADOWS");
+    if (shadows && !strcmp(shadows, "1")) {
+        light_on = 1;
+        snprintf(light_dir, sizeof light_dir, "%s/hdshadows", exe);
+        snprintf(light_src, sizeof light_src, "%s/src", light_dir);
+        plat_fs_mkdir(light_dir), plat_fs_mkdir(light_src);
+        Names l = {0};
+        plat_fs_list(light_dir, list_cb, &l);
+        if (l.n) qsort(l.list, (size_t)l.n, sizeof *l.list, cmp_u64);
+        light_index = l.list, nlight = l.n;
+        rt_log("texpack: HD shadows on, %d HD light maps in %s", nlight, light_dir);
+    }
+    const char *on = cfg_get("AC_TEX_PACK");
+    if (on && !strcmp(on, "0")) return;
     snprintf(pack_dir, sizeof pack_dir, "%s/texpack", exe);
     Names l = {0};
     plat_fs_list(pack_dir, list_cb, &l);
@@ -92,6 +113,17 @@ static void setup(void) {
 
 static int in_pack(uint64_t h) {
     return nindex > 0 && bsearch(&h, index_, (size_t)nindex, sizeof h, cmp_u64);
+}
+
+static int in_light(uint64_t h) {
+    return nlight > 0 && bsearch(&h, light_index, (size_t)nlight, sizeof h, cmp_u64);
+}
+
+// A level's light map: a single-level 2D BC6H texture (HD-SHADOW-01).
+static int is_light_map(const VkTexImage *img) {
+    return img && (img->format == VK_FORMAT_BC6H_UFLOAT_BLOCK || img->format == VK_FORMAT_BC6H_SFLOAT_BLOCK) &&
+           img->type == VK_IMAGE_TYPE_2D && img->layers == 1 && img->samples == 1 &&
+           img->width >= 64 && img->height >= 64 && img->width <= 2048 && img->height <= 2048 && !img->skip;
 }
 
 static int is_srgb(VkFormat f) {
@@ -108,17 +140,59 @@ static int eligible(const VkTexImage *img) {
            img->aspect == VK_IMAGE_ASPECT_COLOR_BIT && img->width >= 32 && img->height >= 32 && !img->skip;
 }
 
-// ---- dump: level 0 through a blit to RGBA8, read back after the upload batch, written as PNG
-static void dump(const VkTexImage *img, uint64_t h) {
+// NEWSNAP_TEX_DUMP_ALL=1 (diagnostics, HD-SHADOW-01): the dump also takes the data textures (BC6H lighting, BC4/BC5,
+// unorm BC3), clamped to 0..1 through the RGBA8 blit, named <hash>-f<vk format>.png; they never enter a pack.
+static int dump_all(void) {
+    static int on = -1;
+    if (on < 0) { const char *v = getenv("NEWSNAP_TEX_DUMP_ALL"); on = v && !strcmp(v, "1"); }
+    return on;
+}
+
+static int eligible_data(const VkTexImage *img) {
+    return img && !is_srgb(img->format) && img->type == VK_IMAGE_TYPE_2D && img->layers == 1 && img->samples == 1 &&
+           img->aspect == VK_IMAGE_ASPECT_COLOR_BIT && img->width >= 32 && img->height >= 32 && !img->skip;
+}
+
+static void write_dds_rgba16f(const char *path, const void *px, uint32_t w, uint32_t h) {
+    uint8_t hdr[148] = {0};
+    uint32_t v;
+    memcpy(hdr, "DDS ", 4);
+    v = 124, memcpy(hdr + 4, &v, 4);
+    v = 0x1 | 0x2 | 0x4 | 0x1000 | 0x8, memcpy(hdr + 8, &v, 4);
+    memcpy(hdr + 12, &h, 4), memcpy(hdr + 16, &w, 4);
+    v = w * 8, memcpy(hdr + 20, &v, 4);
+    v = 1, memcpy(hdr + 28, &v, 4);
+    v = 32, memcpy(hdr + 76, &v, 4);
+    v = 0x4, memcpy(hdr + 80, &v, 4);
+    memcpy(hdr + 84, "DX10", 4);
+    v = 0x1000, memcpy(hdr + 108, &v, 4);
+    v = 10, memcpy(hdr + 128, &v, 4);   // DXGI_FORMAT_R16G16B16A16_FLOAT
+    v = 3, memcpy(hdr + 132, &v, 4);    // TEXTURE2D
+    v = 1, memcpy(hdr + 140, &v, 4);    // array size
+    char tmp[1210];
+    snprintf(tmp, sizeof tmp, "%s.part", path);
+    FILE *f = fopen(tmp, "wb");
+    if (!f) return;
+    int ok = fwrite(hdr, 1, sizeof hdr, f) == sizeof hdr && fwrite(px, 8, (size_t)w * h, f) == (size_t)w * h;
+    fclose(f);
+    if (ok) rename(tmp, path);
+    else remove(tmp);
+}
+
+// ---- dump: level 0 through a blit to RGBA8 (PNG) or, for a light map, RGBA16F (DDS), read back after the upload
+static void dump_to(const VkTexImage *img, uint64_t h, const char *dir, int light) {
     char path[1200];
-    snprintf(path, sizeof path, "%s/%016llx.png", dump_dir, (unsigned long long)h);
+    if (light) snprintf(path, sizeof path, "%s/%016llx.dds", dir, (unsigned long long)h);
+    else if (is_srgb(img->format)) snprintf(path, sizeof path, "%s/%016llx.png", dir, (unsigned long long)h);
+    else snprintf(path, sizeof path, "%s/%016llx-f%d.png", dir, (unsigned long long)h, (int)img->format);
     FILE *f = fopen(path, "rb");
     if (f) { fclose(f); return; }
     VkFormatProperties fp;
     vkGetPhysicalDeviceFormatProperties(vk_ctx()->phys, img->format, &fp);
     if (!(fp.optimalTilingFeatures & VK_FORMAT_FEATURE_BLIT_SRC_BIT)) return;
     const VkCtx *c = vk_ctx();
-    VkFormat tf = is_srgb(img->format) ? VK_FORMAT_R8G8B8A8_SRGB : VK_FORMAT_R8G8B8A8_UNORM;
+    VkFormat tf = light ? VK_FORMAT_R16G16B16A16_SFLOAT : is_srgb(img->format) ? VK_FORMAT_R8G8B8A8_SRGB : VK_FORMAT_R8G8B8A8_UNORM;
+    uint32_t bpp = light ? 8 : 4;
     uint32_t w = img->width, h2 = img->height;
     VkImage tmp;
     VmaAllocation tmem;
@@ -131,7 +205,7 @@ static void dump(const VkTexImage *img, uint64_t h) {
     if (vmaCreateImage(c->vma, &ci, &ai, &tmp, &tmem, NULL) != VK_SUCCESS) return;
     VkBuffer rb;
     VmaAllocation ra;
-    uint8_t *map = vk_staging((VkDeviceSize)w * h2 * 4, &rb, &ra);
+    uint8_t *map = vk_staging((VkDeviceSize)w * h2 * bpp, &rb, &ra);
     VkCommandBuffer cb = vk_upload_begin();
     VkImageMemoryBarrier2 ib = {.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
                                 .srcStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, .srcAccessMask = VK_ACCESS_2_MEMORY_WRITE_BIT,
@@ -155,13 +229,16 @@ static void dump(const VkTexImage *img, uint64_t h) {
     vk_upload_end();
     vk_upload_flush(1);
     vmaInvalidateAllocation(c->vma, ra, 0, VK_WHOLE_SIZE);
-    rt_write_png(path, map, w, h2);
+    if (light) write_dds_rgba16f(path, map, w, h2);
+    else rt_write_png(path, map, w, h2);
     vmaDestroyBuffer(c->vma, rb, ra);
     vmaDestroyImage(c->vma, tmp, tmem);
     static int n;
     if (n++ < 3 || n % 500 == 0) rt_log("texpack: dumped %d textures (last %016llx, %ux%u, vk format %d)", n,
                                         (unsigned long long)h, w, h2, (int)img->format);
 }
+
+static void dump(const VkTexImage *img, uint64_t h) { dump_to(img, h, dump_dir, 0); }
 
 // ---- load: <hash>.dds, DX10 header or legacy DXT1/DXT5
 static VkFormat dds_format(uint32_t dxgi, int srgb) {
@@ -170,19 +247,23 @@ static VkFormat dds_format(uint32_t dxgi, int srgb) {
     case 71: case 72: return srgb ? VK_FORMAT_BC1_RGBA_SRGB_BLOCK : VK_FORMAT_BC1_RGBA_UNORM_BLOCK;
     case 77: case 78: return srgb ? VK_FORMAT_BC3_SRGB_BLOCK : VK_FORMAT_BC3_UNORM_BLOCK;
     case 28: case 29: return srgb ? VK_FORMAT_R8G8B8A8_SRGB : VK_FORMAT_R8G8B8A8_UNORM;
+    case 95: return VK_FORMAT_BC6H_UFLOAT_BLOCK;
+    case 96: return VK_FORMAT_BC6H_SFLOAT_BLOCK;
+    case 10: return VK_FORMAT_R16G16B16A16_SFLOAT;
     default: return VK_FORMAT_UNDEFINED;
     }
 }
 
 static uint64_t level_bytes(VkFormat f, uint32_t w, uint32_t h) {
     if (f == VK_FORMAT_R8G8B8A8_SRGB || f == VK_FORMAT_R8G8B8A8_UNORM) return (uint64_t)w * h * 4;
+    if (f == VK_FORMAT_R16G16B16A16_SFLOAT) return (uint64_t)w * h * 8;
     uint64_t blocks = (uint64_t)((w + 3) / 4) * ((h + 3) / 4);
     return blocks * (f == VK_FORMAT_BC1_RGBA_UNORM_BLOCK || f == VK_FORMAT_BC1_RGBA_SRGB_BLOCK ? 8 : 16);
 }
 
-static int load(const VkTexImage *img, uint64_t hsh, HdTex *out) {
+static int load(const VkTexImage *img, uint64_t hsh, HdTex *out, const char *dir) {
     char path[1200];
-    snprintf(path, sizeof path, "%s/%016llx.dds", pack_dir, (unsigned long long)hsh);
+    snprintf(path, sizeof path, "%s/%016llx.dds", dir, (unsigned long long)hsh);
     FILE *f = fopen(path, "rb");
     if (!f) return 0;
     uint8_t hd_[148];
@@ -247,44 +328,77 @@ static int load(const VkTexImage *img, uint64_t hsh, HdTex *out) {
 }
 
 void vk_exec_image_gone(VkImage image);
-static void drop_locked(int i) {
-    vk_exec_image_gone(hd[i].img);   // its views (get_view keeps them under the HD image)
-    vk_defer_image(hd[i].img, hd[i].mem);
+
+// Takes entry i out of the table (lock held) and returns it; release() frees it after the lock is left. Freeing an HD
+// image reports it to vk_exec_image_gone, which calls snap_texpack_gone, which takes the lock: freed under the lock,
+// the thread waited on itself (the game froze when a level released its light maps).
+static HdTex take_locked(int i) {
+    HdTex t = hd[i];
     hd[i] = hd[--nhd];
     __atomic_add_fetch(&gen, 1, __ATOMIC_RELAXED);
+    return t;
 }
 
-// vk_texture.c upload, after the game's content went to img: hash it, dump it, attach or drop its HD image.
-void snap_texpack_uploaded(const VkTexImage *img, const void *mem, uint64_t size, int nvn_format) {
-    setup();
-    if (!eligible(img) || !mem || !size || (!dump_dir[0] && nindex <= 0 && !nhd)) return;
-    uint64_t h = hash_bytes(mem, size, (uint64_t)img->width << 32 ^ (uint64_t)img->height << 16 ^ (uint64_t)(uint32_t)nvn_format);
-    if (dump_dir[0]) dump(img, h);
+static void release(HdTex t) {
+    if (!t.img) return;
+    vk_exec_image_gone(t.img);   // its views (get_view keeps them under the HD image)
+    vk_defer_image(t.img, t.mem);
+}
+
+// The HD image for img (hash h) from dir, attached outside the lock; the previous one for img is freed.
+static void attach(const VkTexImage *img, uint64_t h, int have, const char *dir, const char *what) {
+    HdTex old = {0}, t;
     plat_mutex_lock(&lock);
     int at = -1;
     for (int i = 0; i < nhd; i++)
         if (hd[i].game == img->image) at = i;
     if (at >= 0 && hd[at].hash == h) { plat_mutex_unlock(&lock); return; }
-    if (at >= 0) drop_locked(at);
-    if (in_pack(h) && nhd < HD_MAX) {
-        HdTex t;
-        if (load(img, h, &t)) {
-            hd[nhd++] = t;
-            __atomic_add_fetch(&gen, 1, __ATOMIC_RELAXED);
-            static int n;
-            if (n++ < 3 || n % 200 == 0) rt_log("texpack: %d HD textures in use (last %016llx, %ux%u -> %ux%u)", n,
-                                                (unsigned long long)h, img->width, img->height, t.w, t.h);
-        }
-    }
+    if (at >= 0) old = take_locked(at);
     plat_mutex_unlock(&lock);
+    release(old);
+    if (!have || !load(img, h, &t, dir)) return;   // outside the lock: the upload may free images
+    plat_mutex_lock(&lock);
+    int full = nhd >= HD_MAX;
+    if (!full) hd[nhd++] = t, __atomic_add_fetch(&gen, 1, __ATOMIC_RELAXED);
+    plat_mutex_unlock(&lock);
+    if (full) { vk_defer_image(t.img, t.mem); return; }
+    static int n[2];
+    int k = dir == light_dir;
+    if (n[k]++ < 3 || n[k] % 200 == 0) rt_log("texpack: %d %s in use (last %016llx, %ux%u -> %ux%u)", n[k], what,
+                                              (unsigned long long)h, img->width, img->height, t.w, t.h);
+}
+
+// vk_texture.c upload, after the game's content went to img: hash it, dump it, attach or drop its HD image.
+void snap_texpack_uploaded(const VkTexImage *img, const void *mem, uint64_t size, int nvn_format) {
+    setup();
+    if (!mem || !size) return;
+    uint64_t seed = (uint64_t)img->width << 32 ^ (uint64_t)img->height << 16 ^ (uint64_t)(uint32_t)nvn_format;
+    if (light_on && is_light_map(img)) {   // HD-SHADOW-01
+        uint64_t h = hash_bytes(mem, size, seed);
+        int have = in_light(h);
+        attach(img, h, have, light_dir, "HD light maps");
+        if (!have) dump_to(img, h, light_src, 1);
+        return;
+    }
+    if (dump_dir[0] && dump_all() && eligible_data(img)) {
+        dump(img, hash_bytes(mem, size, seed));
+        return;
+    }
+    if (!eligible(img) || (!dump_dir[0] && nindex <= 0 && !nhd)) return;
+    uint64_t h = hash_bytes(mem, size, seed);
+    if (dump_dir[0]) dump(img, h);
+    attach(img, h, in_pack(h), pack_dir, "HD textures");
 }
 
 void snap_texpack_gone(VkImage game) {
     if (!nhd) return;
+    HdTex gone[8];
+    int n = 0;
     plat_mutex_lock(&lock);
-    for (int i = 0; i < nhd; i++)
-        if (hd[i].game == game) drop_locked(i--);
+    for (int i = 0; i < nhd && n < 8; i++)
+        if (hd[i].game == game) gone[n++] = take_locked(i--);
     plat_mutex_unlock(&lock);
+    for (int i = 0; i < n; i++) release(gone[i]);
 }
 
 // vk_exec_draw.c get_view: the HD image of img and its format, or VK_NULL_HANDLE. The caller makes the view with the

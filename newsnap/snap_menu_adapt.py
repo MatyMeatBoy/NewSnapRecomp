@@ -9,7 +9,7 @@ ratio with ultrawide. Ids past UI_MENU_LAST_ID: English text only, the menu's ot
 IDS = ('UI_SNAP_RES', 'UI_SNAP_RES_DESC', 'UI_SNAP_RES_UPSCALER', 'UI_SNAP_FG', 'UI_SNAP_FG_DESC', 'UI_SNAP_FG_NEEDS',
        'UI_SNAP_HDPH', 'UI_SNAP_HDPH_DESC', 'UI_SNAP_SHADOW', 'UI_SNAP_SHADOW_DESC', 'UI_SNAP_TEXPACK',
        'UI_SNAP_TEXPACK_DESC', 'UI_SNAP_TEXPACK_NONE', 'UI_SNAP_ASPECT', 'UI_SNAP_ASPECT_DESC', 'UI_SNAP_TAB',
-       'UI_SNAP_ENH')
+       'UI_SNAP_ENH', 'UI_SNAP_HDSH', 'UI_SNAP_HDSH_DESC')
 
 TEXTS = {
     'UI_SNAP_RES': 'Game internal resolution',
@@ -34,6 +34,10 @@ TEXTS = {
     'UI_SNAP_TEXPACK_DESC': 'Uses the HD textures in the texpack folder next to the game, made on this PC from your own '
                             'game. Takes effect after a restart.',
     'UI_SNAP_TEXPACK_NONE': 'no pack in the texpack folder',
+    'UI_SNAP_HDSH': 'HD scenery shadows (experimental)',
+    'UI_SNAP_HDSH_DESC': 'The shadows of plants, rocks and scenery are painted into the light maps of each level. On: each '
+                         'light map is saved the first time it loads, and Generate HD shadows in the launcher enlarges '
+                         'them on this PC; the HD ones are used the next time the level loads. Takes effect after a restart.',
     'UI_SNAP_TAB': 'Enhancements',
     'UI_SNAP_ENH': 'NewSnap enhancements (they do not change the game\'s logic)',
     'UI_SNAP_ASPECT': 'Aspect ratio',
@@ -75,6 +79,7 @@ static void snap_rows_enhancements(void) {
         opt_choice_list("AC_FRAME_GEN", UI_SNAP_FG, vals, names, 2, UI_SNAP_FG_DESC);
     }
     opt_toggle("AC_HD_PHOTOS", UI_SNAP_HDPH, UI_SNAP_HDPH_DESC);
+    opt_toggle("AC_HD_SHADOWS", UI_SNAP_HDSH, UI_SNAP_HDSH_DESC);
     {
         static const char *const vals[] = {"1", "2", "4", "auto"};
         static const char *const names[] = {"1x (original)", "2x", "4x", "Auto (3D resolution)"};
