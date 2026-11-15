@@ -10,10 +10,10 @@ import tempfile
 from .paths import runtime_dir, data_dir, default_profile, shader_library_dir, is_release_layout
 from .version import VERSION, RUNTIME_API, RUNTIME_CAPABILITIES
 
-DEFAULTS = {'fullscreen': '1', 'window_size': '1920x1080', 'vk_present': 'mailbox',
+DEFAULTS = {'fullscreen': '1', 'window_size': 'auto', 'vk_present': 'mailbox',
             'fps': '60', 'volume': '100', 'mouse_sens': '1', 'motion': '1',
-            'operation_mode': 'docked', 'render_scale': 'game', 'upscaler': 'bilinear',
-            'sharpness': '0', 'aniso': 'game', 'shadow_scale': '1', 'aspect': 'fit', 'color_preset': 'default',
+            'operation_mode': 'docked', 'render_scale': 'display', 'upscaler': 'bilinear',
+            'sharpness': '0', 'aniso': '16', 'shadow_scale': 'auto', 'aspect': 'fit', 'color_preset': 'default',
             'color_brightness': '0', 'color_contrast': '100', 'color_saturation': '100', 'color_gamma': '1'}
 SECTIONS = {'fullscreen': 'display', 'window_size': 'display', 'vk_present': 'display',
             'fps': 'frame rate', 'volume': 'audio', 'mouse_sens': 'input', 'motion': 'input',
@@ -31,7 +31,7 @@ SUPERSAMPLE_SCALES = ('125', '133', '150', '175', '200', '250', '300', 'display'
 
 CHOICES = {'vk_present': ('mailbox', 'fifo', 'immediate', 'fifo_relaxed'),
            'operation_mode': ('docked', 'handheld'), 'render_scale': ('game', '50', '60', '70', '80', '90', '100') + SUPERSAMPLE_SCALES,
-           'upscaler': ('fsr', 'bilinear'), 'aniso': ('game', '2', '4', '8', '16', 'auto'), 'shadow_scale': ('1', '2', '4', 'auto'), 'frame_gen': ('off', 'fsr'), 'hd_photos': ('1', '0'),
+           'upscaler': ('fsr', 'bilinear'), 'aniso': ('game', '2', '4', '8', '16', 'auto'), 'shadow_scale': ('1', '2', '4', 'auto'), 'frame_gen': ('off', 'fsr'), 'hd_photos': ('1', '0'), 'tex_pack': ('1', '0'),
            'aspect': ('fit', 'stretch', 'ultrawide'), 'color_preset': ('default', 'vivid', 'clarity', 'custom')}
 RANGES = {'volume': (0, 100, True), 'mouse_sens': (0, 10, False), 'sharpness': (0, 100, True),
           'color_brightness': (-30, 30, True), 'color_contrast': (70, 150, True),
@@ -56,9 +56,9 @@ CONTROL_DEFAULTS = {'mouse_sens': '1', 'motion': '1', 'gyro_sens': '2.5', 'pad_l
                     'lstick_deadzone': '', 'rstick_deadzone': '', **BINDING_DEFAULTS}
 DEFAULTS.update(CONTROL_DEFAULTS)
 DEFAULTS.update(lang='', audio_prefill_ms='20', perf_overlay='off')
-DEFAULTS.update(upscaling='off', upscaling_quality='quality', frame_gen='off', hd_photos='1')
+DEFAULTS.update(upscaling='off', upscaling_quality='quality', frame_gen='off', hd_photos='1', tex_pack='1')
 ENV_UI_OVERRIDES = ENV_UI_OVERRIDES | {'upscaling', 'upscaling_quality'}
-SECTIONS.update(upscaling='display', upscaling_quality='display', frame_gen='display', hd_photos='display')
+SECTIONS.update(upscaling='display', upscaling_quality='display', frame_gen='display', hd_photos='display', tex_pack='display')
 SECTIONS.update({key: 'input' for key in CONTROL_DEFAULTS})
 SECTIONS.update(lang='language', audio_prefill_ms='audio', perf_overlay='display')
 CHOICES.update(lang=LANGUAGES, pad_layout=('auto', 'nintendo', 'xbox', 'playstation'),
@@ -119,6 +119,8 @@ def validate_settings(values):
             valid = value in ('30', '60', '90', '120', '144', 'display')
         elif key in CHOICES:
             valid = value in CHOICES[key]
+        elif key == 'window_size' and value == 'auto':
+            valid = True
         elif key == 'window_size':
             match = re.fullmatch(r'(\d{2,5})x(\d{2,5})', value)
             valid = bool(match and all(64 <= int(n) <= 16384 for n in match.groups()))
@@ -139,11 +141,13 @@ def validate_settings(values):
 
 
 def validate_video_combination(values):
-    if values.get('frame_gen', 'off') == 'fsr' and values.get('upscaling', 'off') not in ('fsr3', 'fsr4'):
+    if values.get('frame_gen', 'off') == 'fsr' and values.get('upscaling', 'off') not in ('fsr3', 'fsr4', 'auto'):
         raise ValueError('La generación de fotogramas FSR necesita la reconstrucción AMD FSR 3.1 o FSR 4 (cualquier preset, también Nativo).')
-    if values.get('upscaling', 'off') != 'off' and values.get('render_scale') in SUPERSAMPLE_SCALES:
+    # 'display' is the default and adapts by itself: no host scale while an upscaler runs or in handheld (MENU-02).
+    explicit = values.get('render_scale') in SUPERSAMPLE_SCALES and values.get('render_scale') != 'display'
+    if values.get('upscaling', 'off') != 'off' and explicit:
         raise ValueError('El reescalado temporal usa su preset de calidad. Elige una escala de 100 % o menos para activarlo.')
-    if values.get('operation_mode') == 'handheld' and values.get('render_scale') in SUPERSAMPLE_SCALES:
+    if values.get('operation_mode') == 'handheld' and explicit:
         raise ValueError('La escala experimental superior al 100 % requiere salida TV. Elige «TV · 1920 × 1080» o reduce la escala al 100 % o menos para usar el modo portátil.')
 
 

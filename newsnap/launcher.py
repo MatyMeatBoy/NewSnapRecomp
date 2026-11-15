@@ -71,7 +71,7 @@ class Launcher:
         self.video_tab,self.audio_tab,self.game_tab=[ttk.Frame(option_pages,padding=8) for _ in range(3)]
         for frame,title in ((self.video_tab,'Vídeo'),(self.audio_tab,'Audio'),(self.game_tab,'Juego')):option_pages.add(frame,text=title)
         self.mods_tab = ttk.Frame(self.tabs, padding=16)
-        self.tabs.add(self.mods_tab, text='Mods')
+        self.tabs.add(self.mods_tab, text='Mejoras')
         self.update_tab = ttk.Frame(self.tabs, padding=16)
         self.tabs.add(self.update_tab, text='Actualizaciones')
         from .home_ui import HomePanel
@@ -206,12 +206,12 @@ class Launcher:
         fullscreen = ttk.Checkbutton(video, text='Pantalla completa', variable=self.variables['fullscreen'], onvalue='1', offvalue='0')
         fullscreen.pack(anchor='w', pady=(5, 10))
         Tooltip(fullscreen, 'Solicita pantalla completa al runtime. No cambia la resolución interna ni garantiza VRR o modo exclusivo del controlador.')
-        self._choice(video, 'Tamaño de ventana', 'window_size', ('1280x720', '1600x900', '1920x1080', '2560x1440', '3440x1440', '3840x2160'), editable=True,
+        self._choice(video, 'Tamaño de ventana', 'window_size', ('auto', '1280x720', '1600x900', '1920x1080', '2560x1440', '3440x1440', '3840x2160'), editable=True,
                      help_text='Admite un tamaño propio como 2560x1080. Cambia la ventana, no la resolución interna ni la salida nativa.')
         self._choice(video, 'Salida nativa del juego', 'operation_mode', {'TV · 1920 × 1080': 'docked', 'Portátil · 1280 × 720': 'handheld'},
                      help_text='El modo TV produce una salida de 1080p; el modo portátil, 720p. Una ventana 4K no convierte la salida nativa en 4K.')
-        self._choice(video, 'Límite de FPS · Frame cap', 'fps', {'30 FPS': '30', '60 FPS · predeterminado': '60', '90 FPS': '90', '120 FPS': '120', '144 FPS': '144', 'Según la pantalla (sin tirones)': 'display'},
-                     help_text='60 FPS conserva el límite original. 90, 120 y 144 FPS son límites de presentación experimentales. El rendimiento depende del equipo y del modo de presentación; las escenas que solicitan una cadencia menor la conservan. «Según la pantalla» elige la fracción exacta del refresco más cercana a 60 (72 en 144 Hz, 100 en 100 Hz, 60 en 120 Hz) para que cada fotograma dure lo mismo con VSync. Se puede cambiar en vivo desde el menú del juego. La aceptación física AMD sigue pendiente.')
+        self._choice(video, 'Límite de FPS · Frame cap', 'fps', {'30 FPS': '30', '60 FPS · predeterminado': '60', '90 FPS': '90', '120 FPS': '120', '144 FPS': '144'},
+                     help_text='60 FPS conserva el límite original. 90, 120 y 144 FPS son límites de presentación experimentales. El rendimiento depende del equipo y del modo de presentación; las escenas que solicitan una cadencia menor la conservan. Se puede cambiar en vivo desde el menú del juego. La aceptación física AMD sigue pendiente.')
         self.presentation = tk.StringVar(value=next(label for label, value in PRESENTATION_LABELS.items() if value == values['vk_present']))
         row = ttk.Frame(video)
         row.pack(fill='x', pady=9)
@@ -235,10 +235,6 @@ class Launcher:
             'Nativo · antialiasing': 'native', 'Calidad · escena 70 %': 'quality',
             'Equilibrado · escena 60 %': 'balanced', 'Rendimiento · escena 50 %': 'performance'},
             help_text='Cada proveedor usa su propio algoritmo con el preset elegido. Las escalas corresponden a los niveles reales del motor de Snap; requieren reiniciar la expedición.')
-        self._choice(video, 'Miniaturas de fotos en HD', 'hd_photos', {'Activadas · 1080×720': '1', 'Originales · 360×240': '0'},
-                     help_text='La vista previa al hacer una foto y las fotos grandes de las carpetas y la selección se muestran con la foto de 1080×720 en vez de la miniatura de 360×240 del juego. Las fotos guardadas y la puntuación no cambian. Funciona en cualquier GPU.')
-        self._choice(video, 'Generación de fotogramas · FSR', 'frame_gen', {'Desactivada': 'off', 'AMD FSR · 1 fotograma generado': 'fsr'},
-                     help_text='Inserta un fotograma generado entre cada dos reales: con el juego a 60 fps se muestran unos 120. Necesita FSR 3.1 o FSR 4. Solo genera si el monitor puede mostrarlo (unos 110 Hz o más a 60 fps); en un monitor más lento se pausa sola y el juego sigue a su ritmo, con cualquier modo de presentación. Añade un fotograma de latencia. El HUD se separa de la escena para que no deje estela. Experimental.')
         self._choice(video, 'Escala interna de la escena', 'render_scale', {'Según el juego': 'game', **{f'{n} %': str(n) for n in (50, 60, 70, 80, 90, 100)},
                      'Según la pantalla · supersampling': 'display',
                      **{f'{label} ({n} %) · supersampling': str(n) for label, n in (('1,25×', 125), ('1,33× · 1440p', 133), ('1,5×', 150), ('1,75×', 175), ('2× · 4K', 200), ('2,5×', 250), ('3×', 300))}},
@@ -246,8 +242,6 @@ class Launcher:
                      help_text='Hasta el 100 %, una escala menor favorece el rendimiento y pierde detalle. Por encima del 100 % es supersampling del modo TV: el juego dibuja a 1920 × 1080 y la imagen interna (escena, HUD y fotos) se calcula más grande y se reduce a tu ventana; aumenta el detalle y el coste de GPU (2× cuesta unas cuatro veces más píxeles). «Según la pantalla» elige la escala que coincide con la altura de tu monitor o ventana (1440p → 1,33×, 4K → 2×). Requiere el reescalador apagado y el modo TV; guardar una combinación incompatible muestra un error sin cambiar tu elección.')
         self._choice(video, 'Filtrado anisotrópico · AF', 'aniso', {'Según el juego': 'game', **{f'{n}×': str(n) for n in (2, 4, 8, 16)}, 'Automático heredado': 'auto'},
                      help_text='Mejora las texturas vistas en ángulo. El controlador y la GPU pueden limitar el nivel efectivo. Automático heredado conserva la heurística de la base, aún sin validar para Snap; elige un nivel explícito para personalizarlo.')
-        self._choice(video, 'Resolución de sombras', 'shadow_scale', {'Original (1×)': '1', 'Alta (2×)': '2', 'Muy alta (4×)': '4', 'Según la resolución 3D': 'auto'},
-                     help_text='Amplía todos los mapas de sombras del juego (sol, vegetación, personajes) sin cambiar su suavidad: los bordes salen más definidos. «Según la resolución 3D» los ajusta a la escala de la escena (2× a 1080p, 3× a 125–150 %, 4× desde 200 %). 2× cuesta poco; 4× usa unos 64 MiB más de VRAM por mapa. Las sombras pintadas en las texturas del escenario no cambian.')
         self._choice(video, 'Relación de aspecto · Aspect ratio', 'aspect', {'Conservar proporciones': 'fit', 'Estirar a la ventana': 'stretch', 'Ultrawide · vista más ancha (experimental)': 'ultrawide'},
                      help_text='Solo cambia la presentación: conservar proporciones puede dejar bandas; estirar llena la ventana y deforma la imagen. Ultrawide llena una pantalla más ancha que 16:9 ampliando la vista 3D a los lados; el HUD queda en el centro con sus proporciones y las fotos se toman con la vista 16:9 de siempre. Los menús se ven en 16:9 con bandas. Experimental.')
         self._heading(video, 'Color original del juego')
@@ -333,7 +327,7 @@ class Launcher:
         sections.add(bindings_tab, text='Asignaciones')
         general, bindings = self._scrolling_options(general_tab), self._scrolling_options(bindings_tab)
         self._help(general, 'Los cambios se aplican al próximo inicio. El ratón conserva la puntería libre de la cámara.')
-        self._help(general, 'La sensibilidad del ratón y la puntería con giroscopio están en la pestaña Mods.')
+        self._aim_options(general)
         self._choice(general, 'Distribución del mando', 'pad_layout', {'Automática': 'auto', 'Nintendo': 'nintendo', 'Xbox': 'xbox', 'PlayStation': 'playstation'},
                      help_text='Cambia cómo se interpretan los botones físicos. Los dibujos de botones del juego conservan su aspecto original.')
         from .tooltip import Tooltip
@@ -358,10 +352,20 @@ class Launcher:
             self._choice(bindings, 'A · Foto / confirmar' if key == 'bind_a' else name, key, None)
 
     def _mod_options(self):
-        ttk.Label(self.mods_tab, text='Mods de puntería', style='Title.TLabel').pack(anchor='w', pady=(0, 8))
-        self._settings_footer(self.mods_tab, controls=True)
+        ttk.Label(self.mods_tab, text='Mejoras de NewSnap', style='Title.TLabel').pack(anchor='w', pady=(0, 8))
+        self._settings_footer(self.mods_tab)
         content = self._scrolling_options(self.mods_tab)
-        self._help(content, 'Opciones del port que amplían la Switch sin cambiar la lógica del juego. Las sensibilidades se aplican en vivo; el resto al próximo inicio.')
+        self._help(content, 'Mejoras propias del port, cada una se puede activar o desactivar. No cambian la lógica del juego ni la puntuación de las fotos. Se aplican al próximo inicio.')
+        self._choice(content, 'Miniaturas de fotos en HD', 'hd_photos', {'Activadas · 1080×720': '1', 'Originales · 360×240': '0'},
+                     help_text='La vista previa al hacer una foto y las fotos grandes de las carpetas y la selección se muestran con la foto de 1080×720 en vez de la miniatura de 360×240 del juego. Las fotos guardadas y la puntuación no cambian. Funciona en cualquier GPU.')
+        self._choice(content, 'Resolución de sombras', 'shadow_scale', {'Original (1×)': '1', 'Alta (2×)': '2', 'Muy alta (4×)': '4', 'Según la resolución 3D': 'auto'},
+                     help_text='Amplía todos los mapas de sombras del juego (sol, vegetación, personajes) sin cambiar su suavidad: los bordes salen más definidos. «Según la resolución 3D» los ajusta a la escala de la escena (2× a 1080p, 3× a 125–150 %, 4× desde 200 %). 2× cuesta poco; 4× usa unos 64 MiB más de VRAM por mapa. Las sombras pintadas en las texturas del escenario no cambian.')
+        self._choice(content, 'Generación de fotogramas · FSR', 'frame_gen', {'Desactivada': 'off', 'AMD FSR · 1 fotograma generado': 'fsr'},
+                     help_text='Inserta un fotograma generado entre cada dos reales: con el juego a 60 fps se muestran unos 120. Necesita FSR 3.1 o FSR 4. Solo genera si el monitor puede mostrarlo (unos 110 Hz o más a 60 fps); en un monitor más lento se pausa sola y el juego sigue a su ritmo, con cualquier modo de presentación. Añade un fotograma de latencia. El HUD se separa de la escena para que no deje estela. Experimental.')
+        self._choice(content, 'Pack de texturas HD', 'tex_pack', {'Activado si existe': '1', 'Desactivado': '0'},
+                     help_text='Usa las texturas HD de la carpeta texpack junto al juego, generadas en este PC a partir de tu propio juego (herramienta tools/texpack.py). Sin pack no cambia nada.')
+
+    def _aim_options(self, content):
         self._heading(content, 'Giroscopio')
         from .tooltip import Tooltip
         motion = ttk.Checkbutton(content, text='Apuntar con giroscopio cuando el mando lo tenga', variable=self.variables['motion'], onvalue='1', offvalue='0')
