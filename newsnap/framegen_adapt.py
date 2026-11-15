@@ -39,6 +39,21 @@ def edits():
              '    memcpy(D.proj, pj, sizeof D.proj), D.proj_ok = 1;\n'
              '    { extern float snap_fg_view[16]; memcpy(snap_fg_view, vw, sizeof snap_fg_view); }   // FG-01 camera'),
         ],
+        # FG-03: the performance overlay's "fps" line adds the generated frames: "60 fps · FG +60 = 120".
+        'runtime/ui/menu.cpp': [
+            ('#include "perfmon.h"', '#include "perfmon.h"\nextern "C" uint64_t snap_fg_generated_count(void);'),
+            ('            snprintf(g_perf_text, sizeof g_perf_text, menu_text(UI_PERF_LINE_FPS), g_perf_frames * 1e9 / g_perf_win_ns);\n',
+             '            snprintf(g_perf_text, sizeof g_perf_text, menu_text(UI_PERF_LINE_FPS), g_perf_frames * 1e9 / g_perf_win_ns);\n'
+             '            {   // FG-03: generated frames over the same window\n'
+             '                static uint64_t fg_seen;\n'
+             '                uint64_t fg_now = snap_fg_generated_count();\n'
+             '                double real = g_perf_frames * 1e9 / g_perf_win_ns, gen = (double)(fg_now - fg_seen) * 1e9 / g_perf_win_ns;\n'
+             '                fg_seen = fg_now;\n'
+             '                size_t used = strlen(g_perf_text);\n'
+             '                if (gen >= 1 && used < sizeof g_perf_text)\n'
+             '                    snprintf(g_perf_text + used, sizeof g_perf_text - used, " \\xc2\\xb7 FG +%.0f = %.0f", gen, real + gen);\n'
+             '            }\n'),
+        ],
         'runtime/vk_backend.c': [
             ('#include "vk_dlaa.h"', '#include "vk_dlaa.h"\n#include "snap_fsr_fg.h"\n#include "snap_latent_sync.h"'),
             ('    uint64_t frame, at, queued, value;', '    uint64_t frame, at, queued, value;\n    uint64_t fg;            // FG-01: the frame generation prepare of this frame, 0 for none'),

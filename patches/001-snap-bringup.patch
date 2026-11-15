@@ -366,7 +366,7 @@
      "DUMP_KEY", "DUMP_LOG", "DUMP_N", "DUMP_SKIP_RUNS", "DUMP_TEX", "DUMP_UBO", "EXEFS", "FEEDBACK", "FIX_C0", "FIX_ZERO", "FLIGHT", "FLIGHT_AT", "FLIGHT_DIR", "FLIGHT_FRAMES",
 -    "FLIGHT_SPIKE_MS", "FLIGHT_THUMBS", "FOV", "FOV_PATCH", "FPS", "FREEZE_IDLE", "FREE_CORES",
 -    "FULLSCREEN", "FXAA", "GPL", "GPL_DRAW_BUILD", "GPU", "GPU_INDEX", "GPU_NAME", "GPU_PASSES", "HDR", "HDR_GAME_NITS",
-+    "FLIGHT_SPIKE_MS", "FLIGHT_THUMBS", "FOV", "FOV_PATCH", "FPS", "FRAME_GEN", "FREEZE_IDLE", "HD_PHOTOS", "FREE_CORES",
++    "FLIGHT_SPIKE_MS", "FLIGHT_THUMBS", "FOV", "FOV_PATCH", "FPS", "FRAME_GEN", "FREEZE_IDLE", "HD_PHOTOS", "TEX_PACK", "FREE_CORES",
 +    "FULLSCREEN", "FXAA", "GPL", "GPL_DRAW_BUILD", "GPU", "GPU_INDEX", "GPU_NAME", "GPU_PASSES", "GYRO_SENS", "HDR", "HDR_GAME_NITS",
      "HDR_HUE", "HDR_PEAK_NITS", "HDR_UI_NITS", "HIGHFPS_FIX", "HUD", "INPUT", "INPUT_RECORD", "INPUT_SCRIPT", "LANG", "LIB_PREBUILD",
      "LIB_PREBUILD_KEEP", "LIB_PREBUILD_THREADS", "LOCALE", "LOD_GUARD", "LSTICK_DEADZONE", "MEMORY", "MENU_LANG", "MENU_TEST",
@@ -390,7 +390,7 @@
  // The astralchain.ini section a key cfg_set may write goes to when the file lacks it (astralchain.ini.example's sections).
  static const struct { const char *key, *section; } sections[] = {
 -    {"FPS", "frame rate"},
-+    {"FPS", "frame rate"}, {"FRAME_GEN", "display"}, {"HD_PHOTOS", "display"},
++    {"FPS", "frame rate"}, {"FRAME_GEN", "display"}, {"HD_PHOTOS", "display"}, {"TEX_PACK", "display"},
      {"REALTIME", "frame rate"}, {"CLOTH_REALTIME", "frame rate"}, {"HIGHFPS_FIX", "frame rate"},
      {"HUD", "display"},
      {"FULLSCREEN", "display"}, {"WINDOW_SIZE", "display"}, {"PERF_OVERLAY", "display"}, {"VK_PRESENT", "display"},
@@ -425,7 +425,7 @@
      {"ANTI_ALIASING", "smaa", "off|smaa", LIVE},
 -    {"ASPECT", "wide", "fit|stretch|wide", LIVE}, {"FOV", "100", "70..140", LIVE},
 -    {"ANISO", "auto", "auto|game|2|4|8|16", RESTART},   // vk_texture.c sampler_features
-+    {"ASPECT", "fit", "fit|stretch|ultrawide", LIVE}, {"FOV", "100", "70..140", LIVE}, {"FRAME_GEN", "off", "off|fsr", RESTART}, {"HD_PHOTOS", "1", "0|1", RESTART},
++    {"ASPECT", "fit", "fit|stretch|ultrawide", LIVE}, {"FOV", "100", "70..140", LIVE}, {"FRAME_GEN", "off", "off|fsr", RESTART}, {"HD_PHOTOS", "1", "0|1", RESTART}, {"TEX_PACK", "1", "0|1", RESTART},
 +    {"ANISO", "game", "game|2|4|8|16", RESTART},   // vk_texture.c sampler_features
      // colour adjustment (vk_color.c); the preset is the menu's, the four values are what the present uses
      {"COLOR_PRESET", "default", "default|vivid|clarity|custom", LIVE}, {"COLOR_BRIGHTNESS", "0", "-30..30", LIVE},
@@ -1811,7 +1811,7 @@
              if (nvn_deswizzle(d, lv + skip, ly, t->mem, tmp ? tmp : dst, rb)) {
                  log_limited(&n_bad, "texture %#llx fmt %#x target %d: level %u layer %u has no CPU layout; uploaded as zeros",
                              (unsigned long long)e->pub.addr, d->format, d->target, lv + skip, ly);
-@@ -1432,6 +1590,7 @@
+@@ -1432,12 +1590,17 @@
          if (astc && !pre_in_step) pre_n_draw++, pre_tx_draw += decoded / 4;
      }
      e->wt_n = 0;
@@ -1819,7 +1819,17 @@
      // Neither video memory, after what this submit could free, nor system memory had room for the decoder's scratch:
      // the image did not get the content, and an entry counted as uploaded is only uploaded again when its storage
      // changes. Not counted, the next use (make_fresh) tries again.
-@@ -1716,7 +1875,29 @@
+     e->uploaded = checked != VK_ASTC_NO_SCRATCH;
+     e->nomem_epoch = e->uploaded ? 0 : submit_epoch ? submit_epoch : 1;
+     e->n_up++;
++    if (e->uploaded) {   // TEXPACK-01: hash, dump, HD image
++        void snap_texpack_uploaded(const VkTexImage *img, const void *mem, uint64_t size, int nvn_format);
++        snap_texpack_uploaded(&e->pub, t->mem, t->L.size, (int)d->format);
++    }
+     perf_end(PERF_TEX, p0);
+ }
+ 
+@@ -1716,7 +1879,29 @@
  
  void vk_texture_range_gone(uint64_t lo, uint64_t size, VmaAllocation alloc) {
      lock();
@@ -1849,7 +1859,7 @@
      Tex **list = malloc(sizeof *list * (size_t)(by_key.n + 1));
      int n = 0;
      for (uint32_t i = 0; i < by_key.cap; i++) {
-@@ -2051,6 +2232,98 @@
+@@ -2051,6 +2236,98 @@
  }
  
  // Image <-> caller rows through a staging buffer; the GPU copy is waited for. The region is in the image's texels.
@@ -1948,7 +1958,7 @@
  static int image_texels_at(Tex *e, const Region *g, const NVNcopyRegion *r, uint8_t *mem, int write) {
      static volatile int32_t n_astc, n_ds;
      VkCtx *c = vk_ctx();
-@@ -2167,6 +2440,7 @@
+@@ -2167,6 +2444,7 @@
              }
          }
      }
@@ -1956,7 +1966,7 @@
      free(rg);
      vmaDestroyBuffer(c->vma, sb, sa);
      return 1;
-@@ -2220,6 +2494,22 @@
+@@ -2220,6 +2498,22 @@
                  ey = ey < 0 ? 0 : ey >= (int32_t)h2 ? (int32_t)h2 - 1 : ey;
                  const uint8_t *src = tmp + (size_t)z * g2.img + (size_t)ey * g2.row;
                  uint8_t *dst = mem + (size_t)z * g->img + (size_t)y * g->row;
@@ -2151,25 +2161,66 @@
      return s->x <= 0 && s->y <= 0 && (int64_t)s->x + s->w >= t->width && (int64_t)s->y + s->h >= t->height;
 --- a/runtime/vk_exec_draw.c
 +++ b/runtime/vk_exec_draw.c
-@@ -27,6 +27,9 @@
+@@ -27,6 +27,12 @@
  #include "nvn_hmap.h"
  #include "vk.h"
  #include "vk_exec.h"
 +#include "snap_output_scale.h"
 +#include "snap_hd_photo.h"
 +#include "snap_wide.h"
++VkImage snap_texpack_image(VkImage game, VkFormat *fmt, uint32_t *levels);
++void snap_texpack_gone(VkImage game);
++uint32_t snap_texpack_gen(void);
  #include "platform/platform.h"
  #include "vk_dlaa.h"
  
-@@ -595,6 +598,7 @@
+@@ -544,23 +550,30 @@
+             }
+     }
+     uint32_t swz = (uint32_t)sw[0] | (uint32_t)sw[1] << 8 | (uint32_t)sw[2] << 16 | (uint32_t)sw[3] << 24;
+-    ViewKey k = {img->image, img->format, vt, aspect, l0, nl, y0, ny, swz};
++    VkImage vimg = img->image;   // TEXPACK-01: a texture with an HD image is viewed on it, all of its levels
++    VkFormat vfmt = img->format;
++    uint32_t hd_levels = 0;
++    VkImage hd = storage || vt != VK_IMAGE_VIEW_TYPE_2D || aspect != VK_IMAGE_ASPECT_COLOR_BIT
++                     ? VK_NULL_HANDLE : snap_texpack_image(img->image, &vfmt, &hd_levels);
++    if (hd) vimg = hd, l0 = 0, nl = hd_levels, y0 = 0, ny = 1;
++    else vfmt = img->format;
++    ViewKey k = {vimg, vfmt, vt, aspect, l0, nl, y0, ny, swz};
+     if (!view_of.klen) nvn_hm_init(&view_of, sizeof(ViewKey)), nvn_hm_init(&views_by_image, sizeof(VkImage));
+     VkImageView found = (VkImageView)nvn_hm_get(&view_of, &k);
+     if (found) return found;
+-    VkImageViewCreateInfo ci = {.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO, .image = img->image, .viewType = vt,
+-                                .format = img->format,
++    VkImageViewCreateInfo ci = {.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO, .image = vimg, .viewType = vt,
++                                .format = vfmt,
+                                 .components = {swz_of(sw[0]), swz_of(sw[1]), swz_of(sw[2]), swz_of(sw[3])},
+                                 .subresourceRange = {aspect, l0, nl, y0, ny}};
+     VkImageViewUsageCreateInfo use = {.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_USAGE_CREATE_INFO,
+                                       .usage = VK_IMAGE_USAGE_SAMPLED_BIT};
+-    if (img->block_views) ci.pNext = &use;   // the image's COLOR_ATTACHMENT usage is its block views' (vk_texture.c)
++    if (img->block_views && !hd) ci.pNext = &use;   // the image's COLOR_ATTACHMENT usage is its block views' (vk_texture.c)
+     VkImageView view;
+     if (vkCreateImageView(vk_ctx()->device, &ci, NULL, &view) != VK_SUCCESS) return VK_NULL_HANDLE;
+     ViewNode *n = malloc(sizeof *n);
+     if (!n) rt_fatal("vk: out of memory");
+-    *n = (ViewNode){nvn_hm_get(&views_by_image, &img->image), k, view};
+-    nvn_hm_put(&views_by_image, &img->image, n);
++    *n = (ViewNode){nvn_hm_get(&views_by_image, &vimg), k, view};
++    nvn_hm_put(&views_by_image, &vimg, n);
+     nvn_hm_put(&view_of, &k, (void *)view);
+     return view;
+ }
+@@ -595,6 +608,8 @@
  
  void vk_exec_image_gone(VkImage image) {
      vk_exec_bc_gone(image);
 +    snap_hd_photo_gone(image);
++    snap_texpack_gone(image);
      vk_hdr_image_gone(image);
      if (!views_by_image.klen) return;
      for (ViewNode *n = nvn_hm_del(&views_by_image, &image), *next; n; n = next) {
-@@ -1275,9 +1279,10 @@
+@@ -1275,9 +1290,10 @@
  static void tex_info_lookup(VkExec *ex, const GfxShaderRes *r, uint64_t h, int storage, int separate,
                              VkDescriptorImageInfo *out, VkImage *image_out) {
      int td_on = td_mode();
@@ -2177,11 +2228,11 @@
      VkImage image;
      if (!h || storage || !td_on) return tex_info_full(ex, r, h, storage, separate, out, image_out);
 -    uint32_t gen = vk_texture_slots_gen(), ep = vk_texture_epoch(), sg = vk_sampler_gen();   // before any lookup
-+    uint32_t gen = vk_texture_slots_gen(), ep = vk_texture_epoch(), sg = vk_sampler_gen() + snap_hd_photo_gen();   // before any lookup
++    uint32_t gen = vk_texture_slots_gen(), ep = vk_texture_epoch(), sg = vk_sampler_gen() + snap_hd_photo_gen() + snap_texpack_gen();   // before any lookup
      typeof(TD[0]) *m = &TD[(h * 0x9E3779B97F4A7C15ull ^ (uint64_t)r->type << 7 ^ (uint64_t)separate) >> 51];
      if (m->valid && m->h == h && m->type == r->type && m->separate == separate && m->sgen == sg &&
          slot_still(&m->gen, m->tok, h, gen)) {
-@@ -1317,6 +1322,8 @@
+@@ -1317,6 +1333,8 @@
          int hv;
          const VkTexImage *img = vk_texture_by_id_locked((int)(h & 0xfffff), &v, &hv);
          if (img) view = get_view(ex, img, &v, hv, r->type, storage), *image = img->image;
@@ -2190,7 +2241,7 @@
          if (img && storage) vk_texture_storage_bound_locked(img);
          if (img && !storage && ex->nfbl && in_fbl(ex, img->image)) layout = VK_IMAGE_LAYOUT_ATTACHMENT_FEEDBACK_LOOP_OPTIMAL_EXT;
          if (!storage && !separate) {
-@@ -1625,7 +1632,7 @@
+@@ -1625,7 +1643,7 @@
      for (int i = 0; i < SCALES; i++) o->s[i] = 1.0f;
      o->nfs = 0;
      int skip = vk_tex_mip_skip() > 0;
@@ -2199,7 +2250,7 @@
      int gfx = info->bind_point == VK_PIPELINE_BIND_POINT_GRAPHICS;
      o->s[0] = gfx && ex->pass_scale > 1.0f ? ex->pass_scale : 1.0f;
      int want = gfx ? GFX_STAGE_FS : GFX_STAGE_CS;
-@@ -2103,6 +2110,7 @@
+@@ -2103,6 +2121,7 @@
      if (h < 1) h = 1;
      VkViewport v = {x, y + h, w, -h, ex->depth_range[0], ex->depth_range[1]};   // the y flip: negative height
      vk_dlaa_viewport(ex, &v);   // the scene's draws move by the DLAA jitter
@@ -2207,7 +2258,7 @@
      return v;
  }
  
-@@ -2115,6 +2123,7 @@
+@@ -2115,6 +2134,7 @@
      }
      if (ex->dirty & VK_EXEC_DIRTY_SCISSOR) {
          VkRect2D r = vk_exec_scissor(ex);
@@ -2215,7 +2266,7 @@
          vkCmdSetScissorWithCount(cb, 1, &r);
          ex->recorded++;
      }
-@@ -2299,6 +2308,31 @@
+@@ -2299,6 +2319,31 @@
      return 0;
  }
  
@@ -2247,7 +2298,7 @@
  // Pass, shaders, pipeline, fixed state and resources for a draw. 0: the draw is skipped.
  static int prepare_draw(VkExec *ex, int prim, int32_t count, int restart) {
      if (ex->render_disabled) return drop_draw(ex, VK_DROP_DISABLED, "rendering disabled");
-@@ -2351,14 +2385,16 @@
+@@ -2351,14 +2396,16 @@
      // one-shot draws (volumes and LUTs generated once, later only sampled) would leave their target empty for the
      // session. A draw into per-frame targets is skipped until they are ready and comes back next frame.
      int oneshot = -1, skip = pipe_skip_mode();   // -1: not looked up
@@ -2266,7 +2317,7 @@
      uint32_t fbl = feedback_prepare(ex, fs);
      VkPipeState s = ex->pipe;
      // AC_FORCE_BLEND=<prog>: debug switch, the enemy-death effect (prog 268) is opaque at 1x and 2x; force
-@@ -2394,7 +2430,7 @@
+@@ -2394,7 +2441,7 @@
      static uint64_t wait_left_ns;
      uint32_t wait_ms = 0;
      uint64_t t0 = 0;
@@ -2275,7 +2326,7 @@
          wait_ms = ONESHOT_WAIT_MS;
      } else if (skip < 2 && count <= 6 && (uint64_t)sc.extent.width * sc.extent.height * 2 >= (uint64_t)ex->pass_w * ex->pass_h) {
          uint64_t f = __atomic_load_n(&gfx_counters.frames, __ATOMIC_RELAXED);
-@@ -2413,12 +2449,13 @@
+@@ -2413,12 +2460,13 @@
          p = __atomic_load_n(&info->pipeline, __ATOMIC_ACQUIRE);
      } else {
          w0 = t0 ? t0 : wait_ms ? kern_now_ns() : 0;   // the clock is read only for draws that may wait
@@ -2291,7 +2342,7 @@
          if (pending && oneshot < 0 && !vk_exec_targets_recent(ex, skip >= 1)) {
              perf_count(PERF_CNT_ONESHOT_WAIT);
              why = "one-shot";
-@@ -2562,6 +2599,16 @@
+@@ -2562,6 +2610,16 @@
      }
      return MO.fs[loc];
  }
@@ -2710,7 +2761,15 @@
      else { g_vk.xfer_queue = g_vk.gfx_queue; g_vk.xfer_shared = 1; }
 --- a/runtime/ui/menu.cpp
 +++ b/runtime/ui/menu.cpp
-@@ -544,13 +544,13 @@
+@@ -42,6 +42,7 @@
+ #include "input_map.h"
+ #include "mods.h"
+ #include "perfmon.h"
++extern "C" uint64_t snap_fg_generated_count(void);
+ #include "platform/platform.h"
+ #include "ui/menu.h"
+ #include "ui_text.h"
+@@ -544,13 +545,13 @@
  // (SMAA, or off) applies while no upscaler runs and is greyed out otherwise. Off Windows, DLSS and XeSS are not offered.
  static void rows_upscaling(void) {
  #ifdef _WIN32
@@ -2729,7 +2788,7 @@
      const UiTextId desc = UI_MENU_UPSCALING_DESC_OTHER;
  #endif
      enum { N = sizeof vals / sizeof *vals };
-@@ -571,13 +571,12 @@
+@@ -571,13 +572,12 @@
      }
      opt_choice_list("AC_UPSCALING", UI_MENU_UPSCALING, vals, names, N, desc, cur, note);
      {
@@ -2747,7 +2806,7 @@
              if (!strcmp(q, qv[i])) qcur = i;
          static char note_q[48];
          unsigned sz[2];
-@@ -585,7 +584,7 @@
+@@ -585,7 +585,7 @@
          snprintf(note_q, sizeof note_q, "%u × %u", sz[0], sz[1]);   // U+00D7, the multiplication sign
          bool off = !strcmp(up, "off") && !res_scene_reduced();
          if (off) opt_disable_next(UI_MENU_UPSCALING_MODE_OFF);
@@ -2756,7 +2815,7 @@
                          off ? nullptr : note_q);
      }
      {
-@@ -594,12 +593,6 @@
+@@ -594,12 +594,6 @@
          if (vk_dlaa_running()) opt_disable_next(UI_MENU_AA_BY_UPSCALER);
          opt_choice_list("AC_ANTI_ALIASING", UI_MENU_AA, av, an, 2, UI_MENU_AA_DESC, cfg_smaa() ? 1 : 0);
      }
@@ -2769,17 +2828,17 @@
  }
  
  static void row_gpu(void) {
-@@ -641,13 +634,12 @@
+@@ -641,13 +635,12 @@
  // The game's frame rate (frame_rate.c, patches-v101.txt): 60 fps runs the community 60 fps patch, 30 fps switches it
  // off. The row is the patch switch itself, so it takes effect on the next frame.
  static void row_fps_limit() {
 -    static const char *const vals[] = {"30", "60"};
 -    static const UiTextId ids[] = {UI_MENU_FPS_30, UI_MENU_FPS_60};
-+    static const char *const vals[] = {"30", "60", "90", "120", "144", "display"};
++    static const char *const vals[] = {"30", "60", "90", "120", "144"};
      enum { N = sizeof vals / sizeof *vals };
 -    const char *names[N];
 -    for (int i = 0; i < N; i++) names[i] = menu_text(ids[i]);
-+    const char *names[N] = {menu_text(UI_MENU_FPS_30), menu_text(UI_MENU_FPS_60), "90 FPS", "120 FPS", "144 FPS", "Auto (display)"};
++    const char *names[N] = {menu_text(UI_MENU_FPS_30), menu_text(UI_MENU_FPS_60), "90 FPS", "120 FPS", "144 FPS"};
      const char *set = cfg_get("AC_FPS");
 -    int cur = set && !strcmp(set, "30") ? 0 : 1;
 +    int cur = 1;
@@ -2787,7 +2846,7 @@
      opt_choice_list("AC_FPS", UI_MENU_FPS_LIMIT, vals, names, N, UI_MENU_FPS_LIMIT_DESC, cur);
  }
  
-@@ -674,33 +666,6 @@
+@@ -674,33 +667,6 @@
  // ---- the tabs
  // Colour adjustment (vk_color.c): a profile writes the four values (STS78721's presets, issue #136); moving one of them
  // makes the profile Custom.
@@ -2821,7 +2880,7 @@
  static void tab_screen(float scale) {
      opt_begin("##screen", scale);
      opt_toggle("AC_FULLSCREEN", UI_MENU_FULLSCREEN, UI_MENU_FULLSCREEN_DESC);
-@@ -713,24 +678,12 @@
+@@ -713,24 +679,12 @@
      opt_group(UI_MENU_GRAPHICS);
      row_output_res();
      rows_upscaling();
@@ -2848,7 +2907,7 @@
      opt_end();
  }
  
-@@ -1008,9 +961,8 @@
+@@ -1008,9 +962,8 @@
                                          ImGuiWindowFlags_NoSavedSettings);
      ImGui::TextColored(ImVec4(0.93f, 0.76f, 0.33f, 1), "%s", menu_text(UI_MENU_TITLE));
      // the port version and the game update, right-aligned on the title line: what a bug report needs first
@@ -2860,6 +2919,22 @@
      ImGui::SameLine(ImGui::GetWindowWidth() - ImGui::GetStyle().WindowPadding.x - ImGui::CalcTextSize(version).x);
      ImGui::TextDisabled("%s", version);
  
+@@ -1141,6 +1094,15 @@
+         if (d > g_perf_max_ns) g_perf_max_ns = d;
+         if (g_perf_win_ns >= 500000000ull) {
+             snprintf(g_perf_text, sizeof g_perf_text, menu_text(UI_PERF_LINE_FPS), g_perf_frames * 1e9 / g_perf_win_ns);
++            {   // FG-03: generated frames over the same window
++                static uint64_t fg_seen;
++                uint64_t fg_now = snap_fg_generated_count();
++                double real = g_perf_frames * 1e9 / g_perf_win_ns, gen = (double)(fg_now - fg_seen) * 1e9 / g_perf_win_ns;
++                fg_seen = fg_now;
++                size_t used = strlen(g_perf_text);
++                if (gen >= 1 && used < sizeof g_perf_text)
++                    snprintf(g_perf_text + used, sizeof g_perf_text - used, " \xc2\xb7 FG +%.0f = %.0f", gen, real + gen);
++            }
+             g_perf_win_ns = g_perf_max_ns = 0;
+             g_perf_frames = 0;
+         }
 --- a/runtime/vk_color.c
 +++ b/runtime/vk_color.c
 @@ -136,15 +136,38 @@
