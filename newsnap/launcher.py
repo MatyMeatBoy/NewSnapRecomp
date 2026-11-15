@@ -380,7 +380,11 @@ class Launcher:
         from .hdshadows_ui import HdShadowsButton
         HdShadowsButton(self, content)
         self._choice(content, 'Pack de texturas HD', 'tex_pack', {'Activado si existe': '1', 'Desactivado': '0'},
-                     help_text='Usa las texturas HD de la carpeta texpack junto al juego, generadas en este PC a partir de tu propio juego (herramienta tools/texpack.py). Sin pack no cambia nada.')
+                     help_text='Usa las texturas HD de la carpeta texpack junto al juego, generadas en este PC a partir de tu propio juego. Sin pack no cambia nada.')
+        self._choice(content, 'Guardar texturas para el pack', 'tex_pack_save', {'No': '0', 'Sí, mientras juego': '1'},
+                     help_text='El juego guarda cada textura de color la primera vez que la carga (texpack/src); «Generar pack de texturas HD» las amplía en este PC con IA (Real-ESRGAN, se descarga una vez) y las comprime (BC1/BC3). Juega los niveles que quieras mejorar, genera, y desactiva esta opción: guardar texturas alarga algo las cargas.')
+        from .hdshadows_ui import TexturePackButton
+        TexturePackButton(self, content)
 
     def _aim_options(self, content):
         self._heading(content, 'Giroscopio')
