@@ -7,7 +7,8 @@
 // newsnap.exe (texpack/, AC_TEX_PACK=0 turns it off): BC7, BC1, BC3 or RGBA8 with any size and mip count. A texture
 // whose hash has a file gets that image, and its sampled views (vk_exec_draw.c get_view) are made on it with the same
 // channel mapping as the game's view, so any size works with the game's normalized coordinates. Same on every GPU.
-// tools/texpack.py builds a pack from a dump (Real-ESRGAN, BC7). A pack holds game-derived pictures: it is made
+// AC_TEX_PACK_SAVE=1 saves them to texpack/src; newsnap/texpack_gen.py (the launcher's «Generar pack de texturas HD»)
+// builds the pack from there (Real-ESRGAN, BC1/BC3). A pack holds game-derived pictures: it is made
 // locally from the player's own game and never distributed.
 //
 // HD-SHADOW-01 (AC_HD_SHADOWS=1, off by default): the shadows of scenery and plants are baked into the levels' light
@@ -89,6 +90,15 @@ static void setup(void) {
     if (bs && (!slash || bs > slash)) slash = bs;
     if (slash) *slash = 0;
     const char *shadows = cfg_get("AC_HD_SHADOWS");
+    const char *save = cfg_get("AC_TEX_PACK_SAVE");   // TEXPACK-01: the launcher's pack generation reads texpack/src
+    if (!dump_dir[0] && save && !strcmp(save, "1")) {
+        char packs[1000];
+        snprintf(packs, sizeof packs, "%s/texpack", exe);
+        plat_fs_mkdir(packs);
+        snprintf(dump_dir, sizeof dump_dir, "%s/src", packs);
+        plat_fs_mkdir(dump_dir);
+        rt_log("texpack: saving new textures for the pack to %s", dump_dir);
+    }
     if (shadows && !strcmp(shadows, "1")) {
         light_on = 1;
         snprintf(light_dir, sizeof light_dir, "%s/hdshadows", exe);

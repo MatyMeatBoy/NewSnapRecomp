@@ -58,3 +58,48 @@ class HdShadowsButton:
         self.running = False
         self.button.configure(state='normal')
         self.state.set(self._summary())
+
+
+class TexturePackButton(HdShadowsButton):
+    """«Generar pack de texturas HD» (TEXPACK-01): the colour textures saved in texpack/src, enlarged into texpack/."""
+
+    def __init__(self, launcher, parent):
+        super().__init__(launcher, parent)
+        self.button.configure(text='Generar pack de texturas HD')
+
+    def folder(self):
+        return runtime_dir(self.launcher.project) / 'texpack'
+
+    def _summary(self):
+        from .texpack_gen import pending
+        folder = self.folder()
+        if not (folder / 'src').is_dir():
+            return 'Aún no hay texturas guardadas: activa «Guardar texturas para el pack» y juega.'
+        made = sum(1 for p in folder.glob('*.dds') if len(p.stem) == 16)
+        return f'{made} texturas en HD · {len(pending(folder))} por generar'
+
+    def start(self):
+        if self.running or self.launcher.busy:
+            return
+        self.running = True
+        self.cancel.clear()
+        self.button.configure(state='disabled')
+        status = self.launcher.status
+
+        def report(text):
+            self.launcher.root.after(0, status.set, text)
+
+        def work():
+            try:
+                from .hdshadows import ensure_esrgan
+                from .texpack_gen import generate
+                ensure_esrgan(report)
+                made, failed = generate(self.folder(), report=report, cancel=self.cancel)
+                report(f'Pack de texturas HD: {made} texturas generadas'
+                       + (f', {failed} sin procesar' if failed else '') + '. Se usan al volver a cargarlas.')
+            except Exception as error:   # shown to the player; the game is not affected
+                report(f'Pack de texturas HD sin completar: {error}')
+            finally:
+                self.launcher.root.after(0, self._done)
+
+        threading.Thread(target=work, daemon=True).start()

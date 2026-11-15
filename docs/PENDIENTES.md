@@ -11,9 +11,9 @@ Read this before taking work. History and the previous Spanish board:
   present (PRESENT-WIN-01), internal resolution by host scaling (SS-02), high FPS 90/120/144
   (FPS-01, RTX tester), FSR frame generation off by default with refresh fallback (FG-01/02).
 - Owner hardware: RX 6900 XT, Samsung C27HG7x 144 Hz monitor, FreeSync. RTX tester: RTX 4060.
-- Open queue: TEXPACK-01 pack generation (launcher button, BC7, Florio first), SS-03 RTX check of HD thumbnails,
-  DLSS-G (needs RTX 40/50),
-  loading times measured (below).
+- Open queue: none. TEXPACK-01 pack generation shipped in 0.9.8 (launcher «Guardar texturas para el pack» +
+  «Generar pack de texturas HD», BC1/BC3). Needing an NVIDIA RTX GPU, so not doable on the owner's PC: SS-03
+  RTX check of HD thumbnails and DLSS-G (ideas below).
 - Loading (2026-11-14, RX 6900 XT, 0.8.8, photo route 200 s, warm pipeline cache): 200 % internal
   resolution loads like 100 % (largest hitches: boot ≈350–375 ms, texture upload 312 ms at 100 %
   vs 203 ms at 200 %; after the first minute 0–1 frames over 25 ms at 200 %). The slow loads seen
@@ -28,26 +28,7 @@ acceptance), DONE (moved to the history file).
 
 | ID | P | State | Owner | Summary |
 |---|---|---|---|---|
-| IMPORT-01/02 | P1 | DONE | MatyMeatBoy | Launcher "Importar NSP/XCI/NSZ…": base NSP/NSZ/XCI/XCZ + update NSP/NSZ + prod.keys through `newsnap import` on the build kit's Python and a bundled hactool (`tools/build_hactool.py`). NSZ/XCZ/XCI are rebuilt as a temporary NSP by `newsnap/container.py` (nsz's NCZ format, NCA hash check). Synthetic tests only; not tested end to end (no dump on the owner's disk). **Accepted by the owner (2026-11-14) until an issue reports otherwise.** |
-| PACE-AMD-01 | P1 | REVIEW | MatyMeatBoy | Judder on fixed-refresh displays: 60 fps on the owner's 144 Hz FIFO display alternates 2/3 refreshes. `fps = display` caps at refresh/n (72 at 144 Hz) and presents mid-refresh from DWM vblank timing (`snap_latent_sync.h`, as Special K's Latent Sync). Trace: 100 % of presents 13.9 ms apart; the panel itself not measured (AMD lacks present timing). Owner's eye test pending. |
-| FG-01/02 | P2 | REVIEW | MatyMeatBoy | FSR frame generation (SDK 2.4, no FFX swapchain), `frame_gen = fsr`, off by default, FSR 3.1/4 only; pauses when real fps > 0.55 × refresh. HUD-less image from the tonemapped scene before the interface pass (0.8.8). Not done: DLSS-G (needs RTX). |
-| SS-02 | P1 | REVIEW | MatyMeatBoy | Host-scaled internal resolution 125–300 % and "display"; 16:9 chain; `shadow_scale` for Snap's sun maps. RX 6900 XT verified at 60/120 fps. Missing: RTX, photo score comparison. [SUPERSAMPLING.md](SUPERSAMPLING.md). |
-| INPUT-HZ-01 | P0 | REVIEW | MatyMeatBoy | Fixed in 0.9.7: above 60 fps the pad is sampled once per interface step (`snap_ui_pace_pad`, the game reads per-button bytes through `main+0x43c160`/`0x43c2d0`, found with hardware data breakpoints). RX 6900 XT: 90/120/144 fps give the 60 fps dialogue sequence. [HIGH_FPS.md](HIGH_FPS.md). Owner's play test pending. |
-| FPS-02 | P1 | REVIEW | MatyMeatBoy | Pause-menu pointer fixed in 0.9.7 (`main+0x643a70` moves by the game frame time, 0 while paused; the real frame time is used then). Input repeat is covered by INPUT-HZ-01. Not audited: item throws in later stages, cooldowns. |
-| HD-SHADOW-01 | P1 | REVIEW | MatyMeatBoy | 0.9.7, off by default: scenery shadows are baked into BC6H light maps; saved once as float, enlarged locally (`newsnap/hdshadows.py`: Real-ESRGAN on a log scale, light kept, directional maps left alone, own BC6H encoder), loaded by hash. Florio first area checked on RX 6900 XT. Other levels and a side-by-side judgement by the owner pending. |
-| LAUNCH-UI-01 | P2 | REVIEW | MatyMeatBoy | 0.9.7: sidebar with Play button, status chips (`sidebar_ui.py`); own design, nothing copied from Recompia (GPL-3.0). |
-| REL-097 | P1 | DONE | MatyMeatBoy | 0.9.7 published with every open row; internal resolution list fitted to the display; VRR in the in-game frame limit. Old release assets that still hold `pruebas-amd` were left as published. |
-| VRR-02, ESCALADO-01, CONSOLE-02, PKG-01 | P1/P2 | REVIEW | RTX tester | In `main`, not released: `fps = vrr` (cap just under the refresh; 138 at 144 Hz, RTX log), Automatic upscaler by default and the launcher's «Escalado» wording, console window hidden when it belongs to the game, about 770 unused Tcl/Tk files out of the launcher package. **Not checked:** launcher window, a launcher built without those files, the console actually hidden, anything on AMD. |
-| UI-HZ-01 | P1 | REVIEW | RTX tester | The interface (game interface objects driving Flash-style movies) counted frames: logic, timelines and the per-frame event 22 ran 2.4x at 144 fps. Above 60 fps the handler (`main+0x7835d0`) now branches to its drawing section on the frames that are not due, so all three run 60 times a second and the interface is drawn every frame (`snap-2.0.1-ui-pace.txt`, `snap_ui_pace.c`). The 0.9.3 version and three other attempts broke the interface; they are recorded in [HIGH_FPS.md](HIGH_FPS.md). RTX 4060: route to the expedition start at 144 fps matches 60 fps, watched live by the owner. Not run on AMD; screens outside the route not watched. |
-| MENU-03 | P2 | REVIEW | RTX tester | In-game internal resolution as one scale around the game's 100 %; Automatic upscaler reads as Original while the internal resolution is above 100 % (`cfg_upscaling`). RTX: Auto + 150 % draws 2880x1620 without an upscaler, Auto + 100 % keeps DLAA. Launcher page not changed. |
-| FPS-01 | P1 | REVIEW | RTX tester | 90/120/144 FPS caps without timing patches. RTX verified; RX 6900 XT 120 fps at 200 % verified by MatyMeatBoy. [HIGH_FPS.md](HIGH_FPS.md). |
-| VRR-01 | P1 | REVIEW | RTX tester/MatyMeatBoy | Present-timing status (unknown/fixed/variable). Drivers, not the game, turn VRR on; borderless fullscreen can flip independently. Guidance in [DISPLAY.md](DISPLAY.md). FreeSync physical check pending (owner's monitor OSD). |
-| GYRO-01/02 | P1 | DONE | MatyMeatBoy | Six-axis IPC answered; `gyro_sens` (2.5). Physical controller test pending. **Accepted by the owner (2026-11-14) until an issue reports otherwise.** |
-| CRISTAL-01 | P1 | REVIEW | MatyMeatBoy | NaN-safe SPIR-V on AMD. A/B attribution and RTX control pending. |
-| FOTO-01 | P0 | REVIEW | MatyMeatBoy | RDNA 1/2 BC block-view stand-ins. More levels/album and RTX control pending. |
-| PRESENT-WIN-01, PIPE-MO-01 | P1/P2 | REVIEW | MatyMeatBoy | Windowed immediate without mailbox; motion pipeline prewarm. |
-| PACE-01, CPU-WORKER-07, POOL-BOUNDS-01, HEAD-INTRO | P1/P2 | REVIEW | RTX tester/MatyMeatBoy | Pacing and CPU investigations; details in the archived board. |
-| KEYBOARD-CRASH, TUTO-01, INPUT-01, GPU-WRITE-01, COLOR-01, PAD-01, MENU-01, LAUNCH-POSTBUILD-06, QA-AMD-01 | P0/P1 | REVIEW | RTX tester | Integrated fixes awaiting physical acceptance; details in the archived board. |
+| — | — | — | — | No open rows (2026-11-15, after 0.9.7). Closed rows and their evidence: [PENDIENTES-HECHOS.md](PENDIENTES-HECHOS.md). A row closes when it is published and verified on the owner's hardware or by its route; an issue or an owner report reopens it here. |
 
 ## Ideas after 0.8.6
 
