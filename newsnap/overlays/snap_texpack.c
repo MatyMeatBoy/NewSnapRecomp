@@ -101,8 +101,10 @@ static int is_srgb(VkFormat f) {
                                              (f - VK_FORMAT_ASTC_4x4_SRGB_BLOCK) % 2 == 0);
 }
 
+// Colour textures only: the game stores them as sRGB (BC1/BC3/BC7 sRGB, ASTC decoded to RGBA8 sRGB). Normal maps (BC5),
+// masks (BC4) and HDR maps (BC6H) are data, not pictures: an upscaler would invent values in them.
 static int eligible(const VkTexImage *img) {
-    return img && img->type == VK_IMAGE_TYPE_2D && img->layers == 1 && img->samples == 1 &&
+    return img && is_srgb(img->format) && img->type == VK_IMAGE_TYPE_2D && img->layers == 1 && img->samples == 1 &&
            img->aspect == VK_IMAGE_ASPECT_COLOR_BIT && img->width >= 32 && img->height >= 32 && !img->skip;
 }
 
@@ -295,4 +297,10 @@ VkImage snap_texpack_image(VkImage game, VkFormat *fmt, uint32_t *levels) {
         if (hd[i].game == game) { r = hd[i].img, *fmt = hd[i].fmt, *levels = hd[i].levels; break; }
     plat_mutex_unlock(&lock);
     return r;
+}
+
+// The in-game menu (MENU-02): how many HD textures the pack folder holds, 0 for none.
+int snap_texpack_files(void) {
+    setup();
+    return nindex > 0 ? nindex : 0;
 }

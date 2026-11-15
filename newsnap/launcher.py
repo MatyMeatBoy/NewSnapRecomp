@@ -206,7 +206,7 @@ class Launcher:
         fullscreen = ttk.Checkbutton(video, text='Pantalla completa', variable=self.variables['fullscreen'], onvalue='1', offvalue='0')
         fullscreen.pack(anchor='w', pady=(5, 10))
         Tooltip(fullscreen, 'Solicita pantalla completa al runtime. No cambia la resolución interna ni garantiza VRR o modo exclusivo del controlador.')
-        self._choice(video, 'Tamaño de ventana', 'window_size', ('1280x720', '1600x900', '1920x1080', '2560x1440', '3440x1440', '3840x2160'), editable=True,
+        self._choice(video, 'Tamaño de ventana', 'window_size', ('auto', '1280x720', '1600x900', '1920x1080', '2560x1440', '3440x1440', '3840x2160'), editable=True,
                      help_text='Admite un tamaño propio como 2560x1080. Cambia la ventana, no la resolución interna ni la salida nativa.')
         self._choice(video, 'Salida nativa del juego', 'operation_mode', {'TV · 1920 × 1080': 'docked', 'Portátil · 1280 × 720': 'handheld'},
                      help_text='El modo TV produce una salida de 1080p; el modo portátil, 720p. Una ventana 4K no convierte la salida nativa en 4K.')
