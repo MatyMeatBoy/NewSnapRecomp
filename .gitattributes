@@ -4,4 +4,3 @@
 *.md text eol=lf
 *.yml text eol=lf
 *.bat text eol=crlf
-tools/pruebas-amd/LEEME.txt text eol=crlf

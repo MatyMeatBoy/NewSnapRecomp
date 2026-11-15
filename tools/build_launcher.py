@@ -16,7 +16,7 @@ from newsnap.version import VERSION
 def source_fingerprints(root=ROOT):
     files = []
     for pattern in ('newsnap/**/*.py', 'newsnap/overlays/*', 'assets/icons/*', 'assets/controllers/*', 'assets/launcher/*', 'profiles/*.json',
-                    'tools/fetch_*.py', 'tools/package_build_kit.py', 'tools/triage_game_log.py', 'tools/pruebas-amd/*',
+                    'tools/fetch_*.py', 'tools/package_build_kit.py', 'tools/triage_game_log.py',
                     'toolchain/hactool/*'):
         files.extend(p for p in root.glob(pattern) if p.is_file())
     files.extend(root / name for name in ('tools/launcher_entry.py', 'tools/build_launcher.py',
@@ -43,8 +43,6 @@ def build():
     (application / 'profiles').mkdir(exist_ok=True)
     for spec in (ROOT / 'profiles').glob('snap-*.json'):
         shutil.copy2(spec, application / 'profiles' / spec.name)
-    # FOTO-01: the owner's A/B batch files for the RX 6900 XT, beside the launcher.
-    shutil.copytree(ROOT / 'tools/pruebas-amd', application / 'pruebas-amd', dirs_exist_ok=True)
     hactool = ROOT / 'toolchain/hactool/hactool.exe'   # NSP/XCI import from the launcher (home_ui.import_dump)
     if hactool.is_file():
         (application / 'tools').mkdir(parents=True, exist_ok=True)
