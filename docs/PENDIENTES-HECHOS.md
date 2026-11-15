@@ -252,3 +252,12 @@ Pasos: merge del PR → `python -m tools.package_build_kit --sdk-root <sdkroot>`
 `tools/build_launcher.py` → `python -m tools.package_windows_release` → verificar kit y
 recompilación con PATH mínimo → `gh release create` → instalar con
 `updater.stage_update/apply_update` y `maintenance.rebuild_runtime`.
+
+## Closed 2026-11-15
+
+SS-03: the owner reports the HD photo thumbnails working well on the RX 6900 XT in 0.9.4; only the first one loads a little slowly (minor, noted in HANDOFF-0.9.7.md). LAUNCH-FG-01: fixed in `main` with unit tests; reopen if the launcher still refuses FSR frame generation.
+
+| ID | P | State | Owner | Summary |
+|---|---|---|---|---|
+| SS-03 | P1 | DONE | MatyMeatBoy | HD photo thumbnails (`AC_HD_PHOTOS`, on): the 360×240 picture encoded to BC1 is drawn at 1080×720 and a copy replaces the BC1 thumbnail when sampled (`snap_hd_photo.c`, no vendor branch). Folder screen verified on RX 6900 XT; in-level preview and the big selection photo not opened by the route; RTX pending. Shadow option covers every square depth map and has `auto`. |
+| LAUNCH-FG-01 | P1 | DONE | RTX tester | The launcher refused FSR frame generation with «needs reconstruction» even with a reconstruction selected, and dropped it when reading the file back. Cause: `validate_settings` applied the rules between two settings to a single setting (one changed value on save, one line on load), reading the missing upscaler as Original. Rules between settings are now judged only when both are present; whole combinations are still checked on save and launch. Automatic with an internal resolution above 100 % is accepted (MENU-03), and refused together with frame generation. `tests/test_launcher_fg.py`. Not run in the launcher window on the owner's PC. The RX 6900 XT test batch files (`pruebas-amd`) left the repository and the package; the updater and an installed launcher at start remove the shipped ones. Still open from the owner, for 0.9.5: Automatic as the default reconstruction (where Original is now) and recognised by frame generation; labels and terms as in other recomps («Escalado» / upscaling, as Longshot, Witch Time and the Astral Chain recomp use them) across launcher, menu and docs; one term for VRR/FreeSync/G-SYNC; a VRR frame cap a few fps under the refresh rate so the game stays inside the variable range (about 138 at 144 Hz); HD photo thumbnails appear late when first shown, try a compressed format as the game uses. |

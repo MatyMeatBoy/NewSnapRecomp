@@ -5,3 +5,6 @@ site snap_timer_trace main 6ac134 f9000668 @fn:snap_timer_observe f9000668
 site snap_timer_trace main 4c1df0 bd007261 bd007261 @fn:snap_rail_observe
 site snap_timer_trace main 79a6d0 d10403ff @fn:snap_ui_state_observe d10403ff
 site snap_timer_trace main 6c1d90 d10203ff @fn:snap_ui_event_observe d10203ff
+# The game's pad update (main+0x925b60), after its null checks: observed only (NEWSNAP_PAD_TRACE=1).
+site snap_timer_trace main 925b68 d10703ff d10703ff @fn:snap_pad_observe
+site snap_timer_trace main 7a9a98 2a0103f4 2a0103f4 @fn:snap_event_observe

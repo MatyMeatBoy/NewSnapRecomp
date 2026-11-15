@@ -114,3 +114,47 @@ void snap_timer_observe(Cpu *c) {
            (unsigned long long)ms_sums[0], (unsigned long long)ms_sums[1], (unsigned long long)ms_sums[2],
            (unsigned long long)c->x[19]);
 }
+
+// The game's pad object at its update (main+0x925b60, x1): +0x44 buttons, +0x48 pressed, +0x4c released, as the
+// previous update left them. NEWSNAP_PAD_TRACE=1 logs each update that follows a press or a release, with the
+// presented frame, so the cadence of the update and the life of a press can be read against the frame rate.
+#include "gfx.h"
+extern GfxStats gfx_counters;
+void snap_pad_observe(Cpu *c) {
+    static int on = -1;
+    if (on < 0) {
+        const char *trace = getenv("NEWSNAP_PAD_TRACE");
+        on = trace && !strcmp(trace, "1");
+    }
+    if (!on) return;
+    static uint64_t calls, window_ns, window_calls, window_frame;
+    static unsigned lines;
+    uint32_t state[3];
+    uint64_t now = kern_now_ns(), frame = __atomic_load_n(&gfx_counters.frames, __ATOMIC_RELAXED);
+    calls++;
+    if (!window_ns) window_ns = now, window_frame = frame;
+    if (now - window_ns >= 5000000000ull) {
+        rt_log("snap_pad: %llu updates in %llu frames", (unsigned long long)(calls - window_calls),
+               (unsigned long long)(frame - window_frame));
+        window_ns = now, window_calls = calls, window_frame = frame;
+    }
+    if (lines >= 4096 || !plat_mem_read(c->x[1] + 0x44, state, sizeof state) || !(state[1] | state[2])) return;
+    lines++;
+    rt_log("snap_pad: frame %llu call %llu pad %llx buttons %x pressed %x released %x",
+           (unsigned long long)frame, (unsigned long long)calls, (unsigned long long)c->x[1], state[0], state[1], state[2]);
+}
+
+// The interface's event raise (main+0x7a9a70: x0 object, w1 event), NEWSNAP_PAD_TRACE=1: every event but the
+// per-frame one (22), with the presented frame.
+void snap_event_observe(Cpu *c) {
+    static int on = -1;
+    static unsigned lines;
+    if (on < 0) {
+        const char *trace = getenv("NEWSNAP_PAD_TRACE");
+        on = trace && !strcmp(trace, "1");
+    }
+    if (!on || (uint32_t)c->x[1] == 22 || lines >= 20000) return;
+    lines++;
+    rt_log("snap_event: frame %llu object %llx event %u", (unsigned long long)__atomic_load_n(&gfx_counters.frames, __ATOMIC_RELAXED),
+           (unsigned long long)c->x[0], (unsigned)c->x[1]);
+}
