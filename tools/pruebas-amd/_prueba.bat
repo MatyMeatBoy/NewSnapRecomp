@@ -30,6 +30,15 @@ goto variables
 :arrancar
 echo Prueba %NOMBRE%: arrancando el juego. Cierra el juego para terminar la prueba.
 pushd "%JUEGO%"
+rem Compila todos los shaders antes de jugar (la version mas completa: todas las bibliotecas mas las variantes ya vistas).
+rem Solo cuando hace falta: no hay preparacion (una actualizacion que cambio los shaders la borra) o el runtime la pide.
+set "PREPARAR="
+if not exist "shader-prepared.bin" set "PREPARAR=1"
+findstr /c:"\"shader_preparation_required\": true" "newsnap-game.json" >nul 2>&1 && set "PREPARAR=1"
+if defined PREPARAR if exist "NewSnapLauncher.exe" (
+  echo Preparando todos los shaders antes de jugar, solo esta vez...
+  start "" /wait NewSnapLauncher.exe --prepare --all
+)
 start "" /wait newsnap.exe
 set "SALIDA=%ERRORLEVEL%"
 if not exist "logs\pruebas" mkdir "logs\pruebas"

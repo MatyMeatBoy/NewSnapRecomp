@@ -16,6 +16,7 @@ import time
 from pathlib import Path, PurePosixPath
 
 from .paths import data_dir
+from .importer import write_json
 from .upstream import COMMIT
 from .version import VERSION, RUNTIME_API, RUNTIME_CAPABILITIES
 
@@ -28,6 +29,17 @@ RUNTIME_FILES = ('newsnap.exe', 'SDL3.dll', 'libopus-0.dll', 'ac_xlate.exe',
                  'licenses/FidelityFX-SDK-1.1.4-LICENSE.txt',
                  'newsnap-game.json')
 REQUIRED_FILES = ('newsnap.exe', 'SDL3.dll', 'libopus-0.dll', 'ac_xlate.exe', 'ac_xlate.id', 'romfs-index.bin')
+SHADER_IDENTITY = 'newsnap-shader-identity.json'
+
+
+def shader_identity(folder):
+    """What compiled shaders depend on: the translator's identity and SHADER_EPOCH (version.py)."""
+    from .version import SHADER_EPOCH
+    xlate = Path(folder) / 'ac_xlate.id'
+    return {'format': 1, 'shader_epoch': SHADER_EPOCH,
+            'translator': digest(xlate) if xlate.is_file() else None}
+
+
 INVALIDATED = ('pipeline-cache.bin', 'shader-prepared.bin', 'newsnap-shader-preparation.json',
                'shader-prepared-driver.txt', 'shader-cache')
 TRANSACTION = '.runtime-transaction'
@@ -342,7 +354,14 @@ def install_candidate(root, candidate, cancel_event=None):
     transaction = directory / TRANSACTION
     backup = transaction / 'backup'
     backup.mkdir(parents=True)
-    names = list(RUNTIME_FILES) + list(INVALIDATED)
+    # An update that does not change what shaders depend on keeps the player's compiled cache and preparation:
+    # the same translator and SHADER_EPOCH give the same translated shaders, and the driver's pipeline cache checks
+    # its own driver identity. Anything else, or no record of the installed identity, starts them again.
+    new_identity = shader_identity(candidate)
+    old_identity = _json(directory / SHADER_IDENTITY) if (directory / SHADER_IDENTITY).is_file() else None
+    keep_shaders = old_identity == new_identity and new_identity['translator'] is not None
+    invalidated = () if keep_shaders else INVALIDATED
+    names = list(RUNTIME_FILES) + list(invalidated)
     for name in names:
         _safe_runtime_path(directory, name)
     journal = {'format': 2, 'files': {n: (directory / n).exists() for n in names}}
@@ -385,7 +404,7 @@ def install_candidate(root, candidate, cancel_event=None):
                 digest(directory/'newsnap.exe')!=marker['native_executable_sha256']):
             raise ValueError('Installed runtime integrity verification failed')
         _verify_runtime_files(directory,marker)
-        for name in INVALIDATED:
+        for name in invalidated:
             path=_safe_runtime_path(directory,name)
             if path.exists() or path.is_symlink():
                 raise ValueError(f'Runtime cache invalidation incomplete: {name}')
@@ -396,9 +415,13 @@ def install_candidate(root, candidate, cancel_event=None):
     (transaction / 'journal.json').unlink()
     _sync_directory(transaction)
     _cleanup_transaction(directory)
+    write_json(directory / SHADER_IDENTITY, new_identity)
+    if keep_shaders:   # the kept preparation still holds: no forced preparation at the next start
+        from .launcher_settings import clear_shader_preparation_required
+        clear_shader_preparation_required(root)
     return {'format':1,'runtime_sha256':marker['native_executable_sha256'],
-            'invalidated':list(INVALIDATED),
-            'removed_existing':[name for name in INVALIDATED if journal['files'][name]],
+            'invalidated':list(invalidated),'shader_cache_kept':keep_shaders,
+            'removed_existing':[name for name in invalidated if journal['files'][name]],
             'cache_absence_verified':True,'transaction_removed':True}
 
 

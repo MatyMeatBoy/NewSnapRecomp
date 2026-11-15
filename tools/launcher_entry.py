@@ -22,6 +22,8 @@ def main():
             sys.stdout = sys.stderr = log
             try:
                 prepare_observed(runtime_dir(ROOT), '--all' in sys.argv[1:])
+                from newsnap.launcher_settings import clear_shader_preparation_required
+                clear_shader_preparation_required(ROOT)   # prepared: the next start needs no preparation
             except Exception:
                 import traceback
                 traceback.print_exc()
