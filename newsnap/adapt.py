@@ -37,6 +37,7 @@ from .framegen_adapt import edits as framegen_edits
 from .hd_photo_adapt import edits as hd_photo_edits
 from .wide_adapt import edits as wide_edits
 from .texpack_adapt import edits as texpack_edits
+from .snap_menu_adapt import edits as snap_menu_edits
 from .crc_isa_adapt import edits as crc_isa_edits
 from .xlate_semantics_adapt import edits as xlate_semantics_edits, stage_patches as stage_xlate_patches
 from .version import VERSION
@@ -105,7 +106,7 @@ def adapt_sources(destination, *, patch_output=None):
              '{"LANG", "", "en-US|ja|fr|de|es-419|es|it|fr-CA|ko|zh-Hant|zh-Hans", RESTART}'),
             ('{"ANISO", "auto", "auto|game|2|4|8|16", RESTART}', '{"ANISO", "game", "game|2|4|8|16", RESTART}'),
             ('{"ASPECT", "wide", "fit|stretch|wide", LIVE}', '{"ASPECT", "fit", "fit|stretch", LIVE}'),
-            ('"game|50|67|75|100|125|150|200"', '"game|50|60|70|80|90|100|125|133|150|175|200|250|300|display"'),
+            ('"game", "game|50|67|75|100|125|150|200"', '"display", "game|50|60|70|80|90|100|125|133|150|175|200|250|300|display"'),
             ('"mailbox|fifo|immediate"', '"mailbox|fifo|fifo_relaxed|immediate"'),
         ],
         'runtime/vk_pipeline.c': [
@@ -240,7 +241,7 @@ def adapt_sources(destination, *, patch_output=None):
                     present_trace_edits, pool_bounds_edits, crc_isa_edits, xlate_semantics_edits,
                     bc_block_views_edits, hid_six_axis_edits, spirv_nminmax_edits,
                     pipe_mo_keys_edits, gyro_sens_edits, windowed_present_edits, fps_text_edits,
-                    high_fps_edits, framegen_edits, hd_photo_edits, wide_edits, texpack_edits):
+                    high_fps_edits, framegen_edits, hd_photo_edits, wide_edits, texpack_edits, snap_menu_edits):
         for name, changes in adapter().items():
             edits.setdefault(name, []).extend(changes)
     for folder in ('runtime', 'recomp', 'tools'):

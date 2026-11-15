@@ -10,9 +10,9 @@ import tempfile
 from .paths import runtime_dir, data_dir, default_profile, shader_library_dir, is_release_layout
 from .version import VERSION, RUNTIME_API, RUNTIME_CAPABILITIES
 
-DEFAULTS = {'fullscreen': '1', 'window_size': '1920x1080', 'vk_present': 'mailbox',
+DEFAULTS = {'fullscreen': '1', 'window_size': 'auto', 'vk_present': 'mailbox',
             'fps': '60', 'volume': '100', 'mouse_sens': '1', 'motion': '1',
-            'operation_mode': 'docked', 'render_scale': 'game', 'upscaler': 'bilinear',
+            'operation_mode': 'docked', 'render_scale': 'display', 'upscaler': 'bilinear',
             'sharpness': '0', 'aniso': 'game', 'shadow_scale': '1', 'aspect': 'fit', 'color_preset': 'default',
             'color_brightness': '0', 'color_contrast': '100', 'color_saturation': '100', 'color_gamma': '1'}
 SECTIONS = {'fullscreen': 'display', 'window_size': 'display', 'vk_present': 'display',
@@ -119,6 +119,8 @@ def validate_settings(values):
             valid = value in ('30', '60', '90', '120', '144', 'display')
         elif key in CHOICES:
             valid = value in CHOICES[key]
+        elif key == 'window_size' and value == 'auto':
+            valid = True
         elif key == 'window_size':
             match = re.fullmatch(r'(\d{2,5})x(\d{2,5})', value)
             valid = bool(match and all(64 <= int(n) <= 16384 for n in match.groups()))
