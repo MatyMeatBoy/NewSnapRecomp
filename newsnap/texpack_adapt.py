@@ -9,9 +9,9 @@ view's channel mapping; the HD image goes with the game's (vk_exec_image_gone).
 def edits():
     return {
         'runtime/cfg.c': [
-            ('"FPS", "FRAME_GEN", "FREEZE_IDLE", "HD_PHOTOS",', '"FPS", "FRAME_GEN", "FREEZE_IDLE", "HD_PHOTOS", "TEX_PACK",'),
-            ('{"HD_PHOTOS", "display"},', '{"HD_PHOTOS", "display"}, {"TEX_PACK", "display"},'),
-            ('{"HD_PHOTOS", "1", "0|1", RESTART},', '{"HD_PHOTOS", "1", "0|1", RESTART}, {"TEX_PACK", "1", "0|1", RESTART},'),
+            ('"FPS", "FRAME_GEN", "FREEZE_IDLE", "HD_PHOTOS",', '"FPS", "FRAME_GEN", "FREEZE_IDLE", "HD_PHOTOS", "HD_SHADOWS", "TEX_PACK",'),
+            ('{"HD_PHOTOS", "display"},', '{"HD_PHOTOS", "display"}, {"HD_SHADOWS", "display"}, {"TEX_PACK", "display"},'),
+            ('{"HD_PHOTOS", "1", "0|1", RESTART},', '{"HD_PHOTOS", "1", "0|1", RESTART}, {"HD_SHADOWS", "0", "0|1", RESTART}, {"TEX_PACK", "1", "0|1", RESTART},'),
         ],
         'runtime/vk_texture.c': [
             ('    e->n_up++;\n    perf_end(PERF_TEX, p0);\n}',
