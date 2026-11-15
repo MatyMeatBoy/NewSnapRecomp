@@ -17,12 +17,10 @@ from .version import VERSION
 
 GREEN, CREAM, AMBER, INK = '#163d32', '#f5f1e5', '#dfa648', '#203c34'
 PAGE_SIZE = 12
-PRESENTATION_LABELS = {'VSync · FIFO': 'fifo', 'Mailbox': 'mailbox', 'Sin VSync · Immediate': 'immediate',
-                       'VSync adaptable · FIFO Relaxed': 'fifo_relaxed'}
+PRESENTATION_LABELS = {'VSync · FIFO': 'fifo', 'Mailbox': 'mailbox', 'Sin VSync · Immediate': 'immediate'}
 PRESENTATION_HELP = ('FIFO: presenta la cola en orden durante el refresco vertical; evita tearing y puede añadir latencia. '
                      'Mailbox: sincroniza con el refresco y reemplaza el fotograma pendiente por el más reciente. '
                      'Immediate: presenta sin esperar al refresco; puede producir tearing. '
-                     'FIFO Relaxed: permite tearing si el fotograma llega tarde. '
                      'Si el modo solicitado no está disponible, Vulkan usa FIFO. '
                      'Ningún modo garantiza por sí solo que FreeSync/G-SYNC esté activo.')
 
@@ -229,7 +227,8 @@ class Launcher:
         present_choice = ttk.Combobox(row, textvariable=self.presentation, values=tuple(PRESENTATION_LABELS), state='readonly', width=31)
         present_choice.pack(side='left')
         Tooltip(present_label, PRESENTATION_HELP); Tooltip(present_choice, PRESENTATION_HELP)
-        self._help(video, 'FIFO / Mailbox / Immediate / FIFO Relaxed. El modo efectivo y VRR se comprueban durante el juego.')
+        self._help(video, 'FIFO / Mailbox / Immediate. El modo efectivo y VRR se comprueban durante el juego.')
+        self._vrr_mode(video)
         self._help(video, 'VRR (FreeSync / G-SYNC) depende de la pantalla y el controlador. Su presentación se comprueba durante la expedición.')
         from .display_ui import DisplayPanel
         self.display=DisplayPanel(self,video)
@@ -263,6 +262,45 @@ class Launcher:
         self._mod_options()
         for key in ('render_scale', 'aniso', 'upscaling'):
             self.variables[key].trace_add('write', self._quality_preset_changed)
+
+    def _vrr_mode(self, frame):
+        """«Modo VRR»: VSync (FIFO) and the frame limit just under the monitor's refresh («VRR», 138 at 144 Hz), the
+        combination that keeps a FreeSync / G-SYNC display inside its range: no tearing, no V-Sync stalls. The driver turns
+        VRR on; this sets the game for it. It follows the two settings, so changing either by hand turns it off."""
+        self.vrr_mode = tk.BooleanVar(value=False)
+        self._vrr_before = ('60', 'mailbox')
+        box = ttk.Checkbutton(frame, text='Modo VRR (FreeSync / G-SYNC) · FPS justo bajo el refresco del monitor',
+                              variable=self.vrr_mode, command=self._vrr_toggled)
+        box.pack(anchor='w', pady=(4, 2))
+        from .tooltip import Tooltip
+        Tooltip(box, 'Pone VSync (FIFO) y el límite de FPS justo por debajo del refresco de tu monitor (138 en 144 Hz, '
+                     '116 en 120 Hz, 157 en 165 Hz). Así FreeSync o G-SYNC se mantienen dentro de su rango: sin tearing y '
+                     'sin los tirones de VSync. El VRR lo activa el controlador de la GPU (Adrenalin: FreeSync; NVIDIA: '
+                     'G-SYNC); esta opción deja el juego listo para él.')
+        self._help(frame, 'Recomendado si tu monitor tiene FreeSync o G-SYNC. Desactívalo para volver al límite y modo anteriores.')
+        self.variables['fps'].trace_add('write', lambda *args: self._vrr_sync())
+        self.presentation.trace_add('write', lambda *args: self._vrr_sync())
+        self._vrr_sync()
+
+    def _vrr_sync(self):
+        if hasattr(self, 'vrr_mode'):
+            self.vrr_mode.set(self.variables['fps'].get() == 'vrr' and PRESENTATION_LABELS.get(self.presentation.get()) == 'fifo')
+
+    def _vrr_toggled(self):
+        fps_label = self.labeled_choices['fps'][0] if 'fps' in self.labeled_choices else None
+        def show(fps, present):
+            self.variables['fps'].set(fps)
+            if fps_label is not None:
+                fps_label.set(next(label for label, value in self.labeled_choices['fps'][1].items() if value == fps))
+            self.presentation.set(next(label for label, value in PRESENTATION_LABELS.items() if value == present))
+        if self.vrr_mode.get():
+            current = (self.variables['fps'].get(), PRESENTATION_LABELS.get(self.presentation.get(), 'mailbox'))
+            if current != ('vrr', 'fifo'):
+                self._vrr_before = current
+            show('vrr', 'fifo')
+        else:
+            fps, present = self._vrr_before
+            show('60' if fps == 'vrr' else fps, 'mailbox' if present == 'fifo' and fps == 'vrr' else present)
 
     def _apply_quality_preset(self, event=None):
         from .graphics_presets import PRESETS, apply_preset
@@ -825,6 +863,8 @@ class Launcher:
                         messagebox.showerror('No se pudo completar el inicio', event[1], parent=self.root)
                     else:
                         self.home.progress.finish('Juego cerrado · listo para iniciar otra expedición')
+                        if getattr(self, 'autoplay', False):   # --play (Steam, desktop shortcut): back to where it came from
+                            self.root.after(300, self.close)
                     self._album_loaded=False
                     self.display.stop();self.home.refresh();self._tab_changed()
                 elif kind == 'album_locked' and event[1] == self.album_generation:
@@ -868,9 +908,14 @@ class Launcher:
 
 
 def main():
+    import sys
     root = tk.Tk()
     try:
-        Launcher(root)
+        launcher = Launcher(root)
+        if '--play' in sys.argv[1:]:   # Steam and the desktop shortcut: the game straight away with the saved settings
+            launcher.autoplay = True
+            root.iconify()
+            root.after(800, launcher.launch)
     except ImportError:
         messagebox.showerror('Falta Pillow', 'Instala las dependencias con python -m pip install -r requirements.txt.', parent=root)
         root.destroy()

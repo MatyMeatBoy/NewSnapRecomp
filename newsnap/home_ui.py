@@ -49,6 +49,8 @@ class HomePanel:
         launcher.play_button=ttk.Button(footer,text='Iniciar expedición  →',style='Accent.TButton',command=launcher.launch)
         launcher.play_button.pack(side='right')
         self.update_notice=ttk.Button(self.notice_slot,text='',command=lambda:launcher.tabs.select(launcher.update_tab))
+        from .shortcuts_ui import ShortcutButtons
+        self.shortcuts=ShortcutButtons(launcher,footer)
         self.credits=ttk.Button(footer,text='Créditos y licencias',command=launcher.show_credits)
         self.credits.pack(side='left')
         self.refresh();launcher.root.after(150,self.poll)
