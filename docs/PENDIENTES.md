@@ -29,7 +29,9 @@ acceptance), DONE (moved to the history file).
 
 | ID | P | State | Owner | Summary |
 |---|---|---|---|---|
-| HD-SHADOW-02 | P1 | OPEN | — | The camp deck's pixelated shadows are painted into the colour textures, not the light maps (white-texture experiments). The HD shadows mode must enlarge scenery colour textures too. [HANDOFF-0.9.12.md](HANDOFF-0.9.12.md). |
+| OPTIONS-01 | P1 | OPEN | — | Options as in other recomps (owner approved): Preset; Resolución; Antialiasing (Off / SMAA / FSR 4 / FSR 3.1 / DLSS Nativo, any resolution); Escalado de rendimiento (Calidad/Equilibrado/Rendimiento, only when wanted); Generación de fotogramas (only with FSR); Filtrado (juego/16×); Pantalla: modo, límite de FPS with VRR, VSync on/off (Vulkan modes only in advanced). Same names in the in-game menu. |
+| AA-01 | P1 | DONE | MatyMeatBoy | 0.9.12: Native AA (FSR 4/3.1, DLSS) on top of internal resolution above 100 %; checked on RX 6900 XT, owner approved the look. |
+| HD-SHADOW-02 | P1 | OPEN | — | Standing task when the queue is empty. Owner's definition: we keep a curated list of texture hashes that carry painted shadows (colour textures, not light maps; stair/frame jaggies are edge aliasing, fixed by AA-01); the launcher extracts them from the player's own `.drp` archives at build time, enhances them and installs the mod preconfigured. Never ship enhanced textures. First step: a `.drp` reader (encrypted, Oodle). [HANDOFF-0.9.12.md](HANDOFF-0.9.12.md). |
 | MENU-LANG-01 | P2 | OPEN | — | In-game menu in French, German, Italian, Japanese, Korean and Traditional Chinese (Spanish done in 0.9.11). |
 | POINTER-02 | P1 | REVIEW | MatyMeatBoy | 0.9.11: real, averaged frame time on every pointer screen. If it still steps at 144 fps: position drawn only on interface steps (`cursor_mc`, see handoff). |
 | README-01 | P2 | OPEN | — | Screenshots of the enhancements and the launcher for the README. |
