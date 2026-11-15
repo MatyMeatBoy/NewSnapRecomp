@@ -13,10 +13,11 @@ IDS = ('UI_SNAP_RES', 'UI_SNAP_RES_DESC', 'UI_SNAP_RES_UPSCALER', 'UI_SNAP_FG', 
 
 TEXTS = {
     'UI_SNAP_RES': 'Game internal resolution',
-    'UI_SNAP_RES_DESC': 'The resolution the 3D scene is drawn at, relative to the game\'s 1920 x 1080. Below 100 % is '
-                        'lighter; above 100 % (supersampling) is sharper and costs GPU time. By display matches the '
-                        'screen or window height. Above 100 % applies while no upscaler runs. Takes effect after a restart.',
-    'UI_SNAP_RES_UPSCALER': 'above 100 %: set Upscaler to Original',
+    'UI_SNAP_RES_DESC': 'The resolution the 3D scene is drawn at. 100 % is the game\'s own 1920 x 1080: go down for a '
+                        'lighter picture, up (supersampling) for a sharper one that costs GPU time. By display matches '
+                        'the screen or window height. Above 100 % needs no upscaler: Automatic then uses Original by '
+                        'itself, a chosen upscaler has to be set to Original. Takes effect after a restart.',
+    'UI_SNAP_RES_UPSCALER': 'above 100 %: set Upscaler to Original or Automatic',
     'UI_SNAP_FG': 'Frame generation',
     'UI_SNAP_FG_DESC': 'AMD FSR frame generation: one generated frame between two real ones. The interface is kept out of '
                        'the interpolation. It pauses itself while the game runs faster than about half the monitor\'s '
@@ -48,14 +49,18 @@ extern "C" float snap_scene_scale(void);
 static bool snap_upscaler_on(void) { return strcmp(cfg_upscaling(), "off") != 0; }
 
 static void snap_row_internal_res(void) {
-    static const char *const vals[] = {"game", "50", "60", "70", "80", "90", "100", "125", "133", "150", "175", "200",
+    // MENU-03: one scale with the game's own 100 % in the middle, lighter below it and sharper above it; By display
+    // last. 100 % stores "game" (the default); a stored "100" is the same picture and shows as it.
+    static const char *const vals[] = {"50", "60", "70", "80", "90", "game", "125", "133", "150", "175", "200",
                                        "250", "300", "display"};
-    static const char *const names[] = {"Game (100 %)", "50 %", "60 %", "70 %", "80 %", "90 %", "100 %", "125 %",
-                                        "133 %", "150 %", "175 %", "200 %", "250 %", "300 %", "By display"};
-    enum { N = sizeof vals / sizeof *vals };
+    static const char *const names[] = {"50 % (lightest)", "60 %", "70 %", "80 %", "90 %", "100 % (the game's)", "125 %",
+                                        "133 %", "150 %", "175 %", "200 %", "250 %", "300 % (sharpest)", "By display"};
+    enum { N = sizeof vals / sizeof *vals, NATIVE = 5 };
     const char *v = cfg_value("AC_RENDER_SCALE");
+    int cur = NATIVE;
+    for (int i = 0; i < N; i++) if (!strcmp(v, vals[i])) cur = i;
     int above = !strcmp(v, "display") || atoi(v) > 100;
-    opt_choice_list("AC_RENDER_SCALE", UI_SNAP_RES, vals, names, N, UI_SNAP_RES_DESC, -1,
+    opt_choice_list("AC_RENDER_SCALE", UI_SNAP_RES, vals, names, N, UI_SNAP_RES_DESC, cur,
                     above && snap_upscaler_on() ? menu_text(UI_SNAP_RES_UPSCALER) : nullptr);
 }
 
@@ -108,6 +113,14 @@ def edits():
     return {
         'runtime/cfg.c': [
             ('{"WINDOW_SIZE", "1920x1080", NULL, LIVE}', '{"WINDOW_SIZE", "auto", NULL, LIVE}'),
+            # MENU-03: supersampling only runs without an upscaler, so Automatic steps aside by itself when the
+            # internal resolution asks for more than 100 %. A chosen upscaler is never overridden.
+            ('const char *cfg_upscaling(void) {\n    const char *l = legacy_upscaler();\n'
+             '    return l ? l : cfg_value(PREFIX "UPSCALING");\n}',
+             'int snap_auto_upscaler_off(void);   // snap_desktop.c\n'
+             'const char *cfg_upscaling(void) {\n    const char *l = legacy_upscaler();\n'
+             '    const char *up = l ? l : cfg_value(PREFIX "UPSCALING");\n'
+             '    return !l && !strcmp(up, "auto") && snap_auto_upscaler_off() ? "off" : up;\n}'),
         ],
         'runtime/gfx_present.c': [
             ('void gfx_cfg_window_size(int *w, int *h) {\n    int x = 0, y = 0;\n',

@@ -17,3 +17,8 @@ int snap_desktop_size(int *w, int *h) { (void)w, (void)h; return 0; }
 #endif
 
 float snap_scene_scale(void) { return snap_host_scale_factor(); }
+
+// MENU-03: the internal resolution asks for more than the game's 100 % (a percentage above it, or By display on a
+// screen or window taller than 1080). cfg_upscaling() then reads Automatic as Original, since supersampling only
+// runs without an upscaler. Reads the setting only: it must not call cfg_upscaling().
+int snap_auto_upscaler_off(void) { return snap_ss_choice() > 1.0f; }
