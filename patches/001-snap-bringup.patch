@@ -173,9 +173,11 @@
      if (old) vkDestroySwapchainKHR(c->device, old, NULL);
      g_sc_fmt = sf.format;
      g_sc_hdr = hdr;
-@@ -370,7 +404,8 @@
+@@ -369,8 +403,10 @@
+     if (hdr) vk_hdr_metadata(g_sc, 1);
      g_sc_ext = ext;
      res_wide_window(ext.width, ext.height);
++    snap_wide_window(ext.width, ext.height);
      g_sc_n = MAX_IMAGES;
 -    vkGetSwapchainImagesKHR(c->device, g_sc, &g_sc_n, g_sc_img);
 +    VkResult snap_images_result = vkGetSwapchainImagesKHR(c->device, g_sc, &g_sc_n, g_sc_img);
@@ -183,7 +185,7 @@
      static VkExtent2D logged_ext;
      if (logged_ext.width != ext.width || logged_ext.height != ext.height) {
          logged_ext = ext;
-@@ -388,6 +423,13 @@
+@@ -388,6 +424,13 @@
      vk_queue_unlock();
      plat_xchg32(&g_dirty, 0);
      return 1;
@@ -197,7 +199,25 @@
  }
  
  static void sync_barrier(VkCommandBuffer cb, VkImage img, VkImageLayout from, VkImageLayout to, VkPipelineStageFlags2 s0,
-@@ -610,16 +652,23 @@
+@@ -575,6 +618,8 @@
+ // wider camera into the game's 16:9 targets has the camera's shape (resolution.c res_wide_tick; the present thread
+ // sets it from the present job, vk_backend.c).
+ static float g_shape;
++void snap_wide_window(unsigned w, unsigned h);
++int snap_aspect_fills(const char *aspect);
+ void vk_present_shape_set(float shape) { g_shape = shape; }
+ 
+ // The rectangle {x, y, w, h} of a dw x dh swapchain image the cw x ch picture goes into: the whole image with
+@@ -583,7 +628,7 @@
+ // picture's own aspect ratio, or the one vk_present_shape_set gave.
+ void gfx_fit_rect(int cw, int ch, int dw, int dh, int out[4]) {
+     out[0] = out[1] = 0, out[2] = dw, out[3] = dh;
+-    if (cw <= 0 || ch <= 0 || !strcmp(cfg_value("AC_ASPECT"), "stretch")) return;
++    if (cw <= 0 || ch <= 0 || snap_aspect_fills(cfg_value("AC_ASPECT"))) return;
+     if (g_shape > 0) {
+         double w = (double)dh * g_shape;                      // the picture's width at the window's height
+         if (w < dw - 0.5) out[2] = (int)(w + 0.5);            // window wider: pillarbox
+@@ -610,16 +655,23 @@
      if (wsys_minimized() || !g_sc) goto out;
  
      unsigned slot = g_frame % FRAMES;
@@ -222,7 +242,7 @@
      }
      vk_device_fault_report(r);
      if (r != VK_SUCCESS && r != VK_SUBOPTIMAL_KHR) goto out;     // lost, not ready: skip the frame
-@@ -654,6 +703,10 @@
+@@ -654,6 +706,10 @@
      VkCommandBufferBeginInfo bi = {.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
                                     .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT};
      vkBeginCommandBuffer(cb, &bi);
@@ -233,7 +253,7 @@
      uint64_t crumb = __atomic_load_n(&gfx_counters.frames, __ATOMIC_RELAXED);
      vk_crumb(cb, VK_CRUMB_PRESENT, crumb);
      VkImage dst = g_sc_img[idx];
-@@ -673,7 +726,7 @@
+@@ -673,7 +729,7 @@
      // Colour adjustment (AC_COLOR_*, vk_color.c), or on an HDR10 swapchain the PQ encode (vk_hdr.c; the adjustment is
      // for SDR): a copy of the crop takes the game image's place below
      VkImage graded = !general ? VK_NULL_HANDLE : g_sc_hdr ? vk_hdr_encode(cb, slot, src, fmt, rect)
@@ -242,7 +262,7 @@
      const int grect[4] = {0, 0, cw, ch};
      VkImage psrc = graded ? graded : src;
      VkFormat pfmt = graded ? VK_FORMAT_R16G16B16A16_SFLOAT : fmt;
-@@ -765,7 +818,9 @@
+@@ -765,7 +821,9 @@
      }
      g_frame++;
      if (cap) {
@@ -253,7 +273,7 @@
          vmaInvalidateAllocation(c->vma, g_cap_alloc, 0, VK_WHOLE_SIZE);
          g_cap_w = (int)g_sc_ext.width;
          g_cap_h = (int)g_sc_ext.height;
-@@ -810,6 +865,7 @@
+@@ -810,6 +868,7 @@
          g_flip_on = 0;   // its blit is done (device idle); the swapchain goes away unpresented
          menu_vk_release();
          vk_fsr_release();
@@ -261,7 +281,7 @@
          vk_color_release();
          vk_hdr_release();
          vk_contact_release();
-@@ -826,6 +882,7 @@
+@@ -826,6 +885,7 @@
              g_sc_view[i] = VK_NULL_HANDLE;
          }
          if (g_pool) vkDestroyCommandPool(c->device, g_pool, NULL);
@@ -271,7 +291,7 @@
          g_sc = VK_NULL_HANDLE; g_surface = VK_NULL_HANDLE; g_pool = VK_NULL_HANDLE; g_sc_n = 0;
 --- a/runtime/cpu.h
 +++ b/runtime/cpu.h
-@@ -29,7 +29,13 @@
+@@ -29,7 +29,14 @@
  _Static_assert(offsetof(Cpu, fpsr) == 328, "fpsr");
  _Static_assert(offsetof(Cpu, v) == 512, "v");
  
@@ -279,13 +299,14 @@
 +void snap_rail_observe(Cpu *c);
 +void snap_ui_state_observe(Cpu *c);
 +void snap_ui_event_observe(Cpu *c);
++void snap_wide_proj_s1(Cpu *c);
  typedef void (*GuestFn)(Cpu *);
 +void snap_render_select(Cpu *c); // Verified Snap render graph selection hook.
 +void snap_supersample_resize(Cpu *c); // Opt-in engine resize prototype.
  
  // ---- runtime services (runtime/*.c)
  void rt_dispatch(Cpu *c);                 // call function at c->pc
-@@ -38,6 +44,8 @@
+@@ -38,6 +45,8 @@
  void rt_brk(Cpu *c, uint32_t imm, uint64_t pc) __attribute__((noreturn));
  void rt_udf(Cpu *c, uint64_t pc) __attribute__((noreturn));
  uint64_t rt_ticks(void);
@@ -413,7 +434,7 @@
      {"ANTI_ALIASING", "smaa", "off|smaa", LIVE},
 -    {"ASPECT", "wide", "fit|stretch|wide", LIVE}, {"FOV", "100", "70..140", LIVE},
 -    {"ANISO", "auto", "auto|game|2|4|8|16", RESTART},   // vk_texture.c sampler_features
-+    {"ASPECT", "fit", "fit|stretch", LIVE}, {"FOV", "100", "70..140", LIVE}, {"FRAME_GEN", "off", "off|fsr", RESTART}, {"HD_PHOTOS", "1", "0|1", RESTART},
++    {"ASPECT", "fit", "fit|stretch|ultrawide", LIVE}, {"FOV", "100", "70..140", LIVE}, {"FRAME_GEN", "off", "off|fsr", RESTART}, {"HD_PHOTOS", "1", "0|1", RESTART},
 +    {"ANISO", "game", "game|2|4|8|16", RESTART},   // vk_texture.c sampler_features
      // colour adjustment (vk_color.c); the preset is the menu's, the four values are what the present uses
      {"COLOR_PRESET", "default", "default|vivid|clarity|custom", LIVE}, {"COLOR_BRIGHTNESS", "0", "-30..30", LIVE},
@@ -1969,16 +1990,17 @@
      }
 --- a/runtime/vk_exec.c
 +++ b/runtime/vk_exec.c
-@@ -27,6 +27,8 @@
+@@ -27,6 +27,9 @@
  #include "tex.h"
  #include "vk.h"
  #include "vk_exec.h"
 +#include "snap_output_scale.h"
 +#include "snap_hd_photo.h"
++#include "snap_wide.h"
  #include "vk_dlaa.h"
  
  #define WEAK __attribute__((weak))
-@@ -154,8 +156,12 @@
+@@ -154,8 +157,12 @@
  // levels at the logo) go to a stand-in: a 2D array of the blocks of one level in the view's format, one layer per
  // depth plane. It starts with the level's content, so a pass that writes part of a plane keeps the rest, and each pass
  // end copies the planes it drew into the level (a copy between a compressed and a size-compatible uncompressed format).
@@ -1993,7 +2015,7 @@
  static BcStandIn bcs[BC_STANDINS];
  static int nbcs;
  static PlatMutex bcs_lock = PLAT_MUTEX_INIT;   // the replay adds and reads; destroy_tex (any thread) removes
-@@ -197,8 +203,9 @@
+@@ -197,8 +204,9 @@
          return 0;
      }
      uint32_t lw = level_extent(img->width, level), lh = level_extent(img->height, level);
@@ -2004,7 +2026,7 @@
      VkImageCreateInfo ci = {.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO, .imageType = VK_IMAGE_TYPE_2D, .format = fmt,
                              .extent = {s.w, s.h, 1}, .mipLevels = 1, .arrayLayers = s.d, .samples = VK_SAMPLE_COUNT_1_BIT,
                              .tiling = VK_IMAGE_TILING_OPTIMAL,
-@@ -215,9 +222,9 @@
+@@ -215,9 +223,9 @@
      image_barrier(cb, s.img, VK_IMAGE_LAYOUT_UNDEFINED, s.d);
      memory_barrier(cb, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, VK_ACCESS_2_MEMORY_WRITE_BIT, VK_PIPELINE_STAGE_2_COPY_BIT,
                     VK_ACCESS_2_TRANSFER_READ_BIT | VK_ACCESS_2_TRANSFER_WRITE_BIT);
@@ -2016,7 +2038,7 @@
      vkCmdCopyImage(cb, img->image, VK_IMAGE_LAYOUT_GENERAL, s.img, VK_IMAGE_LAYOUT_GENERAL, 1, &rg);
      memory_barrier(cb, VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
                     VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT);
-@@ -225,8 +232,13 @@
+@@ -225,8 +233,13 @@
      plat_mutex_lock(&bcs_lock);
      bcs[nbcs++] = s;
      plat_mutex_unlock(&bcs_lock);
@@ -2032,7 +2054,7 @@
      *out = s;
      return 1;
  }
-@@ -249,10 +261,12 @@
+@@ -249,10 +262,12 @@
          if (bcs[i].img != t->image) continue;
          memory_barrier(ex->cb, VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, VK_ACCESS_2_MEMORY_WRITE_BIT, VK_PIPELINE_STAGE_2_COPY_BIT,
                         VK_ACCESS_2_TRANSFER_READ_BIT | VK_ACCESS_2_TRANSFER_WRITE_BIT);
@@ -2048,7 +2070,7 @@
          vkCmdCopyImage(ex->cb, t->image, VK_IMAGE_LAYOUT_GENERAL, bcs[i].bc, VK_IMAGE_LAYOUT_GENERAL, 1, &rg);
          memory_barrier(ex->cb, VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT,
                         VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT, VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT);
-@@ -262,11 +276,34 @@
+@@ -262,11 +277,34 @@
      plat_mutex_unlock(&bcs_lock);
  }
  
@@ -2086,7 +2108,7 @@
          return 0;
      VkFormat fmt;
      BcStandIn s;
-@@ -303,7 +340,7 @@
+@@ -303,7 +341,7 @@
      o->tex = t;
      if (!t) return;
      const VkTexImage *img = vk_texture_get(t);
@@ -2095,7 +2117,7 @@
      VkImageUsageFlags need = depth_slot ? VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT : VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
      int is3d = img && img->type == VK_IMAGE_TYPE_3D && !depth_slot;   // slices drawn through 2D views (2D_ARRAY_COMPATIBLE)
      if (!img || !(img->usage & need) || (img->type != VK_IMAGE_TYPE_2D && !is3d)) {
-@@ -350,7 +387,7 @@
+@@ -350,7 +388,7 @@
      }
      o->image = img->image;
      o->img = img;
@@ -2104,7 +2126,7 @@
      o->format = fmt;
      o->view_type = layers > 1 ? VK_IMAGE_VIEW_TYPE_2D_ARRAY : VK_IMAGE_VIEW_TYPE_2D;
      o->aspect = depth_slot ? img->aspect & (VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT)
-@@ -612,6 +649,9 @@
+@@ -612,6 +650,9 @@
          want[nwant] = t->image, wasp[nwant++] = i < 8 ? VK_IMAGE_ASPECT_COLOR_BIT : t->img->aspect;
      }
      barrier_to(ex, want, wasp, nwant);   // passes, clears, copies and dispatches see each other's results
@@ -2114,15 +2136,17 @@
      if (vk_gpuprof_on()) vk_gpuprof_mark(ex, 1, 0);
      ex->fbl_mask = fbl;
      ex->fb_dirty = 0;
-@@ -639,6 +679,7 @@
+@@ -639,6 +680,9 @@
                            .pColorAttachments = ca,
                            .pDepthAttachment = ex->pass_depth ? &da : NULL,
                            .pStencilAttachment = ex->pass_stencil ? &sa : NULL};
-+    if (ex->pass_ncolor && ex->color[0].image) snap_hd_photo_pass(ex->cb, ex->color[0].img);   // SS-03
++    if (ex->pass_ncolor && ex->color[0].image) snap_hd_photo_pass(ex->cb, ex->color[0].img), snap_fg_hudless_pass(ex->cb, ex->color[0].img, ex->color[0].format);   // SS-03, FG-02
++    if (snap_wide_pass(ex->cb, ex->pass_ncolor && ex->color[0].image ? ex->color[0].img : NULL, ex->color[0].format))
++        ex->dirty |= VK_EXEC_DIRTY_VIEWPORT | VK_EXEC_DIRTY_SCISSOR;   // ULTRAWIDE-01
      vkCmdBeginRendering(ex->cb, &ri);
      vk_exec_frame.passes++;
      ex->recorded++;
-@@ -715,7 +756,10 @@
+@@ -715,7 +759,10 @@
  static int whole_target(const VkExec *ex, const VkExecTarget *t) {
      // vkCmdClear*Image addresses a 3D level whole, not one depth plane: slices of a 3D target clear in a pass; it
      // cannot clear a compressed image: views of BC blocks clear in a pass too
@@ -2136,16 +2160,17 @@
      return s->x <= 0 && s->y <= 0 && (int64_t)s->x + s->w >= t->width && (int64_t)s->y + s->h >= t->height;
 --- a/runtime/vk_exec_draw.c
 +++ b/runtime/vk_exec_draw.c
-@@ -27,6 +27,8 @@
+@@ -27,6 +27,9 @@
  #include "nvn_hmap.h"
  #include "vk.h"
  #include "vk_exec.h"
 +#include "snap_output_scale.h"
 +#include "snap_hd_photo.h"
++#include "snap_wide.h"
  #include "platform/platform.h"
  #include "vk_dlaa.h"
  
-@@ -595,6 +597,7 @@
+@@ -595,6 +598,7 @@
  
  void vk_exec_image_gone(VkImage image) {
      vk_exec_bc_gone(image);
@@ -2153,8 +2178,11 @@
      vk_hdr_image_gone(image);
      if (!views_by_image.klen) return;
      for (ViewNode *n = nvn_hm_del(&views_by_image, &image), *next; n; n = next) {
-@@ -1277,7 +1280,7 @@
+@@ -1275,9 +1279,10 @@
+ static void tex_info_lookup(VkExec *ex, const GfxShaderRes *r, uint64_t h, int storage, int separate,
+                             VkDescriptorImageInfo *out, VkImage *image_out) {
      int td_on = td_mode();
++    if (snap_wide_capture()) td_on = 0;   // ULTRAWIDE-01: photo capture passes resolve every binding
      VkImage image;
      if (!h || storage || !td_on) return tex_info_full(ex, r, h, storage, separate, out, image_out);
 -    uint32_t gen = vk_texture_slots_gen(), ep = vk_texture_epoch(), sg = vk_sampler_gen();   // before any lookup
@@ -2162,15 +2190,16 @@
      typeof(TD[0]) *m = &TD[(h * 0x9E3779B97F4A7C15ull ^ (uint64_t)r->type << 7 ^ (uint64_t)separate) >> 51];
      if (m->valid && m->h == h && m->type == r->type && m->separate == separate && m->sgen == sg &&
          slot_still(&m->gen, m->tok, h, gen)) {
-@@ -1317,6 +1320,7 @@
+@@ -1317,6 +1322,8 @@
          int hv;
          const VkTexImage *img = vk_texture_by_id_locked((int)(h & 0xfffff), &v, &hv);
          if (img) view = get_view(ex, img, &v, hv, r->type, storage), *image = img->image;
-+        if (img && !storage) view = snap_hd_photo_view(img->image, view);   // SS-03: a thumbnail's 1080x720 copy
++        if (img && !storage) view = snap_hd_photo_view(img->image, view);
++        if (img && !storage) view = snap_wide_capture_view(img->image, view);   // ULTRAWIDE-01: the 16:9 scene   // SS-03: a thumbnail's 1080x720 copy
          if (img && storage) vk_texture_storage_bound_locked(img);
          if (img && !storage && ex->nfbl && in_fbl(ex, img->image)) layout = VK_IMAGE_LAYOUT_ATTACHMENT_FEEDBACK_LOOP_OPTIMAL_EXT;
          if (!storage && !separate) {
-@@ -1625,7 +1629,7 @@
+@@ -1625,7 +1632,7 @@
      for (int i = 0; i < SCALES; i++) o->s[i] = 1.0f;
      o->nfs = 0;
      int skip = vk_tex_mip_skip() > 0;
@@ -2179,7 +2208,23 @@
      int gfx = info->bind_point == VK_PIPELINE_BIND_POINT_GRAPHICS;
      o->s[0] = gfx && ex->pass_scale > 1.0f ? ex->pass_scale : 1.0f;
      int want = gfx ? GFX_STAGE_FS : GFX_STAGE_CS;
-@@ -2299,6 +2303,31 @@
+@@ -2103,6 +2110,7 @@
+     if (h < 1) h = 1;
+     VkViewport v = {x, y + h, w, -h, ex->depth_range[0], ex->depth_range[1]};   // the y flip: negative height
+     vk_dlaa_viewport(ex, &v);   // the scene's draws move by the DLAA jitter
++    snap_wide_viewport(ex->pass_w, &v);   // ULTRAWIDE-01: the interface in the middle 16:9
+     return v;
+ }
+ 
+@@ -2115,6 +2123,7 @@
+     }
+     if (ex->dirty & VK_EXEC_DIRTY_SCISSOR) {
+         VkRect2D r = vk_exec_scissor(ex);
++        snap_wide_scissor(ex->pass_w, &r);
+         vkCmdSetScissorWithCount(cb, 1, &r);
+         ex->recorded++;
+     }
+@@ -2299,6 +2308,31 @@
      return 0;
  }
  
@@ -2211,7 +2256,7 @@
  // Pass, shaders, pipeline, fixed state and resources for a draw. 0: the draw is skipped.
  static int prepare_draw(VkExec *ex, int prim, int32_t count, int restart) {
      if (ex->render_disabled) return drop_draw(ex, VK_DROP_DISABLED, "rendering disabled");
-@@ -2351,14 +2380,16 @@
+@@ -2351,14 +2385,16 @@
      // one-shot draws (volumes and LUTs generated once, later only sampled) would leave their target empty for the
      // session. A draw into per-frame targets is skipped until they are ready and comes back next frame.
      int oneshot = -1, skip = pipe_skip_mode();   // -1: not looked up
@@ -2230,7 +2275,7 @@
      uint32_t fbl = feedback_prepare(ex, fs);
      VkPipeState s = ex->pipe;
      // AC_FORCE_BLEND=<prog>: debug switch, the enemy-death effect (prog 268) is opaque at 1x and 2x; force
-@@ -2394,7 +2425,7 @@
+@@ -2394,7 +2430,7 @@
      static uint64_t wait_left_ns;
      uint32_t wait_ms = 0;
      uint64_t t0 = 0;
@@ -2239,7 +2284,7 @@
          wait_ms = ONESHOT_WAIT_MS;
      } else if (skip < 2 && count <= 6 && (uint64_t)sc.extent.width * sc.extent.height * 2 >= (uint64_t)ex->pass_w * ex->pass_h) {
          uint64_t f = __atomic_load_n(&gfx_counters.frames, __ATOMIC_RELAXED);
-@@ -2413,12 +2444,13 @@
+@@ -2413,12 +2449,13 @@
          p = __atomic_load_n(&info->pipeline, __ATOMIC_ACQUIRE);
      } else {
          w0 = t0 ? t0 : wait_ms ? kern_now_ns() : 0;   // the clock is read only for draws that may wait
@@ -2255,7 +2300,7 @@
          if (pending && oneshot < 0 && !vk_exec_targets_recent(ex, skip >= 1)) {
              perf_count(PERF_CNT_ONESHOT_WAIT);
              why = "one-shot";
-@@ -2562,6 +2594,16 @@
+@@ -2562,6 +2599,16 @@
      }
      return MO.fs[loc];
  }
