@@ -4,7 +4,7 @@
 def edits():
     return {'runtime/cpu.h': [
         ('typedef void (*GuestFn)(Cpu *);',
-         'void snap_timer_observe(Cpu *c);\nvoid snap_rail_observe(Cpu *c);\nvoid snap_pad_observe(Cpu *c);\nvoid snap_event_observe(Cpu *c);\nvoid snap_request_observe(Cpu *c);\n'
+         'void snap_timer_observe(Cpu *c);\nvoid snap_rail_observe(Cpu *c);\nvoid snap_pad_observe(Cpu *c);\nvoid snap_event_observe(Cpu *c);\n'
          'void snap_ui_state_observe(Cpu *c);\nvoid snap_ui_event_observe(Cpu *c);\n'
          'typedef void (*GuestFn)(Cpu *);'),
     ], 'runtime/cfg.c': [
