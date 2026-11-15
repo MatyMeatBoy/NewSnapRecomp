@@ -243,7 +243,7 @@ class BuildCacheIntegrationTests(TestCase):
                 'verified_control':{'display_version':'2.0.1','save_size':42,'journal_size':2}}))
             (root/'patches').mkdir()
             for name in ('snap-2.0.1-render.txt','snap-2.0.1-supersample.txt','snap-2.0.1-random-range.txt',
-                         'snap-2.0.1-high-fps.txt','snap-2.0.1-wide.txt'):
+                         'snap-2.0.1-high-fps.txt','snap-2.0.1-wide.txt','snap-2.0.1-ui-pace.txt'):
                 (root/'patches'/name).write_text('')
             sdk=root/'sdk'
             (sdk/'bin').mkdir(parents=True)
