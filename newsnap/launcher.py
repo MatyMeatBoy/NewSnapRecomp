@@ -45,8 +45,8 @@ class Launcher:
         self.page, self.album_generation, self.preview_generation = 0, 0, 0
         self.preview = None
         self.root.title(f'NewSnap · {VERSION}')
-        self.root.geometry('1020x790')
-        self.root.minsize(860, 730)
+        self.root.geometry('1180x790')
+        self.root.minsize(1000, 730)
         self.root.configure(bg=CREAM)
         self.root.protocol('WM_DELETE_WINDOW', self.close)
         self._style()
@@ -56,14 +56,13 @@ class Launcher:
                 self.root.iconbitmap(str(icon))
             except tk.TclError:
                 pass
-        header = tk.Frame(root, bg=GREEN, padx=24, pady=10)
-        header.pack(fill='x')
-        tk.Label(header, text='NewSnap', font=('Segoe UI', 24, 'bold'), fg=CREAM, bg=GREEN).pack(anchor='w')
-        tk.Label(header, text='NEW POKÉMON SNAP · PORT NATIVO', font=('Segoe UI', 10), fg=AMBER, bg=GREEN).pack(anchor='w')
+        shell = tk.Frame(root, bg=CREAM)
+        shell.pack(fill='both', expand=True)
+        main = tk.Frame(shell, bg=CREAM)
         self.status = tk.StringVar(value='Carga o verifica los datos del juego para comenzar.')
-        ttk.Label(root, textvariable=self.status, style='Status.TLabel', padding=(25, 9)).pack(side='bottom', fill='x')
-        self.tabs = ttk.Notebook(root)
-        self.tabs.pack(fill='both', expand=True, padx=22, pady=(12, 8))
+        ttk.Label(main, textvariable=self.status, style='Status.TLabel', padding=(25, 9)).pack(side='bottom', fill='x')
+        self.tabs = ttk.Notebook(main, style='Pages.TNotebook')
+        self.tabs.pack(fill='both', expand=True, padx=22, pady=(16, 8))
         self.play_tab, self.album_tab, self.options_tab, self.controls_tab = [ttk.Frame(self.tabs, padding=16) for _ in range(4)]
         for frame, title in zip((self.play_tab, self.album_tab, self.options_tab, self.controls_tab), ('Inicio', 'Álbum', 'Opciones', 'Controles')):
             self.tabs.add(frame, text=title)
@@ -74,13 +73,20 @@ class Launcher:
         self.tabs.add(self.mods_tab, text='Mejoras')
         self.update_tab = ttk.Frame(self.tabs, padding=16)
         self.tabs.add(self.update_tab, text='Actualizaciones')
+        from .sidebar_ui import Sidebar
+        self.sidebar = Sidebar(shell, self.tabs, ((self.play_tab, 'Inicio'), (self.album_tab, 'Álbum'),
+                                                  (self.options_tab, 'Opciones'), (self.controls_tab, 'Controles'),
+                                                  (self.mods_tab, 'Mejoras'), (self.update_tab, 'Actualizaciones')),
+                               version=VERSION, play=self.launch)
+        self.sidebar.pack(side='left', fill='y')
+        main.pack(side='left', fill='both', expand=True)
         from .home_ui import HomePanel
         self.home=HomePanel(self,self.play_tab)
         self._album()
         self._options()
         from .update_ui import UpdatePanel
         self.updates = UpdatePanel(self, self._scrolling_options(self.update_tab), automatic=check_updates)
-        self.tabs.bind('<<NotebookTabChanged>>',self._tab_changed)
+        self.tabs.bind('<<NotebookTabChanged>>',self._tab_changed,add='+')
         self.root.after(100, self._poll)
         self.album_status.set('Abre el álbum para cargar las fotografías del perfil.')
 
@@ -94,6 +100,8 @@ class Launcher:
         style.map('TNotebook.Tab', background=[('selected', GREEN)], foreground=[('selected', CREAM)],
                   padding=[('selected', (18, 10)), ('!selected', (18, 10))],
                   expand=[('selected', (0, 0, 0, 0)), ('!selected', (0, 0, 0, 0))])
+        style.layout('Pages.TNotebook.Tab', [])   # the sidebar (sidebar_ui.py) chooses the page
+        style.configure('Pages.TNotebook', background=CREAM, borderwidth=0, tabmargins=(0, 0, 0, 0))
         style.configure('TButton', padding=(15, 9), background='#e5e5d9')
         style.configure('Accent.TButton', background=GREEN, foreground=CREAM, font=('Segoe UI', 13, 'bold'), padding=(25, 14))
         style.map('Accent.TButton', background=[('active', '#245846'), ('disabled', '#84978c')])
@@ -575,6 +583,7 @@ class Launcher:
         for widget in [self.play_button, self.profile_button, *self.save_buttons]:
             widget.configure(state='disabled' if busy else 'normal')
         if hasattr(self,'home'):self.home.set_busy(busy)
+        if hasattr(self,'sidebar'):self.sidebar.set_busy(busy)
         if hasattr(self,'controller_test_button'):self.controller_test_button.configure(state='disabled' if busy else 'normal')
         if hasattr(self,'trace_present_button'):self.trace_present_button.configure(state='disabled' if busy else 'normal')
 

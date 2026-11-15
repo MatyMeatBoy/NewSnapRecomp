@@ -23,6 +23,7 @@ class HomePanel:
         body=ttk.Frame(content);body.pack(side='left',fill='both',expand=True)
         ttk.Label(body,text='Tu próxima expedición',style='Title.TLabel').pack(anchor='w',pady=(0,5))
         self.version=ttk.Label(body,text='',style='Muted.TLabel',wraplength=530);self.version.pack(anchor='w',pady=(0,6))
+        self.chips=ttk.Frame(body);self.chips.pack(anchor='w',pady=(0,8))
         card=ttk.LabelFrame(body,text='Datos del juego',padding=10);card.pack(fill='x',pady=(0,6))
         self.data_state=ttk.Label(card,text='Sin datos cargados',font=('Segoe UI',13,'bold'))
         self.data_state.pack(anchor='w')
@@ -68,8 +69,23 @@ class HomePanel:
         elif value['loaded']:text='Datos cargados · verificación pendiente'
         else:text='Carga tu carpeta GameData para comenzar'
         self.data_state.configure(text=text)
+        self._chips(value)
         self.verify_button.configure(state='normal' if value['loaded'] and not self.launcher.busy else 'disabled')
         return value
+
+    def _chips(self,value):
+        from .sidebar_ui import chip
+        for widget in self.chips.winfo_children():widget.destroy()
+        items=[('Datos verificados','ok') if value['verified'] else ('Datos cargados · sin verificar','warn') if value['loaded']
+               else ('Sin datos del juego','warn')]
+        runtime=value['runtime_version']
+        items.append((f'Runtime {runtime}','ok') if runtime else ('Runtime por preparar','neutral'))
+        if value['loaded']:
+            try:
+                prepared=(runtime_dir(self.launcher.project)/'shader-prepared.bin').is_file() and                          not settings.shader_preparation_required(self.launcher.project)
+            except OSError:prepared=False
+            items.append(('Shaders listos','ok') if prepared else ('Shaders por preparar','neutral'))
+        for text,kind in items:chip(self.chips,text,kind).pack(side='left',padx=(0,6))
 
     def set_busy(self,busy):
         self.load_button.configure(state='disabled' if busy else 'normal')

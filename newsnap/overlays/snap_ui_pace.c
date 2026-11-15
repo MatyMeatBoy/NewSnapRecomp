@@ -41,9 +41,19 @@ static int pace_trace(void) {
     return on;
 }
 
+// The game frame: the game's pad update (snap_ui_pace_pad) runs once in each, so while it runs the interface
+// decision is taken there, once per game frame, and every handler until the next update uses it. The presented-frame
+// counter is advanced by the presentation thread and can change in the middle of a game frame; it only paces the
+// interface when no pad update has run for a while (PAD_GAP_NS).
+#define PAD_GAP_NS 100000000ull
+static uint64_t pad_tick, pad_tick_ns;
+static SnapUiPace pace_presented = {0, 0, 0, 1};
+
 static int pace_step(uint64_t now) {
+    uint64_t seen = __atomic_load_n(&pad_tick_ns, __ATOMIC_ACQUIRE);
+    if (seen && now >= seen && now - seen < PAD_GAP_NS) return __atomic_load_n(&pace.step, __ATOMIC_RELAXED);
     uint64_t frame = __atomic_load_n(&gfx_counters.frames, __ATOMIC_RELAXED);
-    return snap_ui_pace_decide(&pace, frame, now, frame_step_cap_ns());
+    return snap_ui_pace_decide(&pace_presented, frame, now, frame_step_cap_ns());
 }
 
 // At the handler's entry, after it saved its object (x0): x16 (dead here) = 1 to run the handler as
@@ -59,6 +69,19 @@ void snap_ui_pace_enter(Cpu *c) {
     }
     c->x[16] = (uint64_t)step;
     if (!pace_trace()) return;
+    if (!pace.step && step) {   // a frame that does not step, an object that still runs: log each such object once
+        static uint64_t seen[64];
+        static int nseen;
+        int known = 0;
+        for (int i = 0; i < nseen; i++) known |= seen[i] == c->x[0];
+        if (!known && nseen < 64) {
+            uint8_t flags[8] = {0};
+            plat_mem_read(c->x[0] + 0xc0, flags, sizeof flags);
+            seen[nseen++] = c->x[0];
+            rt_log("snap_ui_pace: object %llx runs on every frame (flags +c0 %02x +c4 %02x +c6 %02x)",
+                   (unsigned long long)c->x[0], flags[0], flags[4], flags[6]);
+        }
+    }
     ran += step, drawn_only += !step;
     uint64_t frame = __atomic_load_n(&gfx_counters.frames, __ATOMIC_RELAXED);
     if (!window_ns) window_ns = now, window_frame = frame;
@@ -75,34 +98,44 @@ void snap_ui_pace_event(Cpu *c) {
     c->x[16] = (uint64_t)pace_step(kern_now_ns());
 }
 
-// INPUT-HZ-01. The game's pad update (main+0x925b60) runs once a frame, after the frame's interface handlers, and
-// its edges (+0x48 pressed, +0x4c released) last until the next update. Above 60 fps an edge left by an update before
-// a frame whose interface does not step was never seen by the interface logic, while game code reading the pad every
-// frame still acted on it: a press in the middle of a dialogue line did not complete the line but went on to the
-// next one, as if A had been pressed twice. At the update's exit the next frame's interface decision is taken; edges
-// are held back on the frames that do not step and handed over, all together, on the next one that does. Every
-// reader of the pad then sees each press once, on a frame where the interface also sees it, as at 60 fps; a press
-// arrives at most one interface step (16.7 ms) later. The held buttons (+0x44) are not touched.
-static struct { uint64_t pad; uint32_t pressed, released; } pad_held[4];
+// INPUT-HZ-01. The game's pad update (main+0x925b60) runs once a game frame. It keeps the buttons held (+0x44) and
+// the previous update's (+0x50), and from them the edges (+0x48 pressed, +0x4c released) that last until the next
+// update. Some readers act on the edges every frame, others on the held buttons at their own pace; above 60 fps the
+// interface handlers step only on some frames, so the two kinds saw one press at different times and a press in the
+// middle of a dialogue line completed it and also went on to the next line, as if A had been pressed twice. The
+// game expects a pad sampled at 60 Hz, once per update of its logic. So above 60 fps the pad changes only on the
+// game frames whose interface steps: on the others its buttons stay as on the last step and it has no edges; on a
+// step the game's own comparison with that state gives the edges, and a press that came and went in between is
+// kept as a press and a release. Every reader then sees each press once, at the same frame, as at 60 fps; a press
+// arrives at most one step (16.7 ms) later. The sticks are not touched.
+// The interface decision is taken here as well, once per game frame (pace_step), so the pad and the interface
+// handlers agree on which frames step.
+static struct { uint64_t pad; uint32_t between; } pad_held[4];
 
 void snap_ui_pace_pad(Cpu *c) {
-    uint64_t cap = frame_step_cap_ns(), pad = c->x[19];
-    if (!cap || cap + SNAP_UI_PACE_SLACK_NS >= SNAP_UI_PACE_STEP_NS) return;   // 60 fps or below: every frame steps
-    if (!pad || !plat_mem_readable(pad + 0x48, 8)) return;
+    uint64_t cap = frame_step_cap_ns(), pad = c->x[19], now = kern_now_ns();
+    if (!pad || !plat_mem_readable(pad + 0x44, 16)) return;
     int slot = 0;
     while (slot < 4 && pad_held[slot].pad && pad_held[slot].pad != pad) slot++;
     if (slot == 4) return;   // more pads than the game has: leave them as they are
     pad_held[slot].pad = pad;
-    uint32_t *edges = (uint32_t *)(uintptr_t)(pad + 0x48);
-    uint64_t frame = __atomic_load_n(&gfx_counters.frames, __ATOMIC_RELAXED);
-    int step = snap_ui_pace_decide(&pace, frame + 1, kern_now_ns(), cap);
-    pad_held[slot].pressed |= edges[0];
-    pad_held[slot].released |= edges[1];
-    if (step) {
-        edges[0] = pad_held[slot].pressed, edges[1] = pad_held[slot].released;
-        pad_held[slot].pressed = pad_held[slot].released = 0;
+    if (slot == 0) {   // the first pad marks the game frame: the decision for the handlers until its next update
+        snap_ui_pace_decide(&pace, pad_tick++, now, cap);
+        __atomic_store_n(&pad_tick_ns, now, __ATOMIC_RELEASE);
+    }
+    if (!cap || cap + SNAP_UI_PACE_SLACK_NS >= SNAP_UI_PACE_STEP_NS) return;   // 60 fps or below: every frame steps
+    uint32_t *state = (uint32_t *)(uintptr_t)(pad + 0x44);   // [0] held, [1] pressed, [2] released, [3] previous
+    uint32_t held = state[0], previous = state[3];
+    if (pace_trace() && (state[1] | state[2] | pad_held[slot].between))
+        rt_log("snap_ui_pace: pad exit game frame %llu held %x pressed %x released %x previous %x between %x step %d",
+               (unsigned long long)pad_tick, held, state[1], state[2], previous, pad_held[slot].between, pace.step);
+    if (pace.step) {
+        uint32_t taps = pad_held[slot].between & ~previous & ~held;   // pressed and released between two steps
+        state[1] |= taps, state[2] |= taps;
+        pad_held[slot].between = 0;
     } else {
-        edges[0] = edges[1] = 0;
+        pad_held[slot].between |= held;
+        state[0] = previous, state[1] = state[2] = 0;
     }
 }
 
@@ -144,9 +177,9 @@ void snap_pad_observe(Cpu *c) {
     }
     if (lines >= 4096 || !plat_mem_read(c->x[1] + 0x44, state, sizeof state) || !(state[1] | state[2])) return;
     lines++;
-    rt_log("snap_pad: frame %llu call %llu pad %llx buttons %x pressed %x released %x (interface decided frame %lld step %d)",
+    rt_log("snap_pad: frame %llu call %llu pad %llx buttons %x pressed %x released %x (interface step %d)",
            (unsigned long long)frame, (unsigned long long)calls, (unsigned long long)c->x[1], state[0], state[1], state[2],
-           (long long)pace.frame - 1, pace.step);
+           pace.step);
 }
 
 // The interface's event raise (main+0x7a9a70: x0 object, w1 event), NEWSNAP_PAD_TRACE=1: every event but the

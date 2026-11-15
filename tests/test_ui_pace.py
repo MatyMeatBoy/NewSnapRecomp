@@ -31,6 +31,8 @@ class UiPaceTests(unittest.TestCase):
              cbz_x16(0x783610, 0x794b4c)],
             ['site', 'snap_ui_pace', 'main', '794b90', 'f940c7e0', 'f940c7e0', '@fn:snap_ui_pace_event',
              cbz_x16(0x794b90, 0x795f08)],
+            # INPUT-HZ-01: the pad update's epilogue, the helper then the original load
+            ['site', 'snap_ui_pace', 'main', '9263ac', 'a95b7bfd', '@fn:snap_ui_pace_pad', 'a95b7bfd'],
         ])
         self.assertIn("'snap-2.0.1-ui-pace.txt'", (ROOT / 'newsnap/build.py').read_text(encoding='utf-8'))
 
@@ -42,6 +44,7 @@ class UiPaceTests(unittest.TestCase):
         self.assertIn('ui_pace_edits', (ROOT / 'newsnap/adapt.py').read_text(encoding='utf-8'))
         self.assertIn('void snap_ui_pace_enter(Cpu *c);', declared)
         self.assertIn('void snap_ui_pace_event(Cpu *c);', declared)
+        self.assertIn('void snap_ui_pace_pad(Cpu *c);', declared)
 
     def test_decision_keeps_sixty_steps_a_second_at_any_rate(self):
         compiler = self.compiler()
