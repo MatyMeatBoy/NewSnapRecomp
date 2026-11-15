@@ -16,9 +16,8 @@ TEXTS = {
     'UI_SNAP_RES': 'Game internal resolution',
     'UI_SNAP_RES_DESC': 'The resolution the 3D scene is drawn at. 100 % is the game\'s own 1920 x 1080: go down for a '
                         'lighter picture, up (supersampling) for a sharper one that costs GPU time. By display matches '
-                        'the screen or window height. Above 100 % needs no upscaler: Automatic then uses Original by '
-                        'itself, a chosen upscaler has to be set to Original. Takes effect after a restart.',
-    'UI_SNAP_RES_UPSCALER': 'above 100 %: set Upscaler to Original or Automatic',
+                        'the screen or window height. It works together with anti-aliasing. Takes effect after a restart.',
+    'UI_SNAP_RES_UPSCALER': 'above 100 %: set Performance scaling to Off',
     'UI_SNAP_FG': 'Frame generation',
     'UI_SNAP_FG_DESC': 'AMD FSR frame generation: one generated frame between two real ones. The interface is kept out of '
                        'the interpolation. It pauses itself while the game runs faster than about half the monitor\'s '
@@ -73,7 +72,8 @@ static void snap_row_internal_res(void) {
     for (int i = 0; i < N; i++) if (!strcmp(v, vals[i])) cur = i;
     int above = !strcmp(v, "display") || atoi(v) > 100;
     opt_choice_list("AC_RENDER_SCALE", UI_SNAP_RES, vals, names, N, UI_SNAP_RES_DESC, cur,
-                    above && snap_upscaler_on() ? menu_text(UI_SNAP_RES_UPSCALER) : nullptr);
+                    above && strcmp(cfg_value("AC_UPSCALING"), "off") && strcmp(cfg_value("AC_UPSCALING_QUALITY"), "native")
+                        ? menu_text(UI_SNAP_RES_UPSCALER) : nullptr);
 }
 
 static void snap_rows_enhancements(void) {
@@ -160,6 +160,16 @@ def edits():
         'runtime/ui_text.c': [
             ('    [UI_MENU_AA_BY_UPSCALER] = "the upscaler smooths the edges",\n',
              '    [UI_MENU_AA_BY_UPSCALER] = "the upscaler smooths the edges",\n' + texts),
+            # AA-02: the upscaler row reads as anti-aliasing; its mode as performance scaling (Native = off)
+            ('    [UI_MENU_UPSCALING] = "Upscaler",\n    [UI_MENU_UPSCALING_DESC] = "A temporal upscaler',
+             '    [UI_MENU_UPSCALING] = "Anti-aliasing",\n    [UI_MENU_UPSCALING_DESC] = "A temporal upscaler'),
+            ('[UI_MENU_UPSCALING_QUALITY] = "Upscaler mode",', '[UI_MENU_UPSCALING_QUALITY] = "Performance scaling",'),
+            ('    [UI_MENU_AA] = "Game anti-aliasing",\n'
+             '    [UI_MENU_AA_DESC] = "The game\'s own anti-aliasing, SMAA, for when no upscaler runs. Off leaves the edges jagged.",',
+             '    [UI_MENU_AA] = "SMAA (without FSR / DLSS)",\n'
+             '    [UI_MENU_AA_DESC] = "The game\'s own SMAA, used only when Anti-aliasing is set to SMAA. Off leaves the edges jagged.",'),
+            ('[UI_MENU_UPSCALING_NATIVE] = "Native", [UI_MENU_DLSS_QUALITY] = "Quality",',
+             '[UI_MENU_UPSCALING_NATIVE] = "Off (full resolution)", [UI_MENU_DLSS_QUALITY] = "Quality",'),
             # MENU-04: the whole menu in Spanish (overlays/ui_text_es.inc) in place of the keyboard-only row
             ('SWKBD_ONLY(text_es, "Introducir texto", "Introduce un nombre", "Caballo", "Aceptar", "Cancelar",\n'
              '           "Mando: A = Aceptar, B = Cancelar");\n',
@@ -181,6 +191,22 @@ def edits():
              '        snprintf(v[4] + used, sizeof v[4] - used, " + FG");\n'
              '    }\n'),
             ('static void rows_upscaling(void) {', FUNCS + 'static void rows_upscaling(void) {'),
+            # MENU-06: the rows show the stored choice. cfg_upscaling() reads Automatic as off above 100 % outside
+            # Native, which showed «Original» and locked the mode row, so it could not go back to Native.
+            ('    const char *up = cfg_upscaling(), *runs = vk_dlaa_upscaler_name();',
+             '    const char *up = cfg_value("AC_UPSCALING"), *runs = vk_dlaa_upscaler_name();'),
+            ('    const char *names[] = {"Original", menu_text(UI_MENU_UPSCALING_AUTO), "NVIDIA DLSS",',
+             '    const char *names[] = {"SMAA", menu_text(UI_MENU_UPSCALING_AUTO), "NVIDIA DLSS",'),
+            ('    const char *names[] = {"Original", menu_text(UI_MENU_UPSCALING_AUTO), "AMD FSR 3.1", "AMD FSR 4"};',
+             '    const char *names[] = {"SMAA", menu_text(UI_MENU_UPSCALING_AUTO), "AMD FSR 3.1", "AMD FSR 4"};'),
+            ('        opt_choice_list("AC_UPSCALING_QUALITY", UI_MENU_UPSCALING_QUALITY, qv, qn, 4, UI_MENU_UPSCALING_QUALITY_DESC, qcur,\n'
+             '                        off ? nullptr : note_q);',
+             '        const char *qnote = off ? nullptr : note_q;\n'
+             '        const char *rs = cfg_value("AC_RENDER_SCALE");   // above 100 % only Off (full resolution) applies\n'
+             '        if (!off && strcmp(q, "native") && (!strcmp(rs, "display") || atoi(rs) > 100))\n'
+             '            qnote = menu_text(UI_SNAP_RES_UPSCALER);\n'
+             '        opt_choice_list("AC_UPSCALING_QUALITY", UI_MENU_UPSCALING_QUALITY, qv, qn, 4, UI_MENU_UPSCALING_QUALITY_DESC, qcur,\n'
+             '                        qnote);'),
             ('    row_output_res();\n    rows_upscaling();', '    snap_row_internal_res();\n    rows_upscaling();\n    snap_row_aspect();'),
             ('UI_MENU_TAB_CONTROLS, UI_MENU_TAB_MENU,   UI_MENU_TAB_MODS};', 'UI_MENU_TAB_CONTROLS, UI_MENU_TAB_MENU,   UI_SNAP_TAB};'),
             ('            case TAB_MODS: tab_mods(scale); break;', '            case TAB_MODS: snap_tab_enhancements(scale); break;\n'
@@ -195,5 +221,22 @@ def edits():
              '                                     UI_MENU_LANGNAME_PT_BR, UI_MENU_LANGNAME_ZH_HANS};',
              '    static const UiTextId langs[] = {UI_MENU_MENU_LANG_AUTO, UI_MENU_LANGNAME_EN, UI_MENU_LANGNAME_ES,\n'
              '                                     UI_MENU_LANGNAME_RU, UI_MENU_LANGNAME_PT_BR, UI_MENU_LANGNAME_ZH_HANS};'),
+        ],
+        'runtime/ui/option_rows.cpp': [
+            ('static int row_text(const char *key, const char *label, const char *desc, const RowView &v, bool movable) {',
+             'static bool g_row_activate;   // MENU-05: set by opt_button, read once by the row\n'
+             'static int row_text(const char *key, const char *label, const char *desc, const RowView &v, bool movable) {'),
+            # MENU-05: A (or Enter) on a value row did a step like a click and changed screen settings by accident;
+            # it now does nothing there. A mouse click still steps; button rows still take A.
+            ('    int step = clicked && !off ? 2 : 0;',
+             '    int step = clicked && !off && ((hov && ImGui::IsMouseReleased(ImGuiMouseButton_Left)) || g_row_activate) ? 2 : 0;\n'
+             '    g_row_activate = false;'),
+            ('bool opt_button(const char *id, UiTextId label, UiTextId desc, const char *value) {\n'
+             '    RowView v = {value ? value : "", false, false, NULL};\n'
+             '    return row(id, label, desc, v) == 2;',
+             'bool opt_button(const char *id, UiTextId label, UiTextId desc, const char *value) {\n'
+             '    RowView v = {value ? value : "", false, false, NULL};\n'
+             '    g_row_activate = true;   // a button: A presses it\n'
+             '    return row(id, label, desc, v) == 2;'),
         ],
     }

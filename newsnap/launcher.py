@@ -233,20 +233,20 @@ class Launcher:
         self._choice(video, 'Overlay de rendimiento', 'perf_overlay', {'Oculta': 'off', 'Solo FPS': 'fps', 'Completa': 'full'},
                      help_text='Muestra datos del runtime. La vista completa incluye tiempos de CPU/GPU y actividad de compilación cuando están disponibles.')
         self._heading(video, 'Resolución y escalado')
-        self._choice(video, 'Escalado · FSR / DLSS', 'upscaling', {
-            'Automático': 'auto', 'Desactivado · imagen original': 'off', 'AMD FSR 3.1': 'fsr3',
-            'AMD FSR 4 · GPU compatible': 'fsr4', 'NVIDIA DLSS · RTX': 'dlss'},
-            help_text='Escala y suaviza la escena 3D antes del HUD. Automático elige el mejor disponible para tu GPU (DLSS en RTX, FSR 4 o FSR 3.1 en el resto) y se aparta solo si la resolución interna supera el 100 %. La disponibilidad depende del proveedor y del controlador; una opción no disponible conserva una alternativa compatible. FSR 4 selecciona automáticamente el modelo compatible, incluido INT8 en RX 6000/7000.')
-        self._choice(video, 'Calidad del escalado', 'upscaling_quality', {
-            'Nativo · solo antialiasing (DLAA / Native AA)': 'native', 'Calidad · escena 70 %': 'quality',
-            'Equilibrado · escena 60 %': 'balanced', 'Rendimiento · escena 50 %': 'performance'},
-            help_text='Cada proveedor usa su propio algoritmo con el preset elegido. Las escalas corresponden a los niveles reales del motor de Snap; requieren reiniciar la expedición.')
         from .display_scales import primary_display_size, render_scale_choices
         display = primary_display_size()
         self._choice(video, 'Resolución interna', 'render_scale',
                      render_scale_choices(display[1] if display else None, self.variables['render_scale'].get()),
                      choice_width=34,
-                     help_text='Hasta el 100 %, una escala menor favorece el rendimiento y pierde detalle. Por encima del 100 % es supersampling del modo TV: el juego dibuja a 1920 × 1080 y la imagen interna (escena, HUD y fotos) se calcula más grande y se reduce a tu ventana; aumenta el detalle y el coste de GPU (2× cuesta unas cuatro veces más píxeles). «Según la pantalla» elige la escala que coincide con la altura de tu monitor o ventana (1440p → 1,33×, 4K → 2×). Requiere el reescalador apagado y el modo TV; guardar una combinación incompatible muestra un error sin cambiar tu elección.')
+                     help_text='A qué resolución se dibuja el juego. 100 % es su 1920 × 1080. Por encima del 100 % la imagen se calcula más grande y se reduce a tu pantalla: más detalle a cambio de GPU (200 % cuesta unas cuatro veces más). «Según la pantalla» iguala la altura de tu monitor (1440p → 133 %, 4K → 200 %). Funciona junto con el antialiasing.')
+        self._choice(video, 'Antialiasing', 'upscaling', {
+            'Automático · el mejor para tu GPU': 'auto', 'AMD FSR 4': 'fsr4', 'AMD FSR 3.1': 'fsr3',
+            'NVIDIA DLSS · RTX': 'dlss', 'SMAA · el del juego': 'off'},
+            help_text='Suaviza los bordes y las líneas finas (marcos, escaleras, cables) combinando varios cuadros. Funciona a cualquier resolución interna, también por encima del 100 %. Automático usa DLSS en tarjetas RTX y FSR 4 o FSR 3.1 en las demás (FSR 4 elige solo el modelo compatible, también en RX 6000/7000). SMAA es el antialiasing original del juego, más ligero y menos limpio.')
+        self._choice(video, 'Escalado de rendimiento', 'upscaling_quality', {
+            'Desactivado · resolución completa': 'native', 'Calidad · escena al 70 %': 'quality',
+            'Equilibrado · escena al 60 %': 'balanced', 'Rendimiento · escena al 50 %': 'performance'},
+            help_text='Solo si necesitas más FPS: dibuja la escena 3D más pequeña y el antialiasing la agranda. Desactivado (lo normal) mantiene la resolución completa. Con Calidad, Equilibrado o Rendimiento la resolución interna debe ser 100 % o menos. No se usa con SMAA.')
         self._choice(video, 'Filtrado anisotrópico · AF', 'aniso', {'Según el juego': 'game', **{f'{n}×': str(n) for n in (2, 4, 8, 16)}, 'Automático heredado': 'auto'},
                      help_text='Mejora las texturas vistas en ángulo. El controlador y la GPU pueden limitar el nivel efectivo. Automático heredado conserva la heurística de la base, aún sin validar para Snap; elige un nivel explícito para personalizarlo.')
         self._choice(video, 'Relación de aspecto · Aspect ratio', 'aspect', {'Conservar proporciones': 'fit', 'Estirar a la ventana': 'stretch', 'Ultrawide · vista más ancha (experimental)': 'ultrawide'},
