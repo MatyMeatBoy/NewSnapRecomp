@@ -67,7 +67,7 @@ def ensure_esrgan(report=print):
     import io
     import urllib.request
     import zipfile
-    report('Descargando Real-ESRGAN (unos 45 MB, una sola vez)…')
+    report('Descargando la herramienta de escalado (unos 45 MB, una sola vez)…')
     with urllib.request.urlopen(ESRGAN_URL, timeout=120) as response:
         data = response.read(200 << 20)
     folder = ESRGAN.parent
@@ -82,7 +82,7 @@ def ensure_esrgan(report=print):
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes(archive.read(member))
     if not esrgan_ready():
-        raise ValueError('Real-ESRGAN descargado no coincide con la versión esperada')
+        raise ValueError('La herramienta de escalado descargada no coincide con la versión esperada')
 FLOOR = 1.0 / 1024   # light below this is treated as black by the log encoding
 WEIGHTS4 = np.array([0, 4, 9, 13, 17, 21, 26, 30, 34, 38, 43, 47, 51, 55, 60, 64], dtype=np.int64)
 

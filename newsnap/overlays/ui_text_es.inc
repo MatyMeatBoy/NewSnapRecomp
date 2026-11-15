@@ -141,10 +141,10 @@ static const char *const text_es[UI_TEXT_COUNT] = {
     [UI_SNAP_TEXPACK_DESC] = "Usa las texturas HD de la carpeta texpack junto al juego, hechas en este PC a partir de tu "
                              "propio juego. Se aplica tras reiniciar.",
     [UI_SNAP_TEXPACK_NONE] = "no hay pack en la carpeta texpack",
-    [UI_SNAP_HDSH] = "Modo Sombras HD (IA, experimental)",
+    [UI_SNAP_HDSH] = "Modo Sombras HD (experimental)",
     [UI_SNAP_HDSH_DESC] = "Las sombras de plantas, rocas y escenario están pintadas en los mapas de luz de cada nivel. "
                           "Activado: cada mapa de luz se guarda la primera vez que se carga y, al cerrar el juego, el "
-                          "launcher los amplía en este PC con IA; los HD se usan la próxima vez que se carga el nivel. Las "
+                          "launcher los amplía en este PC; los HD se usan la próxima vez que se carga el nivel. Las "
                           "sombras en tiempo real también van a su mapa más grande (desactivado, siguen a la resolución "
                           "interna). Se aplica tras reiniciar.",
     [UI_SNAP_TAB] = "Mejoras",

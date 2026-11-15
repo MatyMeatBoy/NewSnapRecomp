@@ -11,7 +11,7 @@ Nintendo/game ROM sprites were extracted or copied.
 - SHA-256: `a8daabc38680527ad0bb4cc3115b9b07e157b0ea4f00aac27d1d042536b103c4`.
 - Original dimensions: **104 × 72**; **48 opaque colours plus transparency**.
 
-Provenance: user-owned original AI-assisted controller art supplied through the
+Provenance: user-owned original controller art supplied through the
 owner's ReKHCoM project. This reuse follows the owner's authorization; it does
 not assign a new standalone third-party/public-domain licence to the image.
 

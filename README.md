@@ -16,7 +16,7 @@
 
 **NewSnap** (NewSnapRecomp) is a native Windows recompilation of **New Pokémon Snap** (update 2.0.1). It runs the
 game's own code, recompiled for PC, with a Vulkan renderer and PC options: higher resolutions, 90–144 FPS, upscalers,
-frame generation and AI enhancements. It builds on [Astral Chain Recomp](https://github.com/captainj-sparrow/astral-chain-pc-recomp),
+frame generation and HD enhancements. It builds on [Astral Chain Recomp](https://github.com/captainj-sparrow/astral-chain-pc-recomp),
 which builds on [TotK Recomp](https://github.com/valentderah/totk-pc-recomp).
 
 **Bring your own game.** You need your own dump of the game, its 2.0.1 update and your console keys. No game data,
@@ -31,7 +31,6 @@ keys or game-derived executables are distributed here; the launcher builds the g
 | Resolution | Works | Internal resolution 50–300 % or by display, HUD and photos intact; ultrawide (experimental) |
 | Upscalers | Works | AMD FSR 3.1, FSR 4 (RX 6000/7000 through AMD's INT8 model) and NVIDIA DLSS; FSR frame generation |
 | AMD RDNA 1/2 | Works | Photo, shader and GPU fault fixes specific to these GPUs |
-| Online | Not available | The game runs offline, as on every Switch emulator |
 
 ## Features
 
@@ -48,9 +47,9 @@ keys or game-derived executables are distributed here; the launcher builds the g
 
 ### NewSnap enhancements (each one can be switched off)
 - **HD photo thumbnails:** previews and photo screens show the 1080×720 photo instead of the 360×240 thumbnail.
-- **HD shadows mode** (AI, experimental): real-time shadows at their largest map and the level's light maps enlarged
-  on your PC with Real-ESRGAN.
-- **HD texture packs:** textures saved while you play and enlarged on your PC with AI, compressed to BC1/BC3.
+- **HD shadows mode** (experimental): real-time shadows at their largest map and the level's light maps enlarged
+  on your PC.
+- **HD texture packs:** textures saved while you play and enlarged on your PC, compressed to BC1/BC3.
 
 ### Launcher
 - Graphics presets with **«Recomendado»** by default, sidebar navigation, status at a glance.
@@ -107,7 +106,7 @@ Release recipe, work board and contribution rules: [docs/PENDIENTES.md](docs/PEN
 ## Source and content boundaries
 
 Only original tools, adaptation patches, tests and documentation belong in this repository. NSPs, keys, ExeFS/RomFS,
-generated C, compiled games, shader caches, saves and AI-enhanced game textures stay on your PC. Do not upload your
+generated C, compiled games, shader caches, saves and enhanced game textures stay on your PC. Do not upload your
 built game.
 
 Original additions are MIT licensed. Upstream and third-party code keep their licenses and attribution; see
