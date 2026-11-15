@@ -24,9 +24,23 @@ State after 0.9.14 and what comes next, in priority order. The board is [PENDIEN
   the old SW_HIDE trick could not hide. Logs still go to `newsnap.log`; pipes from the launcher and tools still work.
 - **AA-03 (0.9.13):** internal resolution above the window is reduced by an area average, never bilinear.
 
+## HD shadows mode: where it stands (owner asked, 0.9.14)
+
+Today «Modo Sombras HD» enlarges the light maps of the levels already played: the game saves each map the first
+time it loads and the launcher enlarges them when the game closes, so they show in HD on the next visit. Real-time
+shadows already follow the internal resolution. Two pieces are missing, in this order:
+
+- **Point 1, every light map at install, without playing first.** The light maps can be read and named from the
+  player's own files (findings below); the exporter is written but not wired to the launcher and not checked against
+  the GPU's decode yet. Done means: turning the mode on builds the HD light maps of every level, and the first visit
+  to any level already shows them.
+- **Point 2, the shadows painted into the colour textures** (stairs, decks, some rocks). They are not in the light
+  maps but in the ordinary textures. Done means: a curated list of those textures by name in the project, exported
+  the same way, enlarged and installed with the mode. Not started.
+
 ## Next
 
-1. **HD-SHADOW-02, the HD shadows mode built at install (main standing task).** Findings:
+1. **HD-SHADOW-02, Point 1 above (main standing task).** Findings:
    - The game's files are `romfs/romfs.bin` + `romfs-index.bin` (ACRFS1). Textures are `.nutexb` members of the
      `.drp` archives (DRPF, extension CRC `5c156dbc`, 28 369 members, about 11 GB unpacked). `newsnap/drp.py`
      reads and decrypts them; `newsnap/overlays/snap_decode.c` (`NEWSNAP_OODLE_REQUESTS`) decodes them with the
@@ -47,8 +61,10 @@ State after 0.9.14 and what comes next, in priority order. The board is [PENDIEN
         dumps the same maps decoded by the GPU to `hdshadows/src`), export the same hashes offline and compare
         the half floats (they should be identical). The block-height rule and the mode bit layouts are the parts to check;
      d. the launcher builds the mode at install / update when «Modo Sombras HD» is on (no play-first step).
-   - Then the curated list of colour textures with painted shadows (stairs, decks, rocks), by name, with the same
-     export path (BC1/BC3/BC7 decoders needed, or GPU through the existing dump).
+   - Then **Point 2**: the curated list of colour textures with painted shadows (stairs, decks, rocks), by name,
+     with the same export path (BC1/BC3/BC7 decoders needed, or GPU through the existing dump). To find them:
+     `NEWSNAP_TEX_WHITE=<vk formats>` draws those textures white, and `NEWSNAP_TEX_HASHLOG` gives their hashes,
+     which match the names of the `.nutexb` members.
 2. **MENU-FPS-01 (experimental, owner request):** menus drawn at 120/144 fps while their logic keeps the original
    speed, like the pointers (POINTER-02). Start from `snap_ui_pace.c`: the interface already steps at 60 Hz logic;
    what is missing is interpolating the drawn positions of menu elements between logic steps.
