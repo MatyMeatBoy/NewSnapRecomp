@@ -2,6 +2,17 @@
 
 ## UI-HZ-01 interface timelines above 60 FPS — 2026-11-15
 
+> **Withdrawn in 0.9.4 (same day).** The fix below shipped on in 0.9.3 and broke the interface above 60 FPS on the
+> owner's RX 6900 XT: menus that should be hidden appeared (camp screen) and interface elements and the loading
+> screen flickered every frame. Returning early from the player's advance does not only hold the timeline; it also
+> skips the per-frame work that decides which clips are drawn, so held frames show a different picture from stepped
+> ones. The patch set is now **off by default** (`AC_SNAP_UI_PACE_PATCH=1` only for investigation). The cause
+> analysis stands; the fix does not. The evidence below measured how often the advance ran, and the statement that
+> the picture was steady was a misreading: the brightness pulses seen in the flight-recorder frames were not checked
+> against a run without the fix. A correct fix has to keep the per-frame display work and hold only the timeline
+> step (the sprite's own advance at `main+0x9bea00`, or the frame counter it increments), and has to be watched on
+> the camp, score and loading screens before shipping.
+
 **Cause.** The interface is a Flash-style player (ActionScript 2 names such as `gotoAndPlay`, `onEnterFrame`,
 `_currentframe` and `*_mc` clips are in the module). Once per game frame the interface manager walks its lists of
 movies and calls the player's advance for each one (`main+0x9d0de0`, from the loops at `main+0x7838f8` and
