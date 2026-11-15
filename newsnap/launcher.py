@@ -372,6 +372,13 @@ class Launcher:
                      help_text='Amplía todos los mapas de sombras del juego (sol, vegetación, personajes) sin cambiar su suavidad: los bordes salen más definidos. «Según la resolución 3D» los ajusta a la escala de la escena (2× a 1080p, 3× a 125–150 %, 4× desde 200 %). 2× cuesta poco; 4× usa unos 64 MiB más de VRAM por mapa. Las sombras pintadas en las texturas del escenario no cambian.')
         self._choice(content, 'Generación de fotogramas · FSR', 'frame_gen', {'Desactivada': 'off', 'AMD FSR · 1 fotograma generado': 'fsr'},
                      help_text='Inserta un fotograma generado entre cada dos reales: con el juego a 60 fps se muestran unos 120. Necesita FSR 3.1 o FSR 4. Solo genera si el monitor puede mostrarlo (unos 110 Hz o más a 60 fps); en un monitor más lento se pausa sola y el juego sigue a su ritmo, con cualquier modo de presentación. Añade un fotograma de latencia. El HUD se separa de la escena para que no deje estela. Experimental.')
+        self._choice(content, 'Sombras HD del escenario', 'hd_shadows', {'Desactivadas · originales': '0', 'Activadas (experimental)': '1'},
+                     help_text='Las sombras de plantas, rocas y escenario están pintadas en los mapas de luz de cada nivel, de baja resolución. '
+                               'Con esto activado, el juego guarda cada mapa de luz la primera vez que lo carga; «Generar sombras HD» los '
+                               'amplía en este PC con IA (Real-ESRGAN, se descarga una vez) conservando la luz y el color del juego, y la '
+                               'próxima vez que entres a ese nivel se usan los nuevos. Juega un nivel, genera, y vuelve a entrar.')
+        from .hdshadows_ui import HdShadowsButton
+        HdShadowsButton(self, content)
         self._choice(content, 'Pack de texturas HD', 'tex_pack', {'Activado si existe': '1', 'Desactivado': '0'},
                      help_text='Usa las texturas HD de la carpeta texpack junto al juego, generadas en este PC a partir de tu propio juego (herramienta tools/texpack.py). Sin pack no cambia nada.')
 
