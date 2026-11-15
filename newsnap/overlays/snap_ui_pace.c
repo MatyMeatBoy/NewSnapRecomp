@@ -75,6 +75,52 @@ void snap_ui_pace_event(Cpu *c) {
     c->x[16] = (uint64_t)pace_step(kern_now_ns());
 }
 
+// INPUT-HZ-01. The game's pad update (main+0x925b60) runs once a frame, after the frame's interface handlers, and
+// its edges (+0x48 pressed, +0x4c released) last until the next update. Above 60 fps an edge left by an update before
+// a frame whose interface does not step was never seen by the interface logic, while game code reading the pad every
+// frame still acted on it: a press in the middle of a dialogue line did not complete the line but went on to the
+// next one, as if A had been pressed twice. At the update's exit the next frame's interface decision is taken; edges
+// are held back on the frames that do not step and handed over, all together, on the next one that does. Every
+// reader of the pad then sees each press once, on a frame where the interface also sees it, as at 60 fps; a press
+// arrives at most one interface step (16.7 ms) later. The held buttons (+0x44) are not touched.
+static struct { uint64_t pad; uint32_t pressed, released; } pad_held[4];
+
+void snap_ui_pace_pad(Cpu *c) {
+    uint64_t cap = frame_step_cap_ns(), pad = c->x[19];
+    if (!cap || cap + SNAP_UI_PACE_SLACK_NS >= SNAP_UI_PACE_STEP_NS) return;   // 60 fps or below: every frame steps
+    if (!pad || !plat_mem_readable(pad + 0x48, 8)) return;
+    int slot = 0;
+    while (slot < 4 && pad_held[slot].pad && pad_held[slot].pad != pad) slot++;
+    if (slot == 4) return;   // more pads than the game has: leave them as they are
+    pad_held[slot].pad = pad;
+    uint32_t *edges = (uint32_t *)(uintptr_t)(pad + 0x48);
+    uint64_t frame = __atomic_load_n(&gfx_counters.frames, __ATOMIC_RELAXED);
+    int step = snap_ui_pace_decide(&pace, frame + 1, kern_now_ns(), cap);
+    pad_held[slot].pressed |= edges[0];
+    pad_held[slot].released |= edges[1];
+    if (step) {
+        edges[0] = pad_held[slot].pressed, edges[1] = pad_held[slot].released;
+        pad_held[slot].pressed = pad_held[slot].released = 0;
+    } else {
+        edges[0] = edges[1] = 0;
+    }
+}
+
+// The guest call chain from the frame records (x29, saved x30 at [x29+8]) as main offsets.
+static void guest_chain(Cpu *c, char *chain, size_t size) {
+    int n = 0;
+    uint64_t fp = c->x[29];
+    chain[0] = 0;
+    for (int i = 0; i < 12 && fp; i++) {
+        uint64_t rec[2];
+        if (!plat_mem_read(fp, rec, sizeof rec)) break;
+        uint64_t off = rec[1] - 0x7000000000ull;
+        n += snprintf(chain + n, size - (size_t)n, " %llx", (unsigned long long)(off < 0x2891000ull ? off : rec[1]));
+        if (n >= (int)size - 20 || rec[0] <= fp) break;
+        fp = rec[0];
+    }
+}
+
 // The game's pad object at its update (main+0x925b60, x1): +0x44 buttons, +0x48 pressed, +0x4c released, as the
 // previous update left them. NEWSNAP_PAD_TRACE=1 logs each update that follows a press or a release, with the
 // presented frame, so the cadence of the update and the life of a press can be read against the frame rate.
@@ -98,8 +144,9 @@ void snap_pad_observe(Cpu *c) {
     }
     if (lines >= 4096 || !plat_mem_read(c->x[1] + 0x44, state, sizeof state) || !(state[1] | state[2])) return;
     lines++;
-    rt_log("snap_pad: frame %llu call %llu pad %llx buttons %x pressed %x released %x",
-           (unsigned long long)frame, (unsigned long long)calls, (unsigned long long)c->x[1], state[0], state[1], state[2]);
+    rt_log("snap_pad: frame %llu call %llu pad %llx buttons %x pressed %x released %x (interface decided frame %lld step %d)",
+           (unsigned long long)frame, (unsigned long long)calls, (unsigned long long)c->x[1], state[0], state[1], state[2],
+           (long long)pace.frame - 1, pace.step);
 }
 
 // The interface's event raise (main+0x7a9a70: x0 object, w1 event), NEWSNAP_PAD_TRACE=1: every event but the
@@ -113,8 +160,11 @@ void snap_event_observe(Cpu *c) {
     }
     if (!on || (uint32_t)c->x[1] == 22 || lines >= 20000) return;
     lines++;
-    rt_log("snap_event: frame %llu object %llx event %u", (unsigned long long)__atomic_load_n(&gfx_counters.frames, __ATOMIC_RELAXED),
-           (unsigned long long)c->x[0], (unsigned)c->x[1]);
+    char chain[200];
+    guest_chain(c, chain, sizeof chain);
+    rt_log("snap_event: frame %llu step %d object %llx event %u from%s",
+           (unsigned long long)__atomic_load_n(&gfx_counters.frames, __ATOMIC_RELAXED), pace.step,
+           (unsigned long long)c->x[0], (unsigned)c->x[1], chain);
 }
 
 // The interface object's state request (main+0x79bd90: x0 object, x1 the requested state name), NEWSNAP_PAD_TRACE=1:
