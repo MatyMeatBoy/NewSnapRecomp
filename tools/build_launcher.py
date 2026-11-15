@@ -36,6 +36,10 @@ def build():
                str(ROOT / 'tools/launcher_entry.py')]
     subprocess.run(command, cwd=ROOT, check=True)
     application = output / 'NewSnapLauncher'
+    # PKG-01: Tcl's time-zone database and Tcl/Tk's translated messages and demo images are about 770 small files
+    # the launcher never reads (its texts are its own, it formats no dates through Tcl); the package lists shorter.
+    for unused in ('_tcl_data/tzdata', '_tcl_data/msgs', '_tk_data/msgs', '_tk_data/images'):
+        shutil.rmtree(application / '_internal' / unused, ignore_errors=True)
     for folder in ('assets/icons', 'assets/controllers', 'assets/launcher', 'licenses'):
         shutil.copytree(ROOT / folder, application / folder, dirs_exist_ok=True)
     # Older installed updaters accept only the curated Snap specifications here.

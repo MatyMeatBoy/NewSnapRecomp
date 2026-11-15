@@ -14,6 +14,13 @@ def edits():
              '    DWORD console_flags = GetConsoleWindow() ? 0 : CREATE_NO_WINDOW;\n'
              '    BOOL ok = cmd && CreateProcessW(NULL, cmd, NULL, NULL, FALSE, console_flags, NULL, NULL, &si, &pi);'),
         ],
+        'runtime/main.c': [
+            ('int main(int argc, char **argv) {\n    mem_init();',
+             'void snap_hide_own_console(void);   // snap_console.c\n'
+             'int main(int argc, char **argv) {\n'
+             '    snap_hide_own_console();   // CONSOLE-02: a console opened only for this process\n'
+             '    mem_init();'),
+        ],
         'tools/build_game.py': [
             ('CREATE_SUSPENDED = 0x4', 'CREATE_SUSPENDED = 0x4\nCREATE_NO_WINDOW = 0x08000000'),
             ('    proc = subprocess.Popen(cmd, cwd=ROOT, env=env, creationflags=CREATE_SUSPENDED)',

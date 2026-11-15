@@ -8,7 +8,7 @@ def edits():
          'void snap_ui_state_observe(Cpu *c);\nvoid snap_ui_event_observe(Cpu *c);\n'
          'typedef void (*GuestFn)(Cpu *);'),
     ], 'runtime/cfg.c': [
-        ('{"FPS", "60", "30|60", LIVE}', '{"FPS", "60", "30|60|90|120|144|display", LIVE}'),
+        ('{"FPS", "60", "30|60", LIVE}', '{"FPS", "60", "30|60|90|120|144|display|vrr", LIVE}'),
     ], 'runtime/frame_rate.c': [
         ('#include "cfg.h"', '#include "cfg.h"\n#include "snap_high_fps.h"'),
         ('static int fps60_on = -1, fps_hz;',

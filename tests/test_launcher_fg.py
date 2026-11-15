@@ -59,8 +59,9 @@ class FrameGenerationSettingsTests(unittest.TestCase):
             ini = Path(folder) / 'newsnap.ini'
             base = settings.load_settings(ini)
             with self.assertRaises(ValueError):
-                self.save(ini, base, frame_gen='fsr')            # upscaler still Original
-            self.assertEqual(settings.load_settings(ini)['frame_gen'], 'off')
+                self.save(ini, base, upscaling='off', frame_gen='fsr')   # no upscaler: refused as a whole
+            current = settings.load_settings(ini)
+            self.assertEqual((current['frame_gen'], current['upscaling']), ('off', 'auto'))   # nothing was written
 
 
 class RetiredFilesTests(unittest.TestCase):

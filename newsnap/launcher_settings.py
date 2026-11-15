@@ -56,7 +56,7 @@ CONTROL_DEFAULTS = {'mouse_sens': '1', 'motion': '1', 'gyro_sens': '2.5', 'pad_l
                     'lstick_deadzone': '', 'rstick_deadzone': '', **BINDING_DEFAULTS}
 DEFAULTS.update(CONTROL_DEFAULTS)
 DEFAULTS.update(lang='', audio_prefill_ms='20', perf_overlay='off')
-DEFAULTS.update(upscaling='off', upscaling_quality='quality', frame_gen='off', hd_photos='1', tex_pack='1')
+DEFAULTS.update(upscaling='auto', upscaling_quality='native', frame_gen='off', hd_photos='1', tex_pack='1')
 ENV_UI_OVERRIDES = ENV_UI_OVERRIDES | {'upscaling', 'upscaling_quality'}
 SECTIONS.update(upscaling='display', upscaling_quality='display', frame_gen='display', hd_photos='display', tex_pack='display')
 SECTIONS.update({key: 'input' for key in CONTROL_DEFAULTS})
@@ -116,7 +116,7 @@ def validate_settings(values):
         elif key in ('fullscreen', 'motion', 'rumble_triggers'):
             valid = value in ('0', '1')
         elif key == 'fps':
-            valid = value in ('30', '60', '90', '120', '144', 'display')
+            valid = value in ('30', '60', '90', '120', '144', 'display', 'vrr')
         elif key in CHOICES:
             valid = value in CHOICES[key]
         elif key == 'window_size' and value == 'auto':
@@ -155,14 +155,14 @@ def validate_video_combination(values, complete=True):
     # 'display' is the default and adapts by itself: no host scale while an upscaler runs or in handheld (MENU-02).
     explicit = values.get('render_scale') in SUPERSAMPLE_SCALES and values.get('render_scale') != 'display'
     if have('frame_gen', 'upscaling') and frame_gen and upscaling not in ('fsr3', 'fsr4', 'auto'):
-        raise ValueError('La generación de fotogramas FSR necesita la reconstrucción AMD FSR 3.1 o FSR 4 (cualquier preset, también Nativo).')
+        raise ValueError('La generación de fotogramas FSR necesita el escalado AMD FSR 3.1 o FSR 4, o Automático (cualquier calidad, también Nativo).')
     # MENU-03: Automatic steps aside by itself above 100 % (the runtime reads it as Original); a chosen
     # upscaler does not, so that combination is still refused.
     if have('upscaling', 'render_scale') and upscaling not in ('off', 'auto') and explicit:
-        raise ValueError('El reescalado temporal usa su preset de calidad. Elige una escala de 100 % o menos para activarlo.')
+        raise ValueError('Con un escalado elegido (FSR o DLSS), la resolución interna la marca su calidad. Elige 100 % o menos, o deja el escalado en Automático.')
     if have('frame_gen', 'upscaling', 'render_scale') and frame_gen and upscaling == 'auto' and explicit:
-        raise ValueError('La generación de fotogramas FSR necesita FSR, y con una escala interna superior al 100 % la '
-                         'reconstrucción Automática usa Original. Elige AMD FSR 3.1 o FSR 4 con una escala de 100 % o menos.')
+        raise ValueError('La generación de fotogramas FSR necesita FSR, y con una resolución interna superior al 100 % el '
+                         'escalado Automático no usa ninguno. Elige AMD FSR 3.1 o FSR 4 con una resolución interna de 100 % o menos.')
     if have('operation_mode', 'render_scale') and values.get('operation_mode') == 'handheld' and explicit:
         raise ValueError('La escala experimental superior al 100 % requiere salida TV. Elige «TV · 1920 × 1080» o reduce la escala al 100 % o menos para usar el modo portátil.')
 
