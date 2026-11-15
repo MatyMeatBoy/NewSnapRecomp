@@ -46,7 +46,7 @@ static int pace_trace(void) {
 // counter is advanced by the presentation thread and can change in the middle of a game frame; it only paces the
 // interface when no pad update has run for a while (PAD_GAP_NS).
 #define PAD_GAP_NS 100000000ull
-static uint64_t pad_tick, pad_tick_ns;
+static uint64_t pad_tick, pad_tick_ns, pad_dt_ns;   // pad_dt_ns: real time between the last two game frames
 static SnapUiPace pace_presented = {0, 0, 0, 1};
 
 static int pace_step(uint64_t now) {
@@ -198,6 +198,8 @@ void snap_ui_pace_pad(Cpu *c) {
     }
     if (slot == 0) watch_pad(pad, now);
     if (slot == 0) {   // the first pad marks the game frame: the decision for the handlers until its next update
+        uint64_t before = __atomic_load_n(&pad_tick_ns, __ATOMIC_RELAXED);
+        __atomic_store_n(&pad_dt_ns, before && now > before ? now - before : 0, __ATOMIC_RELAXED);
         snap_ui_pace_decide(&pace, pad_tick++, now, cap);
         __atomic_store_n(&pad_tick_ns, now, __ATOMIC_RELEASE);
     }
@@ -288,4 +290,24 @@ void snap_event_observe(Cpu *c) {
     rt_log("snap_event: frame %llu game frame %llu step %d object %llx event %u from%s",
            (unsigned long long)__atomic_load_n(&gfx_counters.frames, __ATOMIC_RELAXED), (unsigned long long)pad_tick, pace.step,
            (unsigned long long)c->x[0], (unsigned)c->x[1], chain);
+}
+
+// FPS-02. The interface pointer (main+0x643a70: pause menu, photo selection) moves by its speed times the game's
+// frame time over 1/60 s ([timer+0x1c], main+0x643cc8), and by its speed per call when that time is 0, which it is
+// while the game is paused: in the pause menu the pointer moved a fixed step per frame, 2.4 times as fast at
+// 144 fps. Above 60 fps a frame time of 0 or less is replaced by the real time of the game frame, so the pointer
+// keeps its speed at any rate; at 60 fps and below nothing changes. x16 is not used; s1 is the loaded time.
+void snap_ui_pace_pointer(Cpu *c) {
+    uint64_t cap = frame_step_cap_ns();
+    if (!cap || cap + SNAP_UI_PACE_SLACK_NS >= SNAP_UI_PACE_STEP_NS) return;
+    float t;
+    uint32_t bits = (uint32_t)c->v[1];
+    memcpy(&t, &bits, 4);
+    if (t > 0.0f) return;
+    uint64_t dt = __atomic_load_n(&pad_dt_ns, __ATOMIC_RELAXED);
+    if (!dt || dt > SNAP_UI_PACE_MAX_DT_NS) dt = cap;
+    if (dt < 1000000ull) dt = 1000000ull;
+    t = (float)((double)dt / 1e9);
+    memcpy(&bits, &t, 4);
+    c->v[1] = bits;
 }

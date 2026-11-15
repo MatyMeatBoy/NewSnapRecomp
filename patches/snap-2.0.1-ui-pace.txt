@@ -12,3 +12,6 @@ site snap_ui_pace main 794b90 f940c7e0 f940c7e0 @fn:snap_ui_pace_event b4009bd0
 # INPUT-HZ-01: at the exit of the game's pad update (main+0x925b60, one epilogue, x19 the pad), press and release
 # edges handed over on interface steps only (snap_ui_pace_pad).
 site snap_ui_pace main 9263ac a95b7bfd @fn:snap_ui_pace_pad a95b7bfd
+# FPS-02: the interface pointer's frame time (main+0x643cc8 ldr s1,[x19,#0x1c]), 0 while the game is paused;
+# above 60 fps the helper puts the real game-frame time there (snap_ui_pace_pointer).
+site snap_ui_pace main 643cc8 bd401e61 bd401e61 @fn:snap_ui_pace_pointer

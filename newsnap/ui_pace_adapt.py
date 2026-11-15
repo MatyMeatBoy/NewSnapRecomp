@@ -10,6 +10,6 @@ behaviour by itself.
 def edits():
     return {'runtime/cpu.h': [
         ('typedef void (*GuestFn)(Cpu *);',
-         'void snap_ui_pace_enter(Cpu *c);\nvoid snap_ui_pace_event(Cpu *c);\nvoid snap_ui_pace_pad(Cpu *c);\n'
+         'void snap_ui_pace_enter(Cpu *c);\nvoid snap_ui_pace_event(Cpu *c);\nvoid snap_ui_pace_pad(Cpu *c);\nvoid snap_ui_pace_pointer(Cpu *c);\n'
          'typedef void (*GuestFn)(Cpu *);'),
     ]}
