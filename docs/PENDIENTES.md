@@ -3,14 +3,14 @@
 Read this before taking work. History and the previous Spanish board:
 [PENDIENTES-HECHOS.md](PENDIENTES-HECHOS.md). Rules: [CONTRIBUTING.md](../CONTRIBUTING.md).
 
-## Current state (2026-11-14, after 0.8.8-tester): read first
+## Current state (2026-11-14, after 0.8.9-tester): read first
 
-- `main` = 0.8.8-tester (FSR frame generation with a HUD-less image, FG-02; 0.8.7 HD photo thumbnails and shadow «auto», SS-03; 0.8.6 FPS «display»; 0.8.5 NSP/NSZ/XCI/XCZ import): AMD RDNA 1/2 fixes (FOTO-01, CRISTAL-01), gyro (GYRO-01/02), windowed
+- `main` = 0.8.9-tester (experimental ultrawide, ULTRAWIDE-01; 0.8.8 FSR frame generation with a HUD-less image, FG-02; 0.8.7 HD photo thumbnails and shadow «auto», SS-03; 0.8.6 FPS «display»; 0.8.5 NSP/NSZ/XCI/XCZ import): AMD RDNA 1/2 fixes (FOTO-01, CRISTAL-01), gyro (GYRO-01/02), windowed
   present (PRESENT-WIN-01), internal resolution by host scaling (SS-02), high FPS 90/120/144
   (FPS-01, RTX tester), FSR frame generation off by default with refresh fallback (FG-01/02).
 - Owner hardware: RX 6900 XT, Samsung C27HG7x 144 Hz monitor, FreeSync. RTX tester: RTX 4060.
-- Open queue: SS-03 RTX check of HD thumbnails, ULTRAWIDE-01 (photo capture and HUD
-  sites, see [ULTRAWIDE.md](ULTRAWIDE.md)), DLSS-G (needs RTX 40/50),
+- Open queue: SS-03 RTX check of HD thumbnails, ULTRAWIDE-01 score check on a
+  frame-exact shot ([ULTRAWIDE.md](ULTRAWIDE.md)), DLSS-G (needs RTX 40/50),
   loading times measured (below).
 - Loading (2026-11-14, RX 6900 XT, 0.8.8, photo route 200 s, warm pipeline cache): 200 % internal
   resolution loads like 100 % (largest hitches: boot ≈350–375 ms, texture upload 312 ms at 100 %
@@ -43,8 +43,8 @@ acceptance), DONE (moved to the history file).
 ## Ideas after 0.8.6
 
 - DLSS frame generation (needs RTX 40/50 to test).
-- Ultrawide: 3D widening works (`main+0x29641c`), backed out because photos are captured from the
-  widened frame and the HUD stretches. [ULTRAWIDE.md](ULTRAWIDE.md).
+- Ultrawide shipped experimental in 0.8.9 (photos from the 16:9 view, HUD centred); its score
+  equivalence still needs a frame-exact shot. [ULTRAWIDE.md](ULTRAWIDE.md).
 
 ## Release recipe (owner's PC)
 
