@@ -9,7 +9,12 @@ updates of the loading loop (`main+0x4e0904`, paced by its own 14 ms sleep, not 
 the last segment of a recorded timeline (`main+0x2e60bc`, which steps through recorded times). Sampled 60.0 uses
 multiply measured seconds by 60 or divide 60 Hz frame numbers by 60: conversions of measured time, not per-frame
 steps. Together with the timer's channels reporting measured time (mode 0) at 144 fps, no other path that advances
-a fixed step per presented frame is known. Item throws and cooldowns of later stages were not played.
+a fixed step per presented frame is known.
+
+Played check (RX 6900 XT, a copy of the owner's save, Florio): four scanner pulses (X every 200 ticks) last
+22/18/19/18 shots of 50 ms at 60 fps and 21/18/17/18 at 144 fps, and all four fire at both rates, so the scanner's
+length and cooldown follow real time. Fluffruit and the other throwable items are not unlocked in any save on this
+PC; their throws were not played.
 
 ## INPUT-HZ-01 a press in the middle of a dialogue line skipped it above 60 FPS — 2026-11-15
 
