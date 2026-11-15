@@ -1,5 +1,41 @@
 # High frame rate options and investigation
 
+## UI-HZ-01 interface timelines above 60 FPS — 2026-11-15
+
+**Cause.** The interface is a Flash-style player (ActionScript 2 names such as `gotoAndPlay`, `onEnterFrame`,
+`_currentframe` and `*_mc` clips are in the module). Once per game frame the interface manager walks its lists of
+movies and calls the player's advance for each one (`main+0x9d0de0`, from the loops at `main+0x7838f8` and
+`main+0x790dfc`). The call takes no time step: each movie moves one timeline frame per game frame. The 3D scene uses
+the measured timer, so only the interface speeds up with the frame rate (2.4 times at 144 FPS).
+
+**How it was found.** Static search for the player's frame vocabulary, then the sprite's per-frame advance
+(`main+0x9bea00`: play state at `+0x200`, current/total frame at `+0x1f0/+0x1f4`), then a private call-chain probe at
+that function, which showed a single entry (`0x9d0de0`) and its two callers. The probe is not in the tree.
+
+**Fix** (`patches/snap-2.0.1-ui-pace.txt`, `newsnap/overlays/snap_ui_pace.c`/`.h`). One decision per presented frame
+from real time, 60 steps a second; every walk of that frame uses it. On a frame that is not due, the movie pointer the
+loop just loaded is replaced by an empty stand-in that the player's own first check rejects, so the original call
+returns at once. Only `x0` at that point changes; the loop, the lists and game memory are untouched. At a selected cap
+of 60 FPS or below every frame steps, as the game does, and a hitch never banks steps (at most one a frame).
+`AC_SNAP_UI_PACE_PATCH=0` removes the four sites; `NEWSNAP_UI_PACE_TRACE=1` logs steps per second.
+
+**Evidence (RTX 4060 Laptop, same private runtime, tutorial route, private under `build/ui01-*`).**
+
+| Run | Cap | Interface steps a second | Notes |
+| --- | ---: | ---: | --- |
+| `ui01-60` | 60 | every frame | 0 held frames |
+| `ui01-144-fix` | 144 | 60.0 (300 of 720 frames per 5 s window) | about 13 walks of the lists per frame |
+| `ui01-144-off` | 144 | one per frame (144) | sites removed |
+
+Consecutive 144 FPS frames from the flight recorder show the interface's brightness pulses moving one step every
+2 or 3 frames in one direction, no alternation: stepped animation, not flicker. All runs exited 0.
+
+**Limits.** RTX 4060 only; nothing run on AMD. Only the title, tutorial dialogue and first photos were played: score
+screens, title popups, the end-of-stage silhouette and loading animation were not watched, they are covered only by
+being movies of the same player. The interface now animates at 60 steps a second while the scene draws faster, so its
+motion is not smoother than at 60 FPS. Game logic outside the interface that might count frames (item throws in later
+stages, cooldowns, input repeat) was not audited and is still open under FPS-01.
+
 ## FPS-01 implementation — 2026-11-14
 
 The launcher and in-game video menu offer **30 / 60 / 90 / 120 / 144 FPS**.
