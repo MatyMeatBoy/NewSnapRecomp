@@ -390,6 +390,50 @@ void snap_texpack_uploaded(const VkTexImage *img, const void *mem, uint64_t size
         if (!have) dump_to(img, h, light_src, 1);
         return;
     }
+    {   // NEWSNAP_TEX_WHITE=<vk format>[,<vk format>] (diagnostics): those textures drawn plain white, to find which
+        // layer a part of the picture comes from (white.dds next to the game, written once)
+        static int formats[4] = {-1, -1, -1, -1};
+        static char white_dir[1100];
+        if (formats[0] == -1) {
+            const char *v = getenv("NEWSNAP_TEX_WHITE");
+            formats[0] = -2;
+            if (v && *v) sscanf(v, "%d,%d,%d,%d", &formats[0], &formats[1], &formats[2], &formats[3]);
+        }
+        if (formats[0] >= 0 && (formats[0] == (int)img->format || formats[1] == (int)img->format ||
+                                formats[2] == (int)img->format || formats[3] == (int)img->format) &&
+            img->type == VK_IMAGE_TYPE_2D && img->layers == 1 && !img->skip) {
+            uint64_t h = hash_bytes(mem, size, seed);
+            if (!white_dir[0]) {
+                char exe[900];
+                if (plat_exe_path(exe, sizeof exe)) {
+                    char *slash = strrchr(exe, '/'), *bs = strrchr(exe, 92);
+                    if (bs && (!slash || bs > slash)) slash = bs;
+                    if (slash) *slash = 0;
+                    snprintf(white_dir, sizeof white_dir, "%s/texwhite", exe);
+                    plat_fs_mkdir(white_dir);
+                }
+            }
+            char path[1200];
+            snprintf(path, sizeof path, "%s/%016llx.dds", white_dir, (unsigned long long)h);
+            FILE *f = fopen(path, "rb");
+            if (f) fclose(f);
+            else if ((f = fopen(path, "wb"))) {
+                uint8_t hdr[148] = {0}, px[64];
+                uint32_t v;
+                memcpy(hdr, "DDS ", 4);
+                v = 124, memcpy(hdr + 4, &v, 4); v = 0x100F, memcpy(hdr + 8, &v, 4);
+                v = 4, memcpy(hdr + 12, &v, 4), memcpy(hdr + 16, &v, 4); v = 16, memcpy(hdr + 20, &v, 4);
+                v = 1, memcpy(hdr + 28, &v, 4); v = 32, memcpy(hdr + 76, &v, 4); v = 4, memcpy(hdr + 80, &v, 4);
+                memcpy(hdr + 84, "DX10", 4); v = 0x1000, memcpy(hdr + 108, &v, 4);
+                v = 28, memcpy(hdr + 128, &v, 4); v = 3, memcpy(hdr + 132, &v, 4); v = 1, memcpy(hdr + 140, &v, 4);
+                memset(px, 255, sizeof px);
+                fwrite(hdr, 1, sizeof hdr, f), fwrite(px, 1, sizeof px, f);
+                fclose(f);
+            }
+            attach(img, h, 1, white_dir, "white diagnostic textures");
+            return;
+        }
+    }
     if (dump_dir[0] && dump_all() && eligible_data(img)) {
         dump(img, hash_bytes(mem, size, seed));
         return;
