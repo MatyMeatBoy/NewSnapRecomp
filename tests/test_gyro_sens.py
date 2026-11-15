@@ -39,9 +39,9 @@ class GyroSensAdapt(unittest.TestCase):
             with self.assertRaises(ValueError):
                 settings.validate_settings({'gyro_sens': bad})
 
-    def test_launcher_has_a_mods_tab(self):
+    def test_launcher_has_aim_options_in_controls(self):
         source = (ROOT / 'newsnap/launcher.py').read_text(encoding='utf-8')
-        mods = source[source.index('def _mod_options(self):'):]
+        mods = source[source.index('def _aim_options(self, content):'):]
         for key in ("'motion'", "'gyro_sens'", "'mouse_sens'"):
             self.assertIn(key, mods.split('def export_diagnostics')[0])
 

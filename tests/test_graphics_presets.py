@@ -12,7 +12,7 @@ class GraphicsPresetTests(unittest.TestCase):
                     values = dict(original, operation_mode=mode)
                     result = apply_preset(values, name)
                     settings.validate_settings(result)
-                    for key in values.keys() - {'render_scale', 'aniso', 'upscaling'}:
+                    for key in values.keys() - set(PRESETS[name]):
                         self.assertEqual(result[key], values[key])
                     self.assertEqual(matching_preset(result), name)
                     self.assertEqual(values, dict(original, operation_mode=mode))

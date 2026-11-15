@@ -3,13 +3,14 @@
 Read this before taking work. History and the previous Spanish board:
 [PENDIENTES-HECHOS.md](PENDIENTES-HECHOS.md). Rules: [AGENTS.md](../AGENTS.md).
 
-## Current state (2026-11-14, after 0.8.9-tester): read first
+## Current state (2026-11-14, after 0.9.0-tester): read first
 
-- `main` = 0.8.9-tester (experimental ultrawide, ULTRAWIDE-01; 0.8.8 FSR frame generation with a HUD-less image, FG-02; 0.8.7 HD photo thumbnails and shadow «auto», SS-03; 0.8.6 FPS «display»; 0.8.5 NSP/NSZ/XCI/XCZ import): AMD RDNA 1/2 fixes (FOTO-01, CRISTAL-01), gyro (GYRO-01/02), windowed
+- `main` = 0.9.0-tester (launcher presets with «Recomendado», «Mejoras» tab, in-game Screen/Enhancements rows, window auto, internal resolution by display, TEXPACK-01 runtime; 0.8.9 experimental ultrawide, ULTRAWIDE-01; 0.8.8 FSR frame generation with a HUD-less image, FG-02; 0.8.7 HD photo thumbnails and shadow «auto», SS-03; 0.8.6 FPS «display»; 0.8.5 NSP/NSZ/XCI/XCZ import): AMD RDNA 1/2 fixes (FOTO-01, CRISTAL-01), gyro (GYRO-01/02), windowed
   present (PRESENT-WIN-01), internal resolution by host scaling (SS-02), high FPS 90/120/144
   (FPS-01, Codex), FSR frame generation off by default with refresh fallback (FG-01/02).
 - Owner hardware: RX 6900 XT, Samsung C27HG7x 144 Hz monitor, FreeSync. Codex: RTX 4060.
-- Open queue: SS-03 RTX check of HD thumbnails, DLSS-G (needs RTX 40/50),
+- Open queue: TEXPACK-01 pack generation (launcher button, BC7, Florio first), SS-03 RTX check of HD thumbnails,
+  DLSS-G (needs RTX 40/50),
   loading times measured (below).
 - Loading (2026-11-14, RX 6900 XT, 0.8.8, photo route 200 s, warm pipeline cache): 200 % internal
   resolution loads like 100 % (largest hitches: boot ≈350–375 ms, texture upload 312 ms at 100 %

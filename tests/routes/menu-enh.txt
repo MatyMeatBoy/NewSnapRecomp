@@ -1,0 +1,6 @@
+# Opens the in-game menu and shows the Enhancements tab (MENU-02 check).
+1800 MINUS 8
+1800 PLUS 8
+2000 L 12
+2200 L 12
+2400 R 12
