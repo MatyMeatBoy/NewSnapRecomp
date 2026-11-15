@@ -104,17 +104,19 @@ int main(void) {
         with tempfile.TemporaryDirectory() as tmp:
             p = Path(tmp)
             (p / 'platform').mkdir()
-            (p / 'cpu.h').write_text('#include <stdint.h>\ntypedef struct {uint64_t x[32],sp,pc,nzcv; char rest[1024];} Cpu;\n')
+            (p / 'cpu.h').write_text('#include <stdint.h>\ntypedef struct {uint64_t x[32],sp,pc,nzcv; __uint128_t v[32]; char rest[512];} Cpu;\n')
             (p / 'host.h').write_text('#include <stdint.h>\nuint64_t kern_now_ns(void); uint64_t frame_step_cap_ns(void);'
                                       ' void rt_log(const char *,...);\n')
             (p / 'gfx.h').write_text('#include <stdint.h>\ntypedef struct { uint64_t frames; } GfxStats;\n')
-            (p / 'platform/platform.h').write_text('#include <stddef.h>\n#include <stdint.h>\nint plat_mem_read(uint64_t,void *,size_t);\n')
+            (p / 'platform/platform.h').write_text('#include <stddef.h>\n#include <stdint.h>\nint plat_mem_read(uint64_t,void *,size_t);\n'
+                                                   'int plat_mem_readable(uint64_t,uint64_t);\n')
             (p / 'fixture.c').write_text(r'''
 #include <string.h>
 #include "cpu.h"
 #include "gfx.h"
 GfxStats gfx_counters;
 static uint64_t now = 1000, cap = 6944444;
+int plat_mem_readable(uint64_t a, uint64_t n) { (void)a; (void)n; return 1; }
 static int readable = 1;
 uint64_t kern_now_ns(void) { return now; }
 uint64_t frame_step_cap_ns(void) { return cap; }

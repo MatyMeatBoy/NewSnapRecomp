@@ -160,14 +160,14 @@ static const char *current;static int expected,rows;
 const char *menu_text(int id){return id==UI_MENU_FPS_30?"30 FPS":"60 FPS";}
 const char *cfg_get(const char *key){assert(!strcmp(key,"AC_FPS"));return current;}
 void opt_choice_list(const char *key,int,const char *const *v,const char *const *names,int n,int,int cur){
- const char *rates[]={"30","60","90","120","144"};
- assert(!strcmp(key,"AC_FPS")&&n==5&&cur==expected);
+ const char *rates[]={"30","60","90","120","144","vrr"};
+ assert(!strcmp(key,"AC_FPS")&&n==6&&cur==expected);
  for(int i=0;i<n;i++)assert(!strcmp(v[i],rates[i])&&names[i]&&*names[i]);rows++;
 }
 '''+body+r'''
-int main(){const char *rates[]={"30","60","90","120","144"};
- for(int i=0;i<5;i++){current=rates[i];expected=i;row_fps_limit();}
- current=nullptr;expected=1;row_fps_limit();current="240";row_fps_limit();return rows!=7;
+int main(){const char *rates[]={"30","60","90","120","144","vrr"};
+ for(int i=0;i<6;i++){current=rates[i];expected=i;row_fps_limit();}
+ current=nullptr;expected=1;row_fps_limit();current="240";row_fps_limit();return rows!=8;
 }
 ''')
             exe=p/'menu.exe'
