@@ -1,7 +1,7 @@
 """Graphics presets: NewSnap's recommended default and the classic levels; never change colour or input policy."""
 
 PRESETS = {
-    'Recomendado': {'render_scale': 'display', 'aniso': '16', 'upscaling': 'off', 'shadow_scale': 'auto',
+    'Recomendado': {'render_scale': 'display', 'aniso': '16', 'upscaling': 'auto', 'shadow_scale': 'auto',
                     'hd_photos': '1', 'fps': '60', 'window_size': 'auto', 'fullscreen': '1'},
     'Original': {'render_scale': 'game', 'aniso': 'game', 'upscaling': 'off', 'shadow_scale': '1', 'hd_photos': '0'},
     'Bajo': {'render_scale': '70', 'aniso': '2', 'upscaling': 'off', 'shadow_scale': '1', 'hd_photos': '1'},
@@ -10,7 +10,8 @@ PRESETS = {
     'Ultra': {'render_scale': 'display', 'aniso': '16', 'upscaling': 'off', 'shadow_scale': '4', 'hd_photos': '1'},
 }
 
-DESCRIPTION = ('Recomendado (predeterminado): resolución según la pantalla, anisotrópico 16×, sombras automáticas, '
+DESCRIPTION = ('Recomendado (predeterminado): resolución según la pantalla, escalado automático (FSR o DLSS en nativo, '
+               'o ninguno si la resolución interna supera el 100 %), anisotrópico 16×, sombras automáticas, '
                'miniaturas de fotos en HD, 60 FPS, ventana automática a pantalla completa. '
                'Original: el juego tal cual (escala, filtrado y sombras originales, miniaturas originales). '
                'Bajo: escala 70 %, 2×. Medio: 80 %, 4×. Alto: 100 %, 8×, sombras 2×. '

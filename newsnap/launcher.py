@@ -210,8 +210,9 @@ class Launcher:
                      help_text='Admite un tamaño propio como 2560x1080. Cambia la ventana, no la resolución interna ni la salida nativa.')
         self._choice(video, 'Salida nativa del juego', 'operation_mode', {'TV · 1920 × 1080': 'docked', 'Portátil · 1280 × 720': 'handheld'},
                      help_text='El modo TV produce una salida de 1080p; el modo portátil, 720p. Una ventana 4K no convierte la salida nativa en 4K.')
-        self._choice(video, 'Límite de FPS · Frame cap', 'fps', {'30 FPS': '30', '60 FPS · predeterminado': '60', '90 FPS': '90', '120 FPS': '120', '144 FPS': '144'},
-                     help_text='60 FPS conserva el límite original. 90, 120 y 144 FPS son límites de presentación experimentales. El rendimiento depende del equipo y del modo de presentación; las escenas que solicitan una cadencia menor la conservan. Se puede cambiar en vivo desde el menú del juego. La aceptación física AMD sigue pendiente.')
+        self._choice(video, 'Límite de FPS', 'fps', {'30 FPS': '30', '60 FPS · predeterminado': '60', '90 FPS': '90', '120 FPS': '120', '144 FPS': '144',
+                     'Según la pantalla · fracción exacta del refresco': 'display', 'VRR · justo por debajo del refresco': 'vrr'}, choice_width=38,
+                     help_text='60 FPS conserva el límite original. 90, 120 y 144 FPS son límites de presentación experimentales. El rendimiento depende del equipo y del modo de presentación; las escenas que solicitan una cadencia menor la conservan. Se puede cambiar en vivo desde el menú del juego. «Según la pantalla» usa una fracción exacta del refresco del monitor (72 en 144 Hz) para pantallas sin VRR. «VRR» limita justo por debajo del refresco (138 en 144 Hz) para que FreeSync o G-SYNC no salgan de su rango.')
         self.presentation = tk.StringVar(value=next(label for label, value in PRESENTATION_LABELS.items() if value == values['vk_present']))
         row = ttk.Frame(video)
         row.pack(fill='x', pady=9)
@@ -221,23 +222,25 @@ class Launcher:
         present_choice.pack(side='left')
         Tooltip(present_label, PRESENTATION_HELP); Tooltip(present_choice, PRESENTATION_HELP)
         self._help(video, 'FIFO / Mailbox / Immediate / FIFO Relaxed. El modo efectivo y VRR se comprueban durante el juego.')
-        self._help(video, 'La frecuencia variable depende de la pantalla y el controlador. Su presentación se comprueba durante la expedición.')
+        self._help(video, 'VRR (FreeSync / G-SYNC) depende de la pantalla y el controlador. Su presentación se comprueba durante la expedición.')
         from .display_ui import DisplayPanel
         self.display=DisplayPanel(self,video)
         self._choice(video, 'Overlay de rendimiento', 'perf_overlay', {'Oculta': 'off', 'Solo FPS': 'fps', 'Completa': 'full'},
                      help_text='Muestra datos del runtime. La vista completa incluye tiempos de CPU/GPU y actividad de compilación cuando están disponibles.')
-        self._heading(video, 'Resolución y reconstrucción')
-        self._choice(video, 'Reconstrucción temporal · FSR/DLSS', 'upscaling', {
-            'Original': 'off', 'Automática': 'auto', 'AMD FSR 3.1': 'fsr3',
+        self._heading(video, 'Resolución y escalado')
+        self._choice(video, 'Escalado · FSR / DLSS', 'upscaling', {
+            'Automático': 'auto', 'Desactivado · imagen original': 'off', 'AMD FSR 3.1': 'fsr3',
             'AMD FSR 4 · GPU compatible': 'fsr4', 'NVIDIA DLSS · RTX': 'dlss'},
-            help_text='Reconstruye la escena antes del HUD. La disponibilidad depende del proveedor y del controlador; una opción no disponible conserva una alternativa compatible. FSR 4 selecciona automáticamente el modelo compatible, incluido INT8 en RX 6000/7000.')
-        self._choice(video, 'Preset de reconstrucción', 'upscaling_quality', {
-            'Nativo · antialiasing': 'native', 'Calidad · escena 70 %': 'quality',
+            help_text='Escala y suaviza la escena 3D antes del HUD. Automático elige el mejor disponible para tu GPU (DLSS en RTX, FSR 4 o FSR 3.1 en el resto) y se aparta solo si la resolución interna supera el 100 %. La disponibilidad depende del proveedor y del controlador; una opción no disponible conserva una alternativa compatible. FSR 4 selecciona automáticamente el modelo compatible, incluido INT8 en RX 6000/7000.')
+        self._choice(video, 'Calidad del escalado', 'upscaling_quality', {
+            'Nativo · solo antialiasing (DLAA / Native AA)': 'native', 'Calidad · escena 70 %': 'quality',
             'Equilibrado · escena 60 %': 'balanced', 'Rendimiento · escena 50 %': 'performance'},
             help_text='Cada proveedor usa su propio algoritmo con el preset elegido. Las escalas corresponden a los niveles reales del motor de Snap; requieren reiniciar la expedición.')
-        self._choice(video, 'Escala interna de la escena', 'render_scale', {'Según el juego': 'game', **{f'{n} %': str(n) for n in (50, 60, 70, 80, 90, 100)},
-                     'Según la pantalla · supersampling': 'display',
-                     **{f'{label} ({n} %) · supersampling': str(n) for label, n in (('1,25×', 125), ('1,33× · 1440p', 133), ('1,5×', 150), ('1,75×', 175), ('2× · 4K', 200), ('2,5×', 250), ('3×', 300))}},
+        self._choice(video, 'Resolución interna', 'render_scale', {
+                     **{f'{n} %' + (' · más ligero' if n == 50 else ''): str(n) for n in (50, 60, 70, 80, 90)},
+                     '100 % · la del juego (1080p)': 'game',
+                     **{f'{n} %{note}': str(n) for n, note in ((125, ''), (133, ' · 1440p'), (150, ''), (175, ''), (200, ' · 4K'), (250, ''), (300, ' · más nítido'))},
+                     'Según la pantalla': 'display'},
                      choice_width=31,
                      help_text='Hasta el 100 %, una escala menor favorece el rendimiento y pierde detalle. Por encima del 100 % es supersampling del modo TV: el juego dibuja a 1920 × 1080 y la imagen interna (escena, HUD y fotos) se calcula más grande y se reduce a tu ventana; aumenta el detalle y el coste de GPU (2× cuesta unas cuatro veces más píxeles). «Según la pantalla» elige la escala que coincide con la altura de tu monitor o ventana (1440p → 1,33×, 4K → 2×). Requiere el reescalador apagado y el modo TV; guardar una combinación incompatible muestra un error sin cambiar tu elección.')
         self._choice(video, 'Filtrado anisotrópico · AF', 'aniso', {'Según el juego': 'game', **{f'{n}×': str(n) for n in (2, 4, 8, 16)}, 'Automático heredado': 'auto'},
