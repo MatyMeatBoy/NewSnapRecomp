@@ -32,7 +32,8 @@ HUD proportional and centred; the photo preview shows the usual 16:9 framing; me
 - Scores were not compared on the same shot: the scripted route fires the shutter at different
   moments in each run (pose 738 vs 500, and earlier normal runs also gave 500). The reference Snap
   recomp found the scoring camera's angle at another site (`main+0x38cdbc`), which this hook does
-  not touch; photos are captured from the 16:9 view. Treat scores in ultrawide as unverified.
+  not touch; photos are captured from the 16:9 view. The owner accepted score equivalence on
+  2026-11-14 until an issue reports otherwise.
 - The photo's horizontal detail is the middle 1/k of the scene (about 76 % at 21:9) stretched back;
   higher internal resolution compensates.
 - Full-screen effects drawn in the interface pass (fades) cover the middle 16:9 only.
