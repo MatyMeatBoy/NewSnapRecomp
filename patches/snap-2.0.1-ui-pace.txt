@@ -7,8 +7,11 @@
 #   790dfc ldr x0,[x21,#0x10]   movie for the call at 790e00 (bl 9d0de0)
 # The begin helper runs before the original load and changes nothing in the guest. The movie
 # helper runs after the original load and, on a frame that is not due, points x0 at an empty
-# stand-in the player's first check rejects. AC_SNAP_UI_PACE_PATCH=0 removes all four sites.
-set snap_ui_pace AC_SNAP_UI_PACE_PATCH 1
+# stand-in the player's first check rejects.
+# OFF BY DEFAULT since 0.9.4: holding a movie this way also skips the work that decides which clips
+# are shown, so hidden menus appear and the interface flickers every frame (owner's RX 6900 XT, camp
+# and loading screens). AC_SNAP_UI_PACE_PATCH=1 turns the sites on for investigation only.
+set snap_ui_pace AC_SNAP_UI_PACE_PATCH 0
 site snap_ui_pace main 7838e4 f94072c8 @fn:snap_ui_pace_begin f94072c8
 site snap_ui_pace main 7838f8 f9400a80 f9400a80 @fn:snap_ui_pace_movie
 site snap_ui_pace main 790de8 f9407108 @fn:snap_ui_pace_begin f9407108

@@ -20,7 +20,8 @@ class UiPaceTests(unittest.TestCase):
     def test_patch_set_is_registered_and_names_the_four_verified_sites(self):
         text = (ROOT / 'patches/snap-2.0.1-ui-pace.txt').read_text(encoding='utf-8')
         lines = [line.split() for line in text.splitlines() if line and not line.startswith('#')]
-        self.assertEqual(lines[0], ['set', 'snap_ui_pace', 'AC_SNAP_UI_PACE_PATCH', '1'])
+        # off by default: 0.9.3 shipped it on and it broke the interface above 60 fps
+        self.assertEqual(lines[0], ['set', 'snap_ui_pace', 'AC_SNAP_UI_PACE_PATCH', '0'])
         # helper before the original load at the two walk starts, after it at the two movie loads
         self.assertEqual(lines[1:], [
             ['site', 'snap_ui_pace', 'main', '7838e4', 'f94072c8', '@fn:snap_ui_pace_begin', 'f94072c8'],
