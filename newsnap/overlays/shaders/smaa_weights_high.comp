@@ -1,0 +1,3 @@
+#version 450
+#define SMAA_PRESET_HIGH 1
+#include "smaa_weights.glsl"

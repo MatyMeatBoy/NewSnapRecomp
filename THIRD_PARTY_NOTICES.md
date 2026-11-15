@@ -64,6 +64,11 @@ No game data or generated game code is included in the build kit.
 at `c1149c2822b857a351ed1c130aef2c6ec7430094` (MIT; Copyright 2020 Smash Ultimate
 Research Group). Its full notice is retained in `licenses/ssbh_lib-MIT.txt`.
 Shader seed layouts and runtime hashes follow the pinned Astral tools/runtime.
+
+The anti-aliasing (`newsnap/overlays/shaders/SMAA.hlsl`, `smaa_area_tex.h`, `smaa_search_tex.h`) is SMAA from
+[iryoku/smaa](https://github.com/iryoku/smaa) (MIT; Copyright 2013 Jorge Jimenez, Jose I. Echevarria, Belen Masia,
+Fernando Navarro and Diego Gutierrez), converted to UTF-8 with LF line endings. Its notice is retained in
+`licenses/SMAA-MIT.txt`.
 # Official promotional artwork used by the launcher
 
 The owner requested New Pokémon Snap imagery in the launcher. Files under

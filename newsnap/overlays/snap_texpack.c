@@ -383,6 +383,23 @@ void snap_texpack_uploaded(const VkTexImage *img, const void *mem, uint64_t size
     setup();
     if (!mem || !size) return;
     uint64_t seed = (uint64_t)img->width << 32 ^ (uint64_t)img->height << 16 ^ (uint64_t)(uint32_t)nvn_format;
+    {   // NEWSNAP_TEX_HASHLOG=<file> (tools): one line per upload, to match the game's files to these hashes
+        static FILE *hl;
+        static int tried;
+        if (!tried) {
+            tried = 1;
+            const char *v = getenv("NEWSNAP_TEX_HASHLOG");
+            if (v && *v) hl = fopen(v, "a");
+        }
+        if (hl) {
+            uint64_t a = 0;
+            memcpy(&a, mem, size < 8 ? size : 8);
+            fprintf(hl, "%016llx %u %u %d %llu %u %d %016llx\n", (unsigned long long)hash_bytes(mem, size, seed),
+                    img->width, img->height, nvn_format, (unsigned long long)size, img->levels, (int)img->format,
+                    (unsigned long long)a);
+            fflush(hl);
+        }
+    }
     if (light_on && is_light_map(img)) {   // HD-SHADOW-01
         uint64_t h = hash_bytes(mem, size, seed);
         int have = in_light(h);
@@ -471,4 +488,13 @@ VkImage snap_texpack_image(VkImage game, VkFormat *fmt, uint32_t *levels) {
 int snap_texpack_files(void) {
     setup();
     return nindex > 0 ? nindex : 0;
+}
+
+// HD-SHADOW-02 (snap_lightmap_export.c): the runtime's own hash and DDS writer for the light maps read offline.
+uint64_t snap_texpack_hash(const void *p, uint64_t n, uint32_t w, uint32_t h, int nvn_format) {
+    return hash_bytes(p, n, (uint64_t)w << 32 ^ (uint64_t)h << 16 ^ (uint64_t)(uint32_t)nvn_format);
+}
+
+void snap_texpack_write_rgba16f(const char *path, const void *px, uint32_t w, uint32_t h) {
+    write_dds_rgba16f(path, px, w, h);
 }

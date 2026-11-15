@@ -89,7 +89,7 @@ static const char *const text_es[UI_TEXT_COUNT] = {
     [UI_MENU_AO_OFF] = "Desactivada",
     [UI_MENU_AO_LOW] = "Baja",
     [UI_MENU_AO_HIGH] = "Alta",
-    [UI_MENU_UPSCALING] = "Antialiasing",
+    [UI_MENU_UPSCALING] = "Escalador (FSR / DLSS)",
     [UI_MENU_UPSCALING_DESC] = "Un escalador temporal en lugar del antialiasing del juego: bordes más suaves y menos "
                                "parpadeo, y con un modo por debajo de Nativo más FPS. NVIDIA DLSS necesita una GPU NVIDIA RTX "
                                "y nvngx_dlss.dll junto a newsnap.exe; Intel XeSS, una GPU reciente y libxess.dll junto a "
@@ -111,9 +111,10 @@ static const char *const text_es[UI_TEXT_COUNT] = {
     [UI_MENU_UPSCALING_NATIVE] = "Desactivado (resolución completa)", [UI_MENU_DLSS_QUALITY] = "Calidad", [UI_MENU_DLSS_BALANCED] = "Equilibrado",
     [UI_MENU_DLSS_PERFORMANCE] = "Rendimiento", [UI_MENU_UPSCALING_ULTRA] = "Ultra rendimiento",
     [UI_MENU_UPSCALING_MODE_OFF] = "sin escalador",
-    [UI_MENU_AA] = "SMAA (sin FSR / DLSS)",
-    [UI_MENU_AA_DESC] = "El SMAA propio del juego; solo se usa con Antialiasing en SMAA. Desactivado deja los bordes "
-                        "dentados.",
+    [UI_MENU_AA] = "Antialiasing (SMAA)",
+    [UI_MENU_AA_DESC] = "SMAA suaviza los bordes dentados antes de dibujar el HUD. Alto es el predeterminado; Ultra "
+                        "encuentra más bordes con algo más de GPU. No se usa mientras funciona un escalador.",
+    [UI_SNAP_SMAA_LOW] = "Bajo", [UI_SNAP_SMAA_MEDIUM] = "Medio", [UI_SNAP_SMAA_HIGH] = "Alto",
     [UI_MENU_AA_OFF] = "Desactivado",
     [UI_MENU_AA_BY_UPSCALER] = "el escalador suaviza los bordes",
     [UI_SNAP_RES] = "Resolución interna del juego",

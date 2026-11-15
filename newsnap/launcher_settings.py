@@ -56,13 +56,14 @@ CONTROL_DEFAULTS = {'mouse_sens': '1', 'motion': '1', 'gyro_sens': '2.5', 'pad_l
                     'lstick_deadzone': '', 'rstick_deadzone': '', **BINDING_DEFAULTS}
 DEFAULTS.update(CONTROL_DEFAULTS)
 DEFAULTS.update(lang='', audio_prefill_ms='20', perf_overlay='off')
-DEFAULTS.update(upscaling='auto', upscaling_quality='native', frame_gen='off', hd_photos='1', hd_shadows='0', tex_pack='1', tex_pack_save='0')
+DEFAULTS.update(upscaling='off', anti_aliasing='high', upscaling_quality='native', frame_gen='off', hd_photos='1', hd_shadows='0', tex_pack='1', tex_pack_save='0')
 ENV_UI_OVERRIDES = ENV_UI_OVERRIDES | {'upscaling', 'upscaling_quality'}
-SECTIONS.update(upscaling='display', upscaling_quality='display', frame_gen='display', hd_photos='display', hd_shadows='display', tex_pack='display', tex_pack_save='display')
+SECTIONS.update(upscaling='display', anti_aliasing='display', upscaling_quality='display', frame_gen='display', hd_photos='display', hd_shadows='display', tex_pack='display', tex_pack_save='display')
 SECTIONS.update({key: 'input' for key in CONTROL_DEFAULTS})
 SECTIONS.update(lang='language', audio_prefill_ms='audio', perf_overlay='display')
 CHOICES.update(lang=LANGUAGES, pad_layout=('auto', 'nintendo', 'xbox', 'playstation'),
                upscaling=('off', 'auto', 'fsr3', 'fsr4', 'dlss'),
+               anti_aliasing=('high', 'ultra', 'medium', 'low', 'off'),
                upscaling_quality=('native', 'quality', 'balanced', 'performance'),
                perf_overlay=('off', 'fps', 'full'))
 RANGES.update(gyro_sens=(0.1, 10, False), rumble_strength=(0, 300, True), rumble_curve=(0.2, 1.5, False),
@@ -180,11 +181,15 @@ def _settings_source(path):
 def load_settings(path):
     result = dict(DEFAULTS)
     path = _settings_source(path)
+    older = True   # AA-04: a file from before 0.9.14 (no SMAA level): its Automatic scaler was the old default
     if path.is_file():
         for line in path.read_text(encoding='utf-8-sig').splitlines():
             match = ENTRY.match(line)
             if match and (key := _key(match[2])) in DEFAULTS:
                 value = line.split('=', 1)[1].strip().strip('"')
+                if key == 'anti_aliasing':
+                    older = value == 'smaa'
+                    value = 'high' if value == 'smaa' else value   # the game's SMAA of earlier versions: High
                 if key == 'shadow_scale':
                     value = 'auto'   # 0.9.11: shadow maps always follow the internal resolution
                 if key == 'vk_present' and value == 'fifo_relaxed':
@@ -197,6 +202,8 @@ def load_settings(path):
                     result.update(validate_settings({key: value}))
                 except ValueError:
                     pass
+    if older and result.get('upscaling') == 'auto':
+        result['upscaling'] = 'off'   # 0.9.14: SMAA anti-aliases; FSR / DLSS only when chosen
     return result
 
 

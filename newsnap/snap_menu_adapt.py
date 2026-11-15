@@ -10,7 +10,8 @@ IDS = ('UI_SNAP_RES', 'UI_SNAP_RES_DESC', 'UI_SNAP_RES_UPSCALER', 'UI_SNAP_FG', 
        'UI_SNAP_HDPH', 'UI_SNAP_HDPH_DESC', 'UI_SNAP_SHADOW', 'UI_SNAP_SHADOW_DESC', 'UI_SNAP_TEXPACK',
        'UI_SNAP_TEXPACK_DESC', 'UI_SNAP_TEXPACK_NONE', 'UI_SNAP_ASPECT', 'UI_SNAP_ASPECT_DESC', 'UI_SNAP_TAB',
        'UI_SNAP_ENH', 'UI_SNAP_HDSH', 'UI_SNAP_HDSH_DESC', 'UI_SNAP_TAB_SYS', 'UI_SNAP_SYS_CONT', 'UI_SNAP_SYS_CONT_DESC',
-       'UI_SNAP_SYS_RESTART', 'UI_SNAP_SYS_RESTART_DESC', 'UI_SNAP_SYS_QUIT', 'UI_SNAP_SYS_QUIT_DESC')
+       'UI_SNAP_SYS_RESTART', 'UI_SNAP_SYS_RESTART_DESC', 'UI_SNAP_SYS_QUIT', 'UI_SNAP_SYS_QUIT_DESC',
+       'UI_SNAP_SMAA_LOW', 'UI_SNAP_SMAA_MEDIUM', 'UI_SNAP_SMAA_HIGH')
 
 TEXTS = {
     'UI_SNAP_RES': 'Game internal resolution',
@@ -18,6 +19,9 @@ TEXTS = {
                         'lighter picture, up (supersampling) for a sharper one that costs GPU time. By display matches '
                         'the screen or window height. It works together with anti-aliasing. Takes effect after a restart.',
     'UI_SNAP_RES_UPSCALER': 'above 100 %: set Performance scaling to Off',
+    'UI_SNAP_SMAA_LOW': 'Low',
+    'UI_SNAP_SMAA_MEDIUM': 'Medium',
+    'UI_SNAP_SMAA_HIGH': 'High',
     'UI_SNAP_FG': 'Frame generation',
     'UI_SNAP_FG_DESC': 'AMD FSR frame generation: one generated frame between two real ones. The interface is kept out of '
                        'the interpolation. It pauses itself while the game runs faster than about half the monitor\'s '
@@ -162,12 +166,12 @@ def edits():
              '    [UI_MENU_AA_BY_UPSCALER] = "the upscaler smooths the edges",\n' + texts),
             # AA-02: the upscaler row reads as anti-aliasing; its mode as performance scaling (Native = off)
             ('    [UI_MENU_UPSCALING] = "Upscaler",\n    [UI_MENU_UPSCALING_DESC] = "A temporal upscaler',
-             '    [UI_MENU_UPSCALING] = "Anti-aliasing",\n    [UI_MENU_UPSCALING_DESC] = "A temporal upscaler'),
+             '    [UI_MENU_UPSCALING] = "Upscaler (FSR / DLSS)",\n    [UI_MENU_UPSCALING_DESC] = "A temporal upscaler'),
             ('[UI_MENU_UPSCALING_QUALITY] = "Upscaler mode",', '[UI_MENU_UPSCALING_QUALITY] = "Performance scaling",'),
             ('    [UI_MENU_AA] = "Game anti-aliasing",\n'
              '    [UI_MENU_AA_DESC] = "The game\'s own anti-aliasing, SMAA, for when no upscaler runs. Off leaves the edges jagged.",',
-             '    [UI_MENU_AA] = "SMAA (without FSR / DLSS)",\n'
-             '    [UI_MENU_AA_DESC] = "The game\'s own SMAA, used only when Anti-aliasing is set to SMAA. Off leaves the edges jagged.",'),
+             '    [UI_MENU_AA] = "Anti-aliasing (SMAA)",\n'
+             '    [UI_MENU_AA_DESC] = "SMAA smooths jagged edges before the HUD is drawn. High is the default; Ultra finds more edges for a little more GPU time. Not used while an upscaler runs.",'),
             ('[UI_MENU_UPSCALING_NATIVE] = "Native", [UI_MENU_DLSS_QUALITY] = "Quality",',
              '[UI_MENU_UPSCALING_NATIVE] = "Off (full resolution)", [UI_MENU_DLSS_QUALITY] = "Quality",'),
             # MENU-04: the whole menu in Spanish (overlays/ui_text_es.inc) in place of the keyboard-only row
@@ -191,14 +195,24 @@ def edits():
              '        snprintf(v[4] + used, sizeof v[4] - used, " + FG");\n'
              '    }\n'),
             ('static void rows_upscaling(void) {', FUNCS + 'static void rows_upscaling(void) {'),
+            # AA-04: the SMAA row has its levels (snap_smaa.c); High is the default
+            ('        static const char *const av[] = {"off", "smaa"};\n'
+             '        const char *an[] = {menu_text(UI_MENU_AA_OFF), "SMAA"};\n',
+             '        static const char *const av[] = {"off", "low", "medium", "high", "ultra"};\n'
+             '        const char *an[] = {menu_text(UI_MENU_AA_OFF), menu_text(UI_SNAP_SMAA_LOW), menu_text(UI_SNAP_SMAA_MEDIUM),\n'
+             '                            menu_text(UI_SNAP_SMAA_HIGH), "Ultra"};\n'
+             '        int acur = 3;\n'
+             '        for (int i = 0; i < 5; i++) if (!strcmp(cfg_value("AC_ANTI_ALIASING"), av[i])) acur = i;\n'),
+            ('opt_choice_list("AC_ANTI_ALIASING", UI_MENU_AA, av, an, 2, UI_MENU_AA_DESC, cfg_smaa() ? 1 : 0);',
+             'opt_choice_list("AC_ANTI_ALIASING", UI_MENU_AA, av, an, 5, UI_MENU_AA_DESC, acur);'),
             # MENU-06: the rows show the stored choice. cfg_upscaling() reads Automatic as off above 100 % outside
             # Native, which showed «Original» and locked the mode row, so it could not go back to Native.
             ('    const char *up = cfg_upscaling(), *runs = vk_dlaa_upscaler_name();',
              '    const char *up = cfg_value("AC_UPSCALING"), *runs = vk_dlaa_upscaler_name();'),
             ('    const char *names[] = {"Original", menu_text(UI_MENU_UPSCALING_AUTO), "NVIDIA DLSS",',
-             '    const char *names[] = {"SMAA", menu_text(UI_MENU_UPSCALING_AUTO), "NVIDIA DLSS",'),
+             '    const char *names[] = {menu_text(UI_MENU_AA_OFF), menu_text(UI_MENU_UPSCALING_AUTO), "NVIDIA DLSS",'),
             ('    const char *names[] = {"Original", menu_text(UI_MENU_UPSCALING_AUTO), "AMD FSR 3.1", "AMD FSR 4"};',
-             '    const char *names[] = {"SMAA", menu_text(UI_MENU_UPSCALING_AUTO), "AMD FSR 3.1", "AMD FSR 4"};'),
+             '    const char *names[] = {menu_text(UI_MENU_AA_OFF), menu_text(UI_MENU_UPSCALING_AUTO), "AMD FSR 3.1", "AMD FSR 4"};'),
             ('        opt_choice_list("AC_UPSCALING_QUALITY", UI_MENU_UPSCALING_QUALITY, qv, qn, 4, UI_MENU_UPSCALING_QUALITY_DESC, qcur,\n'
              '                        off ? nullptr : note_q);',
              '        const char *qnote = off ? nullptr : note_q;\n'

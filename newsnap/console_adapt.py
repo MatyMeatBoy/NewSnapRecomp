@@ -23,6 +23,11 @@ def edits():
         ],
         'tools/build_game.py': [
             ('CREATE_SUSPENDED = 0x4', 'CREATE_SUSPENDED = 0x4\nCREATE_NO_WINDOW = 0x08000000'),
+            # CONSOLE-03: the game is a windowed program (GUI subsystem). Opened from Explorer, a shortcut or Steam,
+            # Windows 11 gave the console program a Windows Terminal tab that SW_HIDE cannot hide. Its log goes to
+            # newsnap.log; pipes and redirection from the launcher and the tools keep working.
+            ("    LINK_FLAGS = ['-fuse-ld=lld', '-Wl,--stack,16777216',",
+             "    LINK_FLAGS = ['-fuse-ld=lld', '-mwindows', '-Wl,--stack,16777216',"),
             ('    proc = subprocess.Popen(cmd, cwd=ROOT, env=env, creationflags=CREATE_SUSPENDED)',
              '    proc = subprocess.Popen(cmd, cwd=ROOT, env=env, creationflags=CREATE_SUSPENDED | CREATE_NO_WINDOW)'),
         ],
