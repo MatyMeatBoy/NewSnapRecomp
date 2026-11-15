@@ -1,51 +1,60 @@
 # High frame rate options and investigation
 
-## UI-HZ-01 interface timelines above 60 FPS — 2026-11-15
-
-> **Withdrawn in 0.9.4 (same day).** The fix below shipped on in 0.9.3 and broke the interface above 60 FPS on the
-> owner's RX 6900 XT: menus that should be hidden appeared (camp screen) and interface elements and the loading
-> screen flickered every frame. Returning early from the player's advance does not only hold the timeline; it also
-> skips the per-frame work that decides which clips are drawn, so held frames show a different picture from stepped
-> ones. The patch set is now **off by default** (`AC_SNAP_UI_PACE_PATCH=1` only for investigation). The cause
-> analysis stands; the fix does not. The evidence below measured how often the advance ran, and the statement that
-> the picture was steady was a misreading: the brightness pulses seen in the flight-recorder frames were not checked
-> against a run without the fix. A correct fix has to keep the per-frame display work and hold only the timeline
-> step (the sprite's own advance at `main+0x9bea00`, or the frame counter it increments), and has to be watched on
-> the camp, score and loading screens before shipping.
+## UI-HZ-01 interface speed above 60 FPS — 2026-11-15
 
 **Cause.** The interface is a Flash-style player (ActionScript 2 names such as `gotoAndPlay`, `onEnterFrame`,
-`_currentframe` and `*_mc` clips are in the module). Once per game frame the interface manager walks its lists of
-movies and calls the player's advance for each one (`main+0x9d0de0`, from the loops at `main+0x7838f8` and
-`main+0x790dfc`). The call takes no time step: each movie moves one timeline frame per game frame. The 3D scene uses
-the measured timer, so only the interface speeds up with the frame rate (2.4 times at 144 FPS).
+`_currentframe` and `*_mc` clips are in the module) driven by the game's interface objects. Once per game frame the
+interface system calls each object's handler (`main+0x7835d0`, about twelve objects a frame). The handler
 
-**How it was found.** Static search for the player's frame vocabulary, then the sprite's per-frame advance
-(`main+0x9bea00`: play state at `+0x200`, current/total frame at `+0x1f0/+0x1f4`), then a private call-chain probe at
-that function, which showed a single entry (`0x9d0de0`) and its two callers. The probe is not in the tree.
+1. runs the object's own logic and advances its movies one timeline frame (`main+0x9d0de0`, called from the loops at
+   `main+0x7838f8` and `main+0x790dfc`);
+2. in its last section (`main+0x794b4c`) draws the movies (`main+0x9d1e80`) and raises the game's per-frame event 22
+   (`main+0x794b90`).
 
-**Fix** (`patches/snap-2.0.1-ui-pace.txt`, `newsnap/overlays/snap_ui_pace.c`/`.h`). One decision per presented frame
-from real time, 60 steps a second; every walk of that frame uses it. On a frame that is not due, the movie pointer the
-loop just loaded is replaced by an empty stand-in that the player's own first check rejects, so the original call
-returns at once. Only `x0` at that point changes; the loop, the lists and game memory are untouched. At a selected cap
-of 60 FPS or below every frame steps, as the game does, and a hitch never banks steps (at most one a frame).
-`AC_SNAP_UI_PACE_PATCH=0` removes the four sites; `NEWSNAP_UI_PACE_TRACE=1` logs steps per second.
+Nothing in it takes a time step. The object logic, the timelines and the per-frame event all count frames, so above
+60 FPS the whole interface runs faster (2.4 times at 144 FPS) while the 3D scene, which uses the measured timer,
+keeps its speed.
 
-**Evidence (RTX 4060 Laptop, same private runtime, tutorial route, private under `build/ui01-*`).**
+**Fix** (`patches/snap-2.0.1-ui-pace.txt`, `newsnap/overlays/snap_ui_pace.c`/`.h`). Above 60 FPS one decision per
+presented frame is made from real time, 60 steps a second. On a frame that is not due the handler branches from its
+entry to its drawing section and leaves without raising event 22. Logic, timelines and that event then run together
+60 times a second, and the interface is drawn on every frame from the state the last update left. The shortcut is
+only taken for an object in the state the handler itself would carry on from (started, ready, not held); any other
+object takes the original path. The helpers set one scratch register (`x16`, dead at both sites); no game memory is
+written. At a selected cap of 60 FPS or below every frame steps, as the game does, and a hitch never banks steps
+(at most one a frame). `AC_SNAP_UI_PACE_PATCH=0` removes the two sites; `NEWSNAP_UI_PACE_TRACE=1` logs the counts.
 
-| Run | Cap | Interface steps a second | Notes |
-| --- | ---: | ---: | --- |
-| `ui01-60` | 60 | every frame | 0 held frames |
-| `ui01-144-fix` | 144 | 60.0 (300 of 720 frames per 5 s window) | about 13 walks of the lists per frame |
-| `ui01-144-off` | 144 | one per frame (144) | sites removed |
+**Four attempts that did not work** (kept here so they are not tried again):
 
-Consecutive 144 FPS frames from the flight recorder show the interface's brightness pulses moving one step every
-2 or 3 frames in one direction, no alternation: stepped animation, not flicker. All runs exited 0.
+| Attempt | What it held | What broke |
+| --- | --- | --- |
+| 1 (shipped in 0.9.3) | The whole movie advance returned early | Clips the game created were drawn before the player initialised them: hidden menus showing, every language of the logo at once |
+| 2 | The player's own step threshold (`movie+0x128`, 60 calls a second assumed) scaled to the real rate | The same: the game's logic still ran every frame |
+| 3 | The whole handler skipped | The interface is drawn inside the handler: dialogue boxes blinked |
+| 4 | Each sprite's enterFrame event and timeline frame (`main+0x9bea00`) | The game's own frame counters ran ahead of the clips: the control hint panel looped in and out every two seconds |
 
-**Limits.** RTX 4060 only; nothing run on AMD. Only the title, tutorial dialogue and first photos were played: score
-screens, title popups, the end-of-stage silhouette and loading animation were not watched, they are covered only by
-being movies of the same player. The interface now animates at 60 steps a second while the scene draws faster, so its
-motion is not smoother than at 60 FPS. Game logic outside the interface that might count frames (item throws in later
-stages, cooldowns, input repeat) was not audited and is still open under FPS-01.
+The player does pace itself: each advance adds the movie's frame rate (60.0 here) to an accumulator and steps when
+it reaches a threshold of 60.0. That mechanism alone cannot be used because the game's interface logic is not paced
+by it.
+
+**Evidence (RTX 4060 Laptop, private runtimes from this tree, private under `build/ui0*`).**
+
+| Check | 60 FPS | 144 FPS with the fix |
+| --- | --- | --- |
+| Handlers run per second (trace) | every frame | about 955 a second of 2,290 calls: 60 frames a second times the objects |
+| Same shots at the same seconds, title to first dialogue (46 shots, 1.4 s apart) | reference | same screens; logo in one language; subtitle and every dialogue box present |
+| Control hint panel in the camera tutorial (93 shots, 0.5 s apart, centre-minus-edge brightness) | enters once and stays | same curve; attempt 4 oscillated every 2 s |
+| Whole route to the photo evaluation, camp dialogue and expedition start (95 shots) | — | coherent: hints, research summary, photo selection, evaluation silhouette, score screens with totals; exit 0 |
+
+Shots are taken on arbitrary frames, about 58 % of them frames that only draw, so continuous dialogue across
+consecutive shots is the evidence that drawing works on those frames. The owner also watched the 144 FPS runs live;
+attempts 2 to 4 were rejected from what he saw.
+
+**Limits.** RTX 4060 only; nothing run on AMD. One route (tutorial, two photos, evaluation, camp, expedition start):
+title popups for new ranks, the loading animation in other stages and menus not on that route were not watched.
+The interface animates at 60 steps a second while the scene draws faster, so its motion is not smoother than at
+60 FPS. Interface objects whose handler is not `main+0x7835d0`, and game logic outside the interface that might
+count frames (item throws in later stages, cooldowns, input repeat), were not audited: FPS-02.
 
 ## FPS-01 implementation — 2026-11-14
 
