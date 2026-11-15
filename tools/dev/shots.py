@@ -53,7 +53,7 @@ def pages(runs):
                     if current:
                         presses.append(current)
                     current = [int(match.group(1)), '']
-                match = re.search(r'snap_event: frame \d+ (?:step \d+ )?object \w+ event (\d+)', line)
+                match = re.search(r'snap_event: frame \d+ (?:game frame \d+ )?(?:step \d+ )?object \w+ event (\d+)', line)
                 if match and current:
                     current[1] += {16: 'A', 21: 'p', 1: 'N', 5: 'n'}.get(int(match.group(1)), '')
         if current:

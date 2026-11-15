@@ -98,44 +98,134 @@ void snap_ui_pace_event(Cpu *c) {
     c->x[16] = (uint64_t)pace_step(kern_now_ns());
 }
 
-// INPUT-HZ-01. The game's pad update (main+0x925b60) runs once a game frame. It keeps the buttons held (+0x44) and
-// the previous update's (+0x50), and from them the edges (+0x48 pressed, +0x4c released) that last until the next
-// update. Some readers act on the edges every frame, others on the held buttons at their own pace; above 60 fps the
-// interface handlers step only on some frames, so the two kinds saw one press at different times and a press in the
-// middle of a dialogue line completed it and also went on to the next line, as if A had been pressed twice. The
-// game expects a pad sampled at 60 Hz, once per update of its logic. So above 60 fps the pad changes only on the
-// game frames whose interface steps: on the others its buttons stay as on the last step and it has no edges; on a
-// step the game's own comparison with that state gives the edges, and a press that came and went in between is
-// kept as a press and a release. Every reader then sees each press once, at the same frame, as at 60 fps; a press
-// arrives at most one step (16.7 ms) later. The sticks are not touched.
-// The interface decision is taken here as well, once per game frame (pace_step), so the pad and the interface
-// handlers agree on which frames step.
-static struct { uint64_t pad; uint32_t between; } pad_held[4];
+// INPUT-HZ-01. The game's pad update (main+0x925b60) runs once a game frame. The game reads it through its input
+// queries: held buttons (main+0x43c160) from one byte per button (+0x54..+0x73), and newly pressed buttons
+// (main+0x43c2d0, 26 callers) by comparing those bytes with the copy the update keeps of the previous frame's
+// (+0x74..+0x93); the update also keeps masks (+0x44 held, +0x48 pressed, +0x4c released, +0x50 previous).
+// Above 60 fps the interface handlers step only on some frames, while the code that queries the pad runs on every
+// frame: a press seen on a frame where the interface did not step completed the dialogue line, and the interface
+// then took the same press, on its next step, as the order to go on to the next line.
+// The game expects a pad sampled once per update of its logic, 60 times a second. So above 60 fps the pad changes
+// only on the game frames whose interface steps: on the others it shows the buttons of the last step and nothing
+// newly pressed or released; on a step it shows the real buttons, compared with the last step's, and a press that
+// came and went in between counts as pressed for that step. Every reader then sees each press once, on a frame
+// where the interface also sees it, as at 60 fps; a press arrives at most one step (16.7 ms) later. Sticks are not
+// touched. The interface decision is taken here as well, once per game frame (pace_step).
+#define PAD_BYTES 32
+static struct { uint64_t pad; uint32_t mask, between_mask; uint8_t bytes[PAD_BYTES], between[PAD_BYTES]; } pad_held[4];
+
+// NEWSNAP_PAD_WATCH=1 (Windows, diagnostics): hardware data breakpoints on the pad's held buttons (+0x44, DR0) and
+// pressed edges (+0x48, DR1) on the game thread; every 10 s the host code addresses that touched them are logged with
+// their counts, split by interface step, so the readers can be named from the linker map (f_<guest address>).
+#ifdef _WIN32
+#include <windows.h>
+#include <tlhelp32.h>
+static struct { uint64_t rip; uint32_t field, step, other, thread; } watch_hits[192];
+static volatile LONG watch_count;
+static uint64_t watch_base;
+
+static LONG CALLBACK watch_handler(EXCEPTION_POINTERS *e) {
+    if (e->ExceptionRecord->ExceptionCode != EXCEPTION_SINGLE_STEP) return EXCEPTION_CONTINUE_SEARCH;
+    DWORD64 dr6 = e->ContextRecord->Dr6;
+    if (!(dr6 & 15)) return EXCEPTION_CONTINUE_SEARCH;
+    uint64_t rip = (uint64_t)e->ContextRecord->Rip - watch_base;
+    uint32_t field = (dr6 & 1) ? 0 : (dr6 & 2) ? 1 : (dr6 & 4) ? 2 : 3;
+    LONG n = watch_count;
+    int i = 0;
+    uint32_t thread = GetCurrentThreadId();
+    while (i < n && !(watch_hits[i].rip == rip && watch_hits[i].field == field && watch_hits[i].thread == thread)) i++;
+    if (i == n && n < 192) watch_hits[i].rip = rip, watch_hits[i].field = field, watch_hits[i].thread = thread, watch_count = n + 1;
+    if (i < 192) { if (pace.step) watch_hits[i].step++; else watch_hits[i].other++; }
+    e->ContextRecord->Dr6 = 0;
+    return EXCEPTION_CONTINUE_EXECUTION;
+}
+
+static void watch_pad(uint64_t pad, uint64_t now) {
+    static int armed;
+    static uint64_t last_ns;
+    if (!armed) {
+        const char *w = getenv("NEWSNAP_PAD_WATCH");
+        if (!w || strcmp(w, "1")) { armed = -1; return; }
+        armed = 1;
+        watch_base = (uint64_t)(uintptr_t)GetModuleHandleW(NULL);
+        AddVectoredExceptionHandler(1, watch_handler);
+        DWORD self = GetCurrentThreadId(), pid = GetCurrentProcessId();
+        HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
+        THREADENTRY32 te = {.dwSize = sizeof te};
+        int armed_threads = 0;
+        for (BOOL more = Thread32First(snap, &te); more; more = Thread32Next(snap, &te)) {
+            if (te.th32OwnerProcessID != pid) continue;
+            HANDLE t = te.th32ThreadID == self ? GetCurrentThread()
+                     : OpenThread(THREAD_GET_CONTEXT | THREAD_SET_CONTEXT | THREAD_SUSPEND_RESUME, FALSE, te.th32ThreadID);
+            if (!t) continue;
+            if (te.th32ThreadID != self) SuspendThread(t);
+            CONTEXT ctx = {0};
+            ctx.ContextFlags = CONTEXT_DEBUG_REGISTERS;
+            if (GetThreadContext(t, &ctx)) {
+                const char *at = getenv("NEWSNAP_PAD_WATCH_AT");   // first of four 4-byte fields, default +0x54
+                uint64_t first = pad + (at ? strtoull(at, NULL, 16) : 0x54);
+                ctx.Dr0 = first, ctx.Dr1 = first + 4, ctx.Dr2 = first + 8, ctx.Dr3 = first + 12;
+                ctx.Dr7 = 0x55 | 0xffff0000ull;   // DR0..DR3 enabled, read+write, 4 bytes each
+                armed_threads += SetThreadContext(t, &ctx) != 0;
+            }
+            if (te.th32ThreadID != self) ResumeThread(t), CloseHandle(t);
+        }
+        CloseHandle(snap);
+        rt_log("snap_ui_pace: pad watch on %llx (+0x44, +0x48): %d threads, exe base %llx, this thread %lu",
+               (unsigned long long)pad, armed_threads, (unsigned long long)watch_base, (unsigned long)self);
+        last_ns = now;
+    }
+    if (armed < 0 || now - last_ns < 10000000000ull) return;
+    last_ns = now;
+    for (LONG i = 0; i < watch_count; i++)
+        rt_log("snap_ui_pace: pad watch %s rva %llx thread %u: %u on steps, %u on other frames", (const char *[]){"+0", "+4", "+8", "+c"}[watch_hits[i].field],
+               (unsigned long long)watch_hits[i].rip, watch_hits[i].thread, watch_hits[i].step, watch_hits[i].other);
+}
+#else
+static void watch_pad(uint64_t pad, uint64_t now) { (void)pad; (void)now; }
+#endif
 
 void snap_ui_pace_pad(Cpu *c) {
     uint64_t cap = frame_step_cap_ns(), pad = c->x[19], now = kern_now_ns();
-    if (!pad || !plat_mem_readable(pad + 0x44, 16)) return;
+    if (!pad || !plat_mem_readable(pad + 0x44, 0x50)) return;
     int slot = 0;
     while (slot < 4 && pad_held[slot].pad && pad_held[slot].pad != pad) slot++;
     if (slot == 4) return;   // more pads than the game has: leave them as they are
-    pad_held[slot].pad = pad;
+    if (!pad_held[slot].pad) {   // first update: the last step is what the pad shows now
+        pad_held[slot].pad = pad;
+        memcpy(&pad_held[slot].mask, (void *)(uintptr_t)(pad + 0x44), 4);
+        memcpy(pad_held[slot].bytes, (void *)(uintptr_t)(pad + 0x54), PAD_BYTES);
+    }
+    if (slot == 0) watch_pad(pad, now);
     if (slot == 0) {   // the first pad marks the game frame: the decision for the handlers until its next update
         snap_ui_pace_decide(&pace, pad_tick++, now, cap);
         __atomic_store_n(&pad_tick_ns, now, __ATOMIC_RELEASE);
     }
-    if (!cap || cap + SNAP_UI_PACE_SLACK_NS >= SNAP_UI_PACE_STEP_NS) return;   // 60 fps or below: every frame steps
-    uint32_t *state = (uint32_t *)(uintptr_t)(pad + 0x44);   // [0] held, [1] pressed, [2] released, [3] previous
-    uint32_t held = state[0], previous = state[3];
-    if (pace_trace() && (state[1] | state[2] | pad_held[slot].between))
-        rt_log("snap_ui_pace: pad exit game frame %llu held %x pressed %x released %x previous %x between %x step %d",
-               (unsigned long long)pad_tick, held, state[1], state[2], previous, pad_held[slot].between, pace.step);
+    uint32_t *mask = (uint32_t *)(uintptr_t)(pad + 0x44);   // [0] held, [1] pressed, [2] released, [3] previous
+    uint8_t *bytes = (uint8_t *)(uintptr_t)(pad + 0x54), *previous = bytes + PAD_BYTES;
+    if (!cap || cap + SNAP_UI_PACE_SLACK_NS >= SNAP_UI_PACE_STEP_NS) {   // 60 fps or below: every frame steps
+        pad_held[slot].mask = mask[0];
+        memcpy(pad_held[slot].bytes, bytes, PAD_BYTES);
+        return;
+    }
     if (pace.step) {
-        uint32_t taps = pad_held[slot].between & ~previous & ~held;   // pressed and released between two steps
-        state[1] |= taps, state[2] |= taps;
-        pad_held[slot].between = 0;
+        uint32_t last = pad_held[slot].mask, held = mask[0];
+        uint32_t taps = pad_held[slot].between_mask & ~last & ~held;   // pressed and released between two steps
+        held |= taps;
+        mask[0] = held, mask[1] = held & ~last, mask[2] = last & ~held, mask[3] = last;
+        for (int i = 0; i < PAD_BYTES; i++) {
+            if (pad_held[slot].between[i] && !pad_held[slot].bytes[i] && !bytes[i]) bytes[i] = pad_held[slot].between[i];
+            previous[i] = pad_held[slot].bytes[i];
+        }
+        pad_held[slot].mask = held, pad_held[slot].between_mask = 0;
+        memcpy(pad_held[slot].bytes, bytes, PAD_BYTES);
+        memset(pad_held[slot].between, 0, PAD_BYTES);
     } else {
-        pad_held[slot].between |= held;
-        state[0] = previous, state[1] = state[2] = 0;
+        pad_held[slot].between_mask |= mask[0];
+        for (int i = 0; i < PAD_BYTES; i++) if (bytes[i]) pad_held[slot].between[i] = bytes[i];
+        mask[0] = mask[3] = pad_held[slot].mask, mask[1] = mask[2] = 0;
+        memcpy(bytes, pad_held[slot].bytes, PAD_BYTES);
+        memcpy(previous, pad_held[slot].bytes, PAD_BYTES);
     }
 }
 
@@ -195,46 +285,7 @@ void snap_event_observe(Cpu *c) {
     lines++;
     char chain[200];
     guest_chain(c, chain, sizeof chain);
-    rt_log("snap_event: frame %llu step %d object %llx event %u from%s",
-           (unsigned long long)__atomic_load_n(&gfx_counters.frames, __ATOMIC_RELAXED), pace.step,
+    rt_log("snap_event: frame %llu game frame %llu step %d object %llx event %u from%s",
+           (unsigned long long)__atomic_load_n(&gfx_counters.frames, __ATOMIC_RELAXED), (unsigned long long)pad_tick, pace.step,
            (unsigned long long)c->x[0], (unsigned)c->x[1], chain);
-}
-
-// The interface object's state request (main+0x79bd90: x0 object, x1 the requested state name), NEWSNAP_PAD_TRACE=1:
-// the request, whether this frame is an interface step, and the guest call chain (frame records x29/x30) as main
-// offsets, to name the game code asking for each change.
-void snap_request_observe(Cpu *c) {
-    static int on = -1;
-    static unsigned lines;
-    if (on < 0) {
-        const char *trace = getenv("NEWSNAP_PAD_TRACE");
-        on = trace && !strcmp(trace, "1");
-    }
-    if (!on || lines >= 20000) return;
-    lines++;
-    char name[40] = "?";
-    uint8_t s[24];
-    if (c->x[1] && plat_mem_read(c->x[1], s, sizeof s)) {
-        uint64_t size = 0, data = 0;
-        if (s[0] & 1) { memcpy(&size, s + 8, 8); memcpy(&data, s + 16, 8); }
-        if (!(s[0] & 1) && (s[0] >> 1) < 23) { size = s[0] >> 1; memcpy(name, s + 1, size); name[size] = 0; }
-        else if (size && size < sizeof name && data && plat_mem_read(data, name, size)) name[size] = 0;
-        else if (plat_mem_read(c->x[1], name, sizeof name - 1)) name[sizeof name - 1] = 0;
-        for (char *p = name; *p; p++) if (*p < 32 || *p > 126) { *p = 0; break; }
-    }
-    char chain[200];
-    int n = 0;
-    uint64_t fp = c->x[29];
-    for (int i = 0; i < 10 && fp; i++) {
-        uint64_t rec[2];
-        if (!plat_mem_read(fp, rec, sizeof rec)) break;
-        uint64_t off = rec[1] - 0x7000000000ull;
-        n += snprintf(chain + n, sizeof chain - (size_t)n, " %llx", (unsigned long long)(off < 0x2891000ull ? off : rec[1]));
-        if (n >= (int)sizeof chain - 20 || rec[0] <= fp) break;
-        fp = rec[0];
-    }
-    chain[n] = 0;
-    rt_log("snap_request: frame %llu step %d object %llx state %s from%s",
-           (unsigned long long)__atomic_load_n(&gfx_counters.frames, __ATOMIC_RELAXED), pace.step,
-           (unsigned long long)c->x[0], name, chain);
 }

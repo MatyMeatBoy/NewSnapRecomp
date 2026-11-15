@@ -8,5 +8,3 @@ site snap_timer_trace main 6c1d90 d10203ff @fn:snap_ui_event_observe d10203ff
 # The game's pad update (main+0x925b60), after its null checks: observed only (NEWSNAP_PAD_TRACE=1).
 site snap_timer_trace main 925b68 d10703ff d10703ff @fn:snap_pad_observe
 site snap_timer_trace main 7a9a98 2a0103f4 2a0103f4 @fn:snap_event_observe
-# The interface object's state request (main+0x79bd90), after its frame record: observed only (NEWSNAP_PAD_TRACE=1).
-site snap_timer_trace main 79bdb0 aa0003f3 aa0003f3 @fn:snap_request_observe
