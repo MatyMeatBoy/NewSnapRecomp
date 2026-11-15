@@ -74,6 +74,13 @@ keys or game-derived executables are distributed here; the launcher builds the g
   </tr>
 </table>
 
+### Anti-aliasing at any resolution
+
+<p align="center"><img src="docs/images/aa-fsr4-native.jpg" alt="Original against FSR 4 Native AA at 150 % internal resolution" width="760"></p>
+
+AMD FSR 4 / FSR 3.1 or NVIDIA DLSS in **Native** quality on top of a higher internal resolution: full detail and
+clean thin edges (0.9.12).
+
 ## Install
 
 1. Download `NewSnapRecomp-<version>-windows-….zip` from [Releases](https://github.com/MatyMeatBoy/NewSnapRecomp/releases)
