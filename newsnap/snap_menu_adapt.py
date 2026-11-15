@@ -8,7 +8,8 @@ ratio with ultrawide. Ids past UI_MENU_LAST_ID: English text only, the menu's ot
 
 IDS = ('UI_SNAP_RES', 'UI_SNAP_RES_DESC', 'UI_SNAP_RES_UPSCALER', 'UI_SNAP_FG', 'UI_SNAP_FG_DESC', 'UI_SNAP_FG_NEEDS',
        'UI_SNAP_HDPH', 'UI_SNAP_HDPH_DESC', 'UI_SNAP_SHADOW', 'UI_SNAP_SHADOW_DESC', 'UI_SNAP_TEXPACK',
-       'UI_SNAP_TEXPACK_DESC', 'UI_SNAP_TEXPACK_NONE', 'UI_SNAP_ASPECT', 'UI_SNAP_ASPECT_DESC')
+       'UI_SNAP_TEXPACK_DESC', 'UI_SNAP_TEXPACK_NONE', 'UI_SNAP_ASPECT', 'UI_SNAP_ASPECT_DESC', 'UI_SNAP_TAB',
+       'UI_SNAP_ENH')
 
 TEXTS = {
     'UI_SNAP_RES': 'Game internal resolution',
@@ -32,6 +33,8 @@ TEXTS = {
     'UI_SNAP_TEXPACK_DESC': 'Uses the HD textures in the texpack folder next to the game, made on this PC from your own '
                             'game. Takes effect after a restart.',
     'UI_SNAP_TEXPACK_NONE': 'no pack in the texpack folder',
+    'UI_SNAP_TAB': 'Enhancements',
+    'UI_SNAP_ENH': 'NewSnap enhancements (they do not change the game\'s logic)',
     'UI_SNAP_ASPECT': 'Aspect ratio',
     'UI_SNAP_ASPECT_DESC': 'Keep 16:9 adds bars on wider screens; Stretch fills the window; Ultrawide widens the 3D view to '
                            'the window with the game\'s proportions, keeps the interface in the middle and takes photos '
@@ -56,7 +59,7 @@ static void snap_row_internal_res(void) {
                     above && snap_upscaler_on() ? menu_text(UI_SNAP_RES_UPSCALER) : nullptr);
 }
 
-static void snap_rows_snap(void) {
+static void snap_rows_enhancements(void) {
     {
         static const char *const vals[] = {"off", "fsr"};
         static const char *const names[] = {"Off", "AMD FSR (1 generated frame)"};
@@ -80,11 +83,20 @@ static void snap_rows_snap(void) {
         opt_toggle("AC_TEX_PACK", UI_SNAP_TEXPACK, UI_SNAP_TEXPACK_DESC);
         (void)note;
     }
-    {
-        static const char *const vals[] = {"fit", "stretch", "ultrawide"};
-        static const char *const names[] = {"Keep 16:9", "Stretch", "Ultrawide (wider view)"};
-        opt_choice_list("AC_ASPECT", UI_SNAP_ASPECT, vals, names, 3, UI_SNAP_ASPECT_DESC);
-    }
+}
+
+static void snap_row_aspect(void) {
+    static const char *const vals[] = {"fit", "stretch", "ultrawide"};
+    static const char *const names[] = {"Keep 16:9", "Stretch", "Ultrawide (wider view)"};
+    opt_choice_list("AC_ASPECT", UI_SNAP_ASPECT, vals, names, 3, UI_SNAP_ASPECT_DESC);
+}
+
+// The Enhancements tab, in the place of the donor's Mods tab: NewSnap's own improvements, each one switchable.
+static void snap_tab_enhancements(float scale) {
+    opt_begin("##snapenh", scale);
+    opt_group(UI_SNAP_ENH);
+    snap_rows_enhancements();
+    opt_end();
 }
 
 '''
@@ -128,6 +140,8 @@ def edits():
              '        snprintf(v[4] + used, sizeof v[4] - used, " + FG");\n'
              '    }\n'),
             ('static void rows_upscaling(void) {', FUNCS + 'static void rows_upscaling(void) {'),
-            ('    row_output_res();\n    rows_upscaling();', '    snap_row_internal_res();\n    rows_upscaling();\n    snap_rows_snap();'),
+            ('    row_output_res();\n    rows_upscaling();', '    snap_row_internal_res();\n    rows_upscaling();\n    snap_row_aspect();'),
+            ('UI_MENU_TAB_CONTROLS, UI_MENU_TAB_MENU,   UI_MENU_TAB_MODS};', 'UI_MENU_TAB_CONTROLS, UI_MENU_TAB_MENU,   UI_SNAP_TAB};'),
+            ('            case TAB_MODS: tab_mods(scale); break;', '            case TAB_MODS: snap_tab_enhancements(scale); break;'),
         ],
     }

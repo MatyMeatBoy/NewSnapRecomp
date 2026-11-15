@@ -103,7 +103,21 @@
          plat_setenv("AC_REEXEC", NULL);   // the new process counts its own address-space retries (memory.c)
          if (!plat_restart()) rt_log("gfx: the restart could not start the game again");
      }
-@@ -266,16 +275,36 @@
+@@ -103,8 +112,13 @@
+ // swapchain follows the window; the game image is scaled to it).
+ int gfx_cfg_fullscreen(void) { return cfg_bool("AC_FULLSCREEN"); }
+ 
++int snap_desktop_size(int *w, int *h);
+ void gfx_cfg_window_size(int *w, int *h) {
+     int x = 0, y = 0;
++    if (!strcmp(cfg_value("AC_WINDOW_SIZE"), "auto") && snap_desktop_size(&x, &y)) {   // MENU-02: the desktop's size
++        *w = x, *h = y;
++        return;
++    }
+     if (sscanf(cfg_value("AC_WINDOW_SIZE"), "%dx%d", &x, &y) != 2 || x < 640 || y < 360 || x > 7680 || y > 4320)
+         sscanf(cfg_meta("WINDOW_SIZE")->def, "%dx%d", &x, &y);   // unparsable or out of range: the default
+     *w = x;
+@@ -266,16 +280,36 @@
  static VkPresentModeKHR pick_present_mode(VkPhysicalDevice pd) {
      const char *e = cfg_value("AC_VK_PRESENT");
      VkPresentModeKHR want = !strcmp(e, "mailbox") ? VK_PRESENT_MODE_MAILBOX_KHR
@@ -143,7 +157,7 @@
      static int logged = -1;   // the mode last logged: a change from the menu shows in the log
      if ((int)got != logged) {
          logged = (int)got;
-@@ -296,8 +325,12 @@
+@@ -296,8 +330,12 @@
                             .pWaitSemaphores = &g_render_done[g_flip_idx], .swapchainCount = 1, .pSwapchains = &g_sc,
                             .pImageIndices = &g_flip_idx};
      vk_queue_lock();
@@ -156,7 +170,7 @@
      vk_device_fault_report(r);
      if (r == VK_ERROR_OUT_OF_DATE_KHR || r == VK_SUBOPTIMAL_KHR) plat_xchg32(&g_dirty, 1);
  }
-@@ -312,7 +345,7 @@
+@@ -312,7 +350,7 @@
  }
  
  // Returns 1 with a usable swapchain, 0 when the window has no area (minimised). Called with g_pl held.
@@ -165,7 +179,7 @@
      flip_locked();   // the acquired image goes out before its swapchain is replaced
      VkCtx *c = vk_ctx();
      VkSurfaceCapabilitiesKHR caps;
-@@ -362,6 +395,7 @@
+@@ -362,6 +400,7 @@
          if (g_sc_view[i]) vkDestroyImageView(c->device, g_sc_view[i], NULL);
          g_sc_view[i] = VK_NULL_HANDLE;
      }
@@ -173,7 +187,7 @@
      if (old) vkDestroySwapchainKHR(c->device, old, NULL);
      g_sc_fmt = sf.format;
      g_sc_hdr = hdr;
-@@ -369,8 +403,10 @@
+@@ -369,8 +408,10 @@
      if (hdr) vk_hdr_metadata(g_sc, 1);
      g_sc_ext = ext;
      res_wide_window(ext.width, ext.height);
@@ -185,7 +199,7 @@
      static VkExtent2D logged_ext;
      if (logged_ext.width != ext.width || logged_ext.height != ext.height) {
          logged_ext = ext;
-@@ -388,6 +424,13 @@
+@@ -388,6 +429,13 @@
      vk_queue_unlock();
      plat_xchg32(&g_dirty, 0);
      return 1;
@@ -199,7 +213,7 @@
  }
  
  static void sync_barrier(VkCommandBuffer cb, VkImage img, VkImageLayout from, VkImageLayout to, VkPipelineStageFlags2 s0,
-@@ -583,7 +626,7 @@
+@@ -583,7 +631,7 @@
  // picture's own aspect ratio, or the one vk_present_shape_set gave.
  void gfx_fit_rect(int cw, int ch, int dw, int dh, int out[4]) {
      out[0] = out[1] = 0, out[2] = dw, out[3] = dh;
@@ -208,7 +222,7 @@
      if (g_shape > 0) {
          double w = (double)dh * g_shape;                      // the picture's width at the window's height
          if (w < dw - 0.5) out[2] = (int)(w + 0.5);            // window wider: pillarbox
-@@ -610,16 +653,23 @@
+@@ -610,16 +658,23 @@
      if (wsys_minimized() || !g_sc) goto out;
  
      unsigned slot = g_frame % FRAMES;
@@ -233,7 +247,7 @@
      }
      vk_device_fault_report(r);
      if (r != VK_SUCCESS && r != VK_SUBOPTIMAL_KHR) goto out;     // lost, not ready: skip the frame
-@@ -654,6 +704,10 @@
+@@ -654,6 +709,10 @@
      VkCommandBufferBeginInfo bi = {.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
                                     .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT};
      vkBeginCommandBuffer(cb, &bi);
@@ -244,7 +258,7 @@
      uint64_t crumb = __atomic_load_n(&gfx_counters.frames, __ATOMIC_RELAXED);
      vk_crumb(cb, VK_CRUMB_PRESENT, crumb);
      VkImage dst = g_sc_img[idx];
-@@ -673,7 +727,7 @@
+@@ -673,7 +732,7 @@
      // Colour adjustment (AC_COLOR_*, vk_color.c), or on an HDR10 swapchain the PQ encode (vk_hdr.c; the adjustment is
      // for SDR): a copy of the crop takes the game image's place below
      VkImage graded = !general ? VK_NULL_HANDLE : g_sc_hdr ? vk_hdr_encode(cb, slot, src, fmt, rect)
@@ -253,7 +267,7 @@
      const int grect[4] = {0, 0, cw, ch};
      VkImage psrc = graded ? graded : src;
      VkFormat pfmt = graded ? VK_FORMAT_R16G16B16A16_SFLOAT : fmt;
-@@ -765,7 +819,9 @@
+@@ -765,7 +824,9 @@
      }
      g_frame++;
      if (cap) {
@@ -264,7 +278,7 @@
          vmaInvalidateAllocation(c->vma, g_cap_alloc, 0, VK_WHOLE_SIZE);
          g_cap_w = (int)g_sc_ext.width;
          g_cap_h = (int)g_sc_ext.height;
-@@ -810,6 +866,7 @@
+@@ -810,6 +871,7 @@
          g_flip_on = 0;   // its blit is done (device idle); the swapchain goes away unpresented
          menu_vk_release();
          vk_fsr_release();
@@ -272,7 +286,7 @@
          vk_color_release();
          vk_hdr_release();
          vk_contact_release();
-@@ -826,6 +883,7 @@
+@@ -826,6 +888,7 @@
              g_sc_view[i] = VK_NULL_HANDLE;
          }
          if (g_pool) vkDestroyCommandPool(c->device, g_pool, NULL);
@@ -403,17 +417,19 @@
      {"PAD_LAYOUT", "input"}, {"PROMPTS", "input"}, {"STICK_DEADZONE", "input"}, {"LSTICK_DEADZONE", "input"}, {"RSTICK_DEADZONE", "input"},
      {"STICK_SENS", "input"},
      {"MOUSE_SENS", "input"}, {"WALK_KEY", "input"}, {"WALK_SCALE", "input"}, {"INPUT_RECORD", "input"},
-@@ -113,20 +115,20 @@
+@@ -112,21 +114,21 @@
+ #define RESTART 0
  static const CfgMeta metas[] = {
      // Screen
-     {"FULLSCREEN", "1", "0|1", LIVE}, {"WINDOW_SIZE", "1920x1080", NULL, LIVE},
+-    {"FULLSCREEN", "1", "0|1", LIVE}, {"WINDOW_SIZE", "1920x1080", NULL, LIVE},
 -    {"VK_PRESENT", "mailbox", "mailbox|fifo|immediate", LIVE}, {"GPU_INDEX", "", NULL, RESTART},
++    {"FULLSCREEN", "1", "0|1", LIVE}, {"WINDOW_SIZE", "auto", NULL, LIVE},
 +    {"VK_PRESENT", "mailbox", "mailbox|fifo|fifo_relaxed|immediate", LIVE}, {"GPU_INDEX", "", NULL, RESTART},
      {"PERF_OVERLAY", "off", "off|fps|full", LIVE},
      // the size the game renders itself (resolution.c: TotK's output set, or on 1.0.1 the res set, res_pick)
 -    {"OUTPUT_RES", "1920x1080", NULL, RESTART}, {"RENDER_SCALE", "game", "game|50|67|75|100|125|150|200", RESTART},
 -    {"UPSCALER", "fsr", "fsr|bilinear", LIVE}, {"SHARPNESS", "80", "0..100", LIVE},
-+    {"OUTPUT_RES", "1920x1080", NULL, RESTART}, {"RENDER_SCALE", "game", "game|50|60|70|80|90|100|125|133|150|175|200|250|300|display", RESTART},
++    {"OUTPUT_RES", "1920x1080", NULL, RESTART}, {"RENDER_SCALE", "display", "game|50|60|70|80|90|100|125|133|150|175|200|250|300|display", RESTART},
 +    {"UPSCALER", "bilinear", "fsr|bilinear", LIVE}, {"SHARPNESS", "0", "0..100", LIVE},
      // the scene's temporal upscaler and its mode (vk_dlaa.c taa_pick, resolution.c scene_init), native (DLAA, XeSS or
      // FSR 3 Native AA) first, and the game's anti-aliasing for when none runs. The upscaler is live between what can run
@@ -2769,12 +2785,25 @@
  #include "platform/platform.h"
  #include "ui/menu.h"
  #include "ui_text.h"
-@@ -542,15 +543,63 @@
+@@ -492,7 +493,10 @@
+         pv[i] = vals[i];
+         pn[i] = shown[i];
+     }
+-    opt_choice_list("AC_WINDOW_SIZE", UI_MENU_WINDOW_SIZE, pv, pn, n, UI_MENU_WINDOW_SIZE_DESC);
++    const char *av[MAX_SIZES + 1], *an[MAX_SIZES + 1];   // MENU-02: Automatic (the desktop's size) first
++    av[0] = "auto", an[0] = "Automatic (desktop)";
++    for (int i = 0; i < n; i++) av[i + 1] = pv[i], an[i + 1] = pn[i];
++    opt_choice_list("AC_WINDOW_SIZE", UI_MENU_WINDOW_SIZE, av, an, n + 1, UI_MENU_WINDOW_SIZE_DESC);
+ }
+ 
+ // AC_OUTPUT_RES (resolution.c res_pick): the size the game renders itself, as in the TotK Recomp's menu: Automatic (the
+@@ -542,15 +546,73 @@
  // the mode sizes the scene at start. A choice that waits for a restart says what runs until then, one that cannot run
  // here says so; the mode row shows the scene size its value gives at this game resolution. The game's anti-aliasing
  // (SMAA, or off) applies while no upscaler runs and is greyed out otherwise. Off Windows, DLSS and XeSS are not offered.
 +// MENU-02 (newsnap/snap_menu_adapt.py): Snap's own rows on the Screen page.
 +extern "C" int snap_texpack_files(void);
++extern "C" float snap_scene_scale(void);
 +
 +static bool snap_upscaler_on(void) { return strcmp(cfg_upscaling(), "off") != 0; }
 +
@@ -2790,7 +2819,7 @@
 +                    above && snap_upscaler_on() ? menu_text(UI_SNAP_RES_UPSCALER) : nullptr);
 +}
 +
-+static void snap_rows_snap(void) {
++static void snap_rows_enhancements(void) {
 +    {
 +        static const char *const vals[] = {"off", "fsr"};
 +        static const char *const names[] = {"Off", "AMD FSR (1 generated frame)"};
@@ -2814,11 +2843,20 @@
 +        opt_toggle("AC_TEX_PACK", UI_SNAP_TEXPACK, UI_SNAP_TEXPACK_DESC);
 +        (void)note;
 +    }
-+    {
-+        static const char *const vals[] = {"fit", "stretch", "ultrawide"};
-+        static const char *const names[] = {"Keep 16:9", "Stretch", "Ultrawide (wider view)"};
-+        opt_choice_list("AC_ASPECT", UI_SNAP_ASPECT, vals, names, 3, UI_SNAP_ASPECT_DESC);
-+    }
++}
++
++static void snap_row_aspect(void) {
++    static const char *const vals[] = {"fit", "stretch", "ultrawide"};
++    static const char *const names[] = {"Keep 16:9", "Stretch", "Ultrawide (wider view)"};
++    opt_choice_list("AC_ASPECT", UI_SNAP_ASPECT, vals, names, 3, UI_SNAP_ASPECT_DESC);
++}
++
++// The Enhancements tab, in the place of the donor's Mods tab: NewSnap's own improvements, each one switchable.
++static void snap_tab_enhancements(float scale) {
++    opt_begin("##snapenh", scale);
++    opt_group(UI_SNAP_ENH);
++    snap_rows_enhancements();
++    opt_end();
 +}
 +
  static void rows_upscaling(void) {
@@ -2838,7 +2876,7 @@
      const UiTextId desc = UI_MENU_UPSCALING_DESC_OTHER;
  #endif
      enum { N = sizeof vals / sizeof *vals };
-@@ -571,13 +620,12 @@
+@@ -571,13 +633,12 @@
      }
      opt_choice_list("AC_UPSCALING", UI_MENU_UPSCALING, vals, names, N, desc, cur, note);
      {
@@ -2856,7 +2894,7 @@
              if (!strcmp(q, qv[i])) qcur = i;
          static char note_q[48];
          unsigned sz[2];
-@@ -585,7 +633,7 @@
+@@ -585,7 +646,7 @@
          snprintf(note_q, sizeof note_q, "%u × %u", sz[0], sz[1]);   // U+00D7, the multiplication sign
          bool off = !strcmp(up, "off") && !res_scene_reduced();
          if (off) opt_disable_next(UI_MENU_UPSCALING_MODE_OFF);
@@ -2865,7 +2903,7 @@
                          off ? nullptr : note_q);
      }
      {
-@@ -594,12 +642,6 @@
+@@ -594,12 +655,6 @@
          if (vk_dlaa_running()) opt_disable_next(UI_MENU_AA_BY_UPSCALER);
          opt_choice_list("AC_ANTI_ALIASING", UI_MENU_AA, av, an, 2, UI_MENU_AA_DESC, cfg_smaa() ? 1 : 0);
      }
@@ -2878,7 +2916,7 @@
  }
  
  static void row_gpu(void) {
-@@ -641,13 +683,12 @@
+@@ -641,13 +696,12 @@
  // The game's frame rate (frame_rate.c, patches-v101.txt): 60 fps runs the community 60 fps patch, 30 fps switches it
  // off. The row is the patch switch itself, so it takes effect on the next frame.
  static void row_fps_limit() {
@@ -2896,7 +2934,7 @@
      opt_choice_list("AC_FPS", UI_MENU_FPS_LIMIT, vals, names, N, UI_MENU_FPS_LIMIT_DESC, cur);
  }
  
-@@ -674,33 +715,6 @@
+@@ -674,33 +728,6 @@
  // ---- the tabs
  // Colour adjustment (vk_color.c): a profile writes the four values (STS78721's presets, issue #136); moving one of them
  // makes the profile Custom.
@@ -2930,7 +2968,7 @@
  static void tab_screen(float scale) {
      opt_begin("##screen", scale);
      opt_toggle("AC_FULLSCREEN", UI_MENU_FULLSCREEN, UI_MENU_FULLSCREEN_DESC);
-@@ -711,26 +725,15 @@
+@@ -711,26 +738,15 @@
      static const UiTextId perf[] = {UI_MENU_PERF_OFF, UI_MENU_PERF_FPS, UI_MENU_PERF_FULL};
      opt_choice("AC_PERF_OVERLAY", UI_MENU_PERF_OVERLAY, perf, 3, UI_MENU_PERF_OVERLAY_DESC);
      opt_group(UI_MENU_GRAPHICS);
@@ -2940,7 +2978,7 @@
 -    static const UiTextId up[] = {UI_MENU_UPSCALER_FSR, UI_MENU_UPSCALER_BILINEAR};
 -    opt_choice("AC_UPSCALER", UI_MENU_UPSCALER, up, 2, UI_MENU_UPSCALER_DESC);
 -    opt_slider("AC_SHARPNESS", UI_MENU_SHARPNESS, 0, 100, UI_MENU_SHARPNESS_DESC, 5, "%.0f %%");
-+    snap_rows_snap();
++    snap_row_aspect();
 +    // Snap presents its original SDR output without an additional spatial FSR/sharpening stage.
      opt_slider("AC_FOV", UI_MENU_FOV, 70, 140, UI_MENU_FOV_DESC, 5, "%.0f %%");
      static const char *const aniso[] = {"auto", "game", "2", "4", "8", "16"};
@@ -2961,7 +2999,16 @@
      opt_end();
  }
  
-@@ -1008,9 +1011,8 @@
+@@ -919,7 +935,7 @@
+ }
+ 
+ static const UiTextId kTabNames[TAB_COUNT] = {UI_MENU_TAB_SCREEN,   UI_MENU_TAB_GAME,   UI_MENU_TAB_SOUND,
+-                                              UI_MENU_TAB_CONTROLS, UI_MENU_TAB_MENU,   UI_MENU_TAB_MODS};
++                                              UI_MENU_TAB_CONTROLS, UI_MENU_TAB_MENU,   UI_SNAP_TAB};
+ static int g_tab;               // the tab shown
+ static int g_tab_request = -1;  // select this tab at the next layout; -1 none
+ static int g_focus_page = -1;   // this tab's first row takes the cursor once it is shown; -1 none
+@@ -1008,9 +1024,8 @@
                                          ImGuiWindowFlags_NoSavedSettings);
      ImGui::TextColored(ImVec4(0.93f, 0.76f, 0.33f, 1), "%s", menu_text(UI_MENU_TITLE));
      // the port version and the game update, right-aligned on the title line: what a bug report needs first
@@ -2973,7 +3020,16 @@
      ImGui::SameLine(ImGui::GetWindowWidth() - ImGui::GetStyle().WindowPadding.x - ImGui::CalcTextSize(version).x);
      ImGui::TextDisabled("%s", version);
  
-@@ -1141,6 +1143,15 @@
+@@ -1041,7 +1056,7 @@
+             switch (k) {
+             case TAB_SCREEN: tab_screen(scale); break;
+             case TAB_GAME: tab_game(scale); break;
+-            case TAB_MODS: tab_mods(scale); break;
++            case TAB_MODS: snap_tab_enhancements(scale); break;
+             case TAB_SOUND: tab_sound(scale); break;
+             case TAB_CONTROLS: tab_controls(scale); break;
+             case TAB_MENU: tab_menu(scale); break;
+@@ -1141,6 +1156,15 @@
          if (d > g_perf_max_ns) g_perf_max_ns = d;
          if (g_perf_win_ns >= 500000000ull) {
              snprintf(g_perf_text, sizeof g_perf_text, menu_text(UI_PERF_LINE_FPS), g_perf_frames * 1e9 / g_perf_win_ns);
@@ -2989,6 +3045,27 @@
              g_perf_win_ns = g_perf_max_ns = 0;
              g_perf_frames = 0;
          }
+@@ -1198,7 +1222,8 @@
+     res_sizes(out, scene);
+     res_game_size(out);     // the res / res1062 sets: the game resolution
+     res_scene_size(scene);  // the scene in it: smaller while an upscaling mode reduced it (resolution.c)
+-    unsigned rw = scene[0], rh = scene[1];
++    float snap_k = snap_scene_scale();   // MENU-02: the 3D size after the internal-resolution scale
++    unsigned rw = (unsigned)(scene[0] * snap_k + 0.5f), rh = (unsigned)(scene[1] * snap_k + 0.5f);
+     char v[6][64];
+     snprintf(v[0], sizeof v[0], menu_text(UI_MENU_OV_FMT_SIZE), t->width, t->height);
+     snprintf(v[1], sizeof v[1], menu_text(UI_MENU_OV_FMT_SIZE), (unsigned)t->image_w, (unsigned)t->image_h);
+@@ -1222,6 +1247,10 @@
+     double hz = frame_step_limit_hz();
+     snprintf(v[4], sizeof v[4], "%s", menu_text(UI_MENU_OV_NONE));
+     if (hz > 0) snprintf(v[4], sizeof v[4], menu_text(UI_MENU_OV_FPS), hz);
++    if (strcmp(cfg_value("AC_FRAME_GEN"), "off")) {   // MENU-02: frame generation on
++        size_t used = strlen(v[4]);
++        snprintf(v[4] + used, sizeof v[4] - used, " + FG");
++    }
+     const char *pm = present_name(gfx_window_present_mode());
+     snprintf(v[5], sizeof v[5], "%s", pm ? pm : menu_text(UI_MENU_OV_NONE));
+     static const UiTextId labels[7] = {UI_MENU_OV_WINDOW, UI_MENU_OV_OUTPUT, UI_MENU_OV_SCENE,
 --- a/runtime/vk_color.c
 +++ b/runtime/vk_color.c
 @@ -136,15 +136,38 @@
@@ -3696,7 +3773,7 @@
                                 "where it can run and FSR 3 elsewhere. DLSS and XeSS chosen here take effect after a "
                                 "restart. The HUD is not touched.",
      [UI_MENU_UPSCALING_DESC_OTHER] = "A temporal upscaler in place of the game's anti-aliasing: smoother edges and less "
-@@ -138,11 +138,26 @@
+@@ -138,11 +138,28 @@
      [UI_MENU_AA_DESC] = "The game's own anti-aliasing, SMAA, for when no upscaler runs. Off leaves the edges jagged.",
      [UI_MENU_AA_OFF] = "Off",
      [UI_MENU_AA_BY_UPSCALER] = "the upscaler smooths the edges",
@@ -3713,6 +3790,8 @@
 +    [UI_SNAP_TEXPACK] = "HD texture pack",
 +    [UI_SNAP_TEXPACK_DESC] = "Uses the HD textures in the texpack folder next to the game, made on this PC from your own game. Takes effect after a restart.",
 +    [UI_SNAP_TEXPACK_NONE] = "no pack in the texpack folder",
++    [UI_SNAP_TAB] = "Enhancements",
++    [UI_SNAP_ENH] = "NewSnap enhancements (they do not change the game's logic)",
 +    [UI_SNAP_ASPECT] = "Aspect ratio",
 +    [UI_SNAP_ASPECT_DESC] = "Keep 16:9 adds bars on wider screens; Stretch fills the window; Ultrawide widens the 3D view to the window with the game's proportions, keeps the interface in the middle and takes photos with the usual 16:9 view (experimental).",
      [UI_MENU_OUTPUT_RES_AUTO] = "Automatic",
@@ -3724,7 +3803,7 @@
      [UI_MENU_FPS_30] = "30 FPS", [UI_MENU_FPS_60] = "60 FPS",
      [UI_MENU_REALTIME] = "Game speed follows the clock",
      [UI_MENU_REALTIME_DESC] = "Steps the game by real time, so a slow frame does not slow the game down.",
-@@ -428,7 +443,7 @@
+@@ -428,7 +445,7 @@
      [UI_MENU_DEFAULT_MARK] = "по умолчанию",
      [UI_MENU_AFTER_RESTART] = "после перезапуска", [UI_MENU_SET_BY_ENV] = "задано переменной окружения",
      [UI_MENU_SAVE_FAILED] = "не удалось сохранить настройки",
@@ -3733,7 +3812,7 @@
  
      [UI_MENU_FULLSCREEN] = "Полный экран", [UI_MENU_FULLSCREEN_DESC] = "Игра на весь экран; F11 переключает режим.",
      [UI_MENU_WINDOW_SIZE] = "Размер окна", [UI_MENU_WINDOW_SIZE_DESC] = "Размер окна игры вне полноэкранного режима.",
-@@ -509,8 +524,8 @@
+@@ -509,8 +526,8 @@
      [UI_MENU_UPSCALING] = "Апскейлер",
      [UI_MENU_UPSCALING_DESC] = "Временной апскейлер вместо сглаживания игры: ровнее края и меньше мерцания, а в режиме "
                                 "ниже «Родного» — больше кадров в секунду. NVIDIA DLSS нужна видеокарта NVIDIA RTX и "
@@ -3744,7 +3823,7 @@
                                 "DLSS, где он может работать, иначе FSR 3. DLSS и XeSS, выбранные здесь, действуют после "
                                 "перезапуска. Интерфейс не затрагивается.",
      [UI_MENU_UPSCALING_DESC_OTHER] = "Временной апскейлер вместо сглаживания игры: ровнее края и меньше мерцания, а в "
-@@ -538,7 +553,7 @@
+@@ -538,7 +555,7 @@
      [UI_MENU_OUTPUT_RES_NEXT] = ", %s после перезапуска",
  
      [UI_MENU_FPS_LIMIT] = "Частота кадров",
@@ -3753,7 +3832,7 @@
      [UI_MENU_FPS_30] = "30 FPS", [UI_MENU_FPS_60] = "60 FPS",
      [UI_MENU_REALTIME] = "Скорость игры по часам",
      [UI_MENU_REALTIME_DESC] = "Игра идёт по реальному времени, медленный кадр её не замедляет.",
-@@ -851,7 +866,7 @@
+@@ -851,7 +868,7 @@
      [UI_MENU_DEFAULT_MARK] = "padrão",
      [UI_MENU_AFTER_RESTART] = "após reiniciar", [UI_MENU_SET_BY_ENV] = "definido por variável de ambiente",
      [UI_MENU_SAVE_FAILED] = "não foi possível salvar as configurações",
@@ -3762,7 +3841,7 @@
  
      [UI_MENU_FULLSCREEN] = "Tela cheia", [UI_MENU_FULLSCREEN_DESC] = "O jogo ocupa a tela inteira; F11 alterna.",
      [UI_MENU_WINDOW_SIZE] = "Tamanho da janela",
-@@ -884,7 +899,7 @@
+@@ -884,7 +901,7 @@
      [UI_MENU_SHARPNESS_DESC] = "Aumento de nitidez após a ampliação do FSR; 0 desliga.",
  
      [UI_MENU_FPS_LIMIT] = "Taxa de quadros",
@@ -3771,7 +3850,7 @@
      [UI_MENU_FPS_30] = "30 FPS", [UI_MENU_FPS_60] = "60 FPS",
      [UI_MENU_HUD] = "HUD",
      [UI_MENU_HUD_DESC] = "Desligado, o HUD do jogo não é desenhado durante a partida; os menus continuam. F12 "
-@@ -1180,8 +1195,8 @@
+@@ -1180,8 +1197,8 @@
      [UI_MENU_UPSCALING] = "Upscaler",
      [UI_MENU_UPSCALING_DESC] = "Um upscaler temporal no lugar do antisserrilhado do jogo: bordas mais suaves e menos "
                                 "cintilação e, com um modo abaixo de Nativo, mais quadros por segundo. NVIDIA DLSS precisa "
@@ -3782,7 +3861,7 @@
                                 "placa. Automático usa o DLSS onde ele pode rodar e o FSR 3 nos outros casos. DLSS e XeSS "
                                 "escolhidos aqui valem após reiniciar. O HUD não é afetado.",
      [UI_MENU_UPSCALING_DESC_OTHER] = "Um upscaler temporal no lugar do antisserrilhado do jogo: bordas mais suaves e menos "
-@@ -1282,7 +1297,7 @@
+@@ -1282,7 +1299,7 @@
      [UI_MENU_AFTER_RESTART] = "重启后生效",
      [UI_MENU_SET_BY_ENV] = "由环境变量设定",
      [UI_MENU_SAVE_FAILED] = "无法保存设置",
@@ -3791,7 +3870,7 @@
      [UI_MENU_FULLSCREEN] = "全屏",
      [UI_MENU_FULLSCREEN_DESC] = "游戏铺满屏幕；按 F11 切换。",
      [UI_MENU_WINDOW_SIZE] = "窗口大小",
-@@ -1340,7 +1355,7 @@
+@@ -1340,7 +1357,7 @@
      [UI_MENU_COLOR_GAMMA] = "伽马",
      [UI_MENU_COLOR_GAMMA_DESC] = "小于 1 提亮暗部与中间调，大于 1 压暗；1 表示不调整。",
      [UI_MENU_FPS_LIMIT] = "帧率",
@@ -3800,7 +3879,7 @@
      [UI_MENU_FPS_30] = "30 FPS",
      [UI_MENU_FPS_60] = "60 FPS",
      [UI_MENU_REALTIME] = "游戏速度跟随时钟",
-@@ -1708,8 +1723,8 @@
+@@ -1708,8 +1725,8 @@
      [UI_MENU_AO_HIGH] = "高",
      [UI_MENU_UPSCALING] = "超分辨率",
      [UI_MENU_UPSCALING_DESC] = "以时间性超分辨率取代游戏的抗锯齿：边缘更平滑、闪烁更少；选择低于“原生”的模式还能提高帧率。"
@@ -4049,7 +4128,7 @@
  // ---- code patches (patches.c) and the frame step (frame_rate.c)
 --- a/runtime/ui_text.h
 +++ b/runtime/ui_text.h
-@@ -217,6 +217,21 @@
+@@ -217,6 +217,23 @@
      UI_MENU_CHEAT_MASTER, UI_MENU_CHEAT_MASTER_DESC, UI_MENU_CHEAT_RESTORE, UI_MENU_CHEAT_RESTORE_DESC,
      UI_MENU_CHEAT_REBUILD, UI_MENU_CHEAT_REBUILD_DESC, UI_MENU_CHEAT_UNSUPPORTED, UI_MENU_CHEAT_UNSUPPORTED_DESC,
      UI_MENU_LAST_ID = UI_MENU_CHEAT_UNSUPPORTED_DESC,
@@ -4068,6 +4147,8 @@
 +    UI_SNAP_TEXPACK_NONE,
 +    UI_SNAP_ASPECT,
 +    UI_SNAP_ASPECT_DESC,
++    UI_SNAP_TAB,
++    UI_SNAP_ENH,
      UI_TEXT_COUNT
  } UiTextId;
  
