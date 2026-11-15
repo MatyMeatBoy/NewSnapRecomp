@@ -61,6 +61,9 @@ PROMOTIONAL_ASSETS = {
     'docs/images/expedition-200.jpg': (
         169356, bytes.fromhex('ffd8ffe000104a46494600010100000100010000'),
         '46da1cdc81440899c279dd6110b9dbb93c59bc130aea7c13c4dd6489a42e4dd8'),
+    'docs/images/aa-fsr4-native.jpg': (   # owner-requested anti-aliasing comparison (2026-11-15), same capture rules
+        146770, bytes.fromhex('ffd8ffe000104a46494600010100000100010000'),
+        '514c71168b8a52c404c82b9d2b3063d177e54f90977d75b760f68b635c1e7d5b'),
 }
 
 
