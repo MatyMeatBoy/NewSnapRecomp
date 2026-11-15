@@ -199,16 +199,7 @@
  }
  
  static void sync_barrier(VkCommandBuffer cb, VkImage img, VkImageLayout from, VkImageLayout to, VkPipelineStageFlags2 s0,
-@@ -575,6 +618,8 @@
- // wider camera into the game's 16:9 targets has the camera's shape (resolution.c res_wide_tick; the present thread
- // sets it from the present job, vk_backend.c).
- static float g_shape;
-+void snap_wide_window(unsigned w, unsigned h);
-+int snap_aspect_fills(const char *aspect);
- void vk_present_shape_set(float shape) { g_shape = shape; }
- 
- // The rectangle {x, y, w, h} of a dw x dh swapchain image the cw x ch picture goes into: the whole image with
-@@ -583,7 +628,7 @@
+@@ -583,7 +626,7 @@
  // picture's own aspect ratio, or the one vk_present_shape_set gave.
  void gfx_fit_rect(int cw, int ch, int dw, int dh, int out[4]) {
      out[0] = out[1] = 0, out[2] = dw, out[3] = dh;
@@ -217,7 +208,7 @@
      if (g_shape > 0) {
          double w = (double)dh * g_shape;                      // the picture's width at the window's height
          if (w < dw - 0.5) out[2] = (int)(w + 0.5);            // window wider: pillarbox
-@@ -610,16 +655,23 @@
+@@ -610,16 +653,23 @@
      if (wsys_minimized() || !g_sc) goto out;
  
      unsigned slot = g_frame % FRAMES;
@@ -242,7 +233,7 @@
      }
      vk_device_fault_report(r);
      if (r != VK_SUCCESS && r != VK_SUBOPTIMAL_KHR) goto out;     // lost, not ready: skip the frame
-@@ -654,6 +706,10 @@
+@@ -654,6 +704,10 @@
      VkCommandBufferBeginInfo bi = {.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
                                     .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT};
      vkBeginCommandBuffer(cb, &bi);
@@ -253,7 +244,7 @@
      uint64_t crumb = __atomic_load_n(&gfx_counters.frames, __ATOMIC_RELAXED);
      vk_crumb(cb, VK_CRUMB_PRESENT, crumb);
      VkImage dst = g_sc_img[idx];
-@@ -673,7 +729,7 @@
+@@ -673,7 +727,7 @@
      // Colour adjustment (AC_COLOR_*, vk_color.c), or on an HDR10 swapchain the PQ encode (vk_hdr.c; the adjustment is
      // for SDR): a copy of the crop takes the game image's place below
      VkImage graded = !general ? VK_NULL_HANDLE : g_sc_hdr ? vk_hdr_encode(cb, slot, src, fmt, rect)
@@ -262,7 +253,7 @@
      const int grect[4] = {0, 0, cw, ch};
      VkImage psrc = graded ? graded : src;
      VkFormat pfmt = graded ? VK_FORMAT_R16G16B16A16_SFLOAT : fmt;
-@@ -765,7 +821,9 @@
+@@ -765,7 +819,9 @@
      }
      g_frame++;
      if (cap) {
@@ -273,7 +264,7 @@
          vmaInvalidateAllocation(c->vma, g_cap_alloc, 0, VK_WHOLE_SIZE);
          g_cap_w = (int)g_sc_ext.width;
          g_cap_h = (int)g_sc_ext.height;
-@@ -810,6 +868,7 @@
+@@ -810,6 +866,7 @@
          g_flip_on = 0;   // its blit is done (device idle); the swapchain goes away unpresented
          menu_vk_release();
          vk_fsr_release();
@@ -281,7 +272,7 @@
          vk_color_release();
          vk_hdr_release();
          vk_contact_release();
-@@ -826,6 +885,7 @@
+@@ -826,6 +883,7 @@
              g_sc_view[i] = VK_NULL_HANDLE;
          }
          if (g_pool) vkDestroyCommandPool(c->device, g_pool, NULL);
@@ -3897,3 +3888,14 @@
      vk_hdr_present_source(img, &j.scene, &j.scene_format);   // AC_HDR: the scene the game drew into it, same size
      if (crop) {
          j.has_crop = 1;
+--- a/runtime/host.h
++++ b/runtime/host.h
+@@ -302,6 +302,8 @@
+ // window's size with each new swapchain.
+ float res_wide_tick(void);
+ void res_wide_window(unsigned w, unsigned h);
++void snap_wide_window(unsigned w, unsigned h);
++int snap_aspect_fills(const char *aspect);
+ // The gameplay HUD (the hud setting, set nohud): the game's present switches the set when the setting changed.
+ void res_hud_tick(void);
+ // ---- code patches (patches.c) and the frame step (frame_rate.c)

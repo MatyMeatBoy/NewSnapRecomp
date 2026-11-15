@@ -29,8 +29,11 @@ def edits():
              '        if (img && !storage) view = snap_hd_photo_view(img->image, view);\n'
              '        if (img && !storage) view = snap_wide_capture_view(img->image, view);   // ULTRAWIDE-01: the 16:9 scene'),
         ],
+        'runtime/host.h': [
+            ('void res_wide_window(unsigned w, unsigned h);',
+             'void res_wide_window(unsigned w, unsigned h);\nvoid snap_wide_window(unsigned w, unsigned h);\nint snap_aspect_fills(const char *aspect);'),
+        ],
         'runtime/gfx_present.c': [
-            ('static float g_shape;', 'static float g_shape;\nvoid snap_wide_window(unsigned w, unsigned h);\nint snap_aspect_fills(const char *aspect);'),
             ('!strcmp(cfg_value("AC_ASPECT"), "stretch")) return;', 'snap_aspect_fills(cfg_value("AC_ASPECT"))) return;'),
             ('    res_wide_window(ext.width, ext.height);', '    res_wide_window(ext.width, ext.height);\n    snap_wide_window(ext.width, ext.height);'),
         ],
