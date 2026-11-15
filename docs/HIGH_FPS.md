@@ -1,5 +1,16 @@
 # High frame rate options and investigation
 
+## FPS-02 audit of fixed 60 Hz steps — 2026-11-15
+
+A scan of every `adrp`+`ldr s` load in `main` finds the float 1/60 (`0xae7e4c`) used in four places and 60.0
+(`0xae7c1c`, `0xb0c6e4`) in 64. The 1/60 uses: the interface pointer (`main+0x643cdc`, its fallback when the game
+frame time is 0, fixed in 0.9.7), the timer's recovery step after a hitch over 0.5 s (`main+0x6abf1c`), the task
+updates of the loading loop (`main+0x4e0904`, paced by its own 14 ms sleep, not by presentation) and the length of
+the last segment of a recorded timeline (`main+0x2e60bc`, which steps through recorded times). Sampled 60.0 uses
+multiply measured seconds by 60 or divide 60 Hz frame numbers by 60: conversions of measured time, not per-frame
+steps. Together with the timer's channels reporting measured time (mode 0) at 144 fps, no other path that advances
+a fixed step per presented frame is known. Item throws and cooldowns of later stages were not played.
+
 ## INPUT-HZ-01 a press in the middle of a dialogue line skipped it above 60 FPS — 2026-11-15
 
 **Symptom.** With the interface paced (UI-HZ-01, 0.9.4) a press while a line was being typed often completed the
