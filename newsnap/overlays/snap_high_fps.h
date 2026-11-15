@@ -22,8 +22,17 @@ static inline double snap_fps_display(double refresh_hz) {
     return refresh_hz / n;
 }
 
+// "vrr" (VRR-02): just under the monitor refresh, so a variable-refresh display (FreeSync, G-SYNC) stays inside its
+// range instead of reaching the top, where the driver falls back to V-Sync or tears: refresh - refresh^2 / 3600
+// (144 Hz -> 138.24, 120 -> 116, 165 -> 157.44, 240 -> 224, 60 -> 59). Unknown or implausible refresh: 60.
+static inline double snap_fps_vrr(double refresh_hz) {
+    if (!(refresh_hz >= 50.0 && refresh_hz <= 1000.0)) return 60.0;
+    return refresh_hz - refresh_hz * refresh_hz / 3600.0;
+}
+
 static inline double snap_fps_target(const char *value, double refresh_hz) {
     if (value && !strcmp(value, "display")) return snap_fps_display(refresh_hz);
+    if (value && !strcmp(value, "vrr")) return snap_fps_vrr(refresh_hz);
     return snap_fps_parse(value);
 }
 
