@@ -8,6 +8,9 @@ def main():
     from newsnap.upstream import ROOT
     from newsnap.paths import runtime_dir
     os.chdir(ROOT)
+    if getattr(sys, 'frozen', False):   # an installed launcher: drop what earlier releases shipped beside it
+        from newsnap.updater import remove_retired_files
+        remove_retired_files(ROOT)
     if '--apply-update' in sys.argv[1:]:
         from newsnap.update_worker import apply_job
         if len(sys.argv) != 3 or sys.argv[1] != '--apply-update':

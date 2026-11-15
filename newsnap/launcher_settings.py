@@ -136,18 +136,34 @@ def validate_settings(values):
         if not valid:
             raise ValueError(f'Valor no válido para {key}: {value}')
         result[key] = value
-    validate_video_combination(result)
+    # A caller may pass one setting at a time (reading the file line by line, saving one change). A rule
+    # that relates two settings is only judged here when both are present; save_settings and the launch
+    # check the whole combination with validate_video_combination. Judging frame_gen alone read the
+    # missing upscaler as Original: the launcher refused frame generation and dropped it on reload.
+    validate_video_combination(result, complete=False)
     return result
 
 
-def validate_video_combination(values):
-    if values.get('frame_gen', 'off') == 'fsr' and values.get('upscaling', 'off') not in ('fsr3', 'fsr4', 'auto'):
-        raise ValueError('La generación de fotogramas FSR necesita la reconstrucción AMD FSR 3.1 o FSR 4 (cualquier preset, también Nativo).')
+def validate_video_combination(values, complete=True):
+    """Rules between video settings. complete=False: values may hold only some settings, and a rule is skipped
+    unless every setting it relates is present (missing ones are not read as their defaults)."""
+    def have(*keys):
+        return complete or all(key in values for key in keys)
+
+    upscaling = values.get('upscaling', 'off')
+    frame_gen = values.get('frame_gen', 'off') == 'fsr'
     # 'display' is the default and adapts by itself: no host scale while an upscaler runs or in handheld (MENU-02).
     explicit = values.get('render_scale') in SUPERSAMPLE_SCALES and values.get('render_scale') != 'display'
-    if values.get('upscaling', 'off') != 'off' and explicit:
+    if have('frame_gen', 'upscaling') and frame_gen and upscaling not in ('fsr3', 'fsr4', 'auto'):
+        raise ValueError('La generación de fotogramas FSR necesita la reconstrucción AMD FSR 3.1 o FSR 4 (cualquier preset, también Nativo).')
+    # MENU-03: Automatic steps aside by itself above 100 % (the runtime reads it as Original); a chosen
+    # upscaler does not, so that combination is still refused.
+    if have('upscaling', 'render_scale') and upscaling not in ('off', 'auto') and explicit:
         raise ValueError('El reescalado temporal usa su preset de calidad. Elige una escala de 100 % o menos para activarlo.')
-    if values.get('operation_mode') == 'handheld' and explicit:
+    if have('frame_gen', 'upscaling', 'render_scale') and frame_gen and upscaling == 'auto' and explicit:
+        raise ValueError('La generación de fotogramas FSR necesita FSR, y con una escala interna superior al 100 % la '
+                         'reconstrucción Automática usa Original. Elige AMD FSR 3.1 o FSR 4 con una escala de 100 % o menos.')
+    if have('operation_mode', 'render_scale') and values.get('operation_mode') == 'handheld' and explicit:
         raise ValueError('La escala experimental superior al 100 % requiere salida TV. Elige «TV · 1920 × 1080» o reduce la escala al 100 % o menos para usar el modo portátil.')
 
 

@@ -32,6 +32,9 @@ _PROTECTED = {'gamedata', 'newsnapgamedata', 'profile', 'settings', 'logs',
 _FORBIDDEN_SUFFIXES = {'.nsp', '.nsz', '.xci', '.nca', '.keys', '.nso', '.npdm', '.drp', '.nushdb', '.bin', '.sav', '.srm', '.log'}
 _PROTECTED_NAMES = {'newsnap.exe', 'main', 'sdk', 'settings.json', 'config.json', 'launcher-settings.json'}
 _ASSET_PREFIX = 'https://github.com/MatyMeatBoy/NewSnapRecomp/releases/download/'
+# Folders earlier releases shipped beside the launcher and no release ships any more, with the only kinds of
+# file they held. 0.7 to 0.9.4 shipped the RX 6900 XT test batch files in pruebas-amd.
+_RETIRED_FOLDERS = {'pruebas-amd': ('.bat', '.txt')}
 
 
 class UpdateError(RuntimeError):
@@ -257,6 +260,26 @@ def _public(name):
     return path
 
 
+def remove_retired_files(install):
+    """Delete what earlier releases shipped and this one does not: only files of the kinds those folders held,
+    then the folder if nothing else is left in it. Anything the player put there stays. Never raises."""
+    removed = []
+    for name, suffixes in _RETIRED_FOLDERS.items():
+        folder = Path(install) / name
+        try:
+            if folder.is_symlink() or not folder.is_dir():
+                continue
+            for entry in sorted(folder.iterdir()):
+                if entry.is_file() and not entry.is_symlink() and entry.suffix.lower() in suffixes:
+                    entry.unlink()
+                    removed.append(f'{name}/{entry.name}')
+            if not any(folder.iterdir()):
+                folder.rmdir()
+        except OSError:
+            continue
+    return removed
+
+
 def _no_links(path):
     for part in (path, *path.parents):
         if part.exists() or part.is_symlink():
@@ -455,6 +478,7 @@ def apply_update(staged_folder, install_root):
             shutil.rmtree(transaction, ignore_errors=True)
             raise UpdateError(f'Update failed and was rolled back: {exc}') from exc
         shutil.rmtree(transaction, ignore_errors=True)
+        remove_retired_files(install)
         return UpdateResult(manifest['version'], manifest['source_revision'], tuple(installed), tuple(preserved))
     except UpdateError:
         raise
