@@ -32,7 +32,7 @@ SUPERSAMPLE_SCALES = ('125', '133', '150', '175', '200', '250', '300', 'display'
 CHOICES = {'vk_present': ('mailbox', 'fifo', 'immediate', 'fifo_relaxed'),
            'operation_mode': ('docked', 'handheld'), 'render_scale': ('game', '50', '60', '70', '80', '90', '100') + SUPERSAMPLE_SCALES,
            'upscaler': ('fsr', 'bilinear'), 'aniso': ('game', '2', '4', '8', '16', 'auto'), 'shadow_scale': ('1', '2', '4', 'auto'), 'frame_gen': ('off', 'fsr'), 'hd_photos': ('1', '0'),
-           'aspect': ('fit', 'stretch'), 'color_preset': ('default', 'vivid', 'clarity', 'custom')}
+           'aspect': ('fit', 'stretch', 'ultrawide'), 'color_preset': ('default', 'vivid', 'clarity', 'custom')}
 RANGES = {'volume': (0, 100, True), 'mouse_sens': (0, 10, False), 'sharpness': (0, 100, True),
           'color_brightness': (-30, 30, True), 'color_contrast': (70, 150, True),
           'color_saturation': (50, 200, True), 'color_gamma': (0.8, 1.2, False)}

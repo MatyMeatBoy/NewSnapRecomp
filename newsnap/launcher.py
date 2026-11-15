@@ -248,8 +248,8 @@ class Launcher:
                      help_text='Mejora las texturas vistas en ángulo. El controlador y la GPU pueden limitar el nivel efectivo. Automático heredado conserva la heurística de la base, aún sin validar para Snap; elige un nivel explícito para personalizarlo.')
         self._choice(video, 'Resolución de sombras', 'shadow_scale', {'Original (1×)': '1', 'Alta (2×)': '2', 'Muy alta (4×)': '4', 'Según la resolución 3D': 'auto'},
                      help_text='Amplía todos los mapas de sombras del juego (sol, vegetación, personajes) sin cambiar su suavidad: los bordes salen más definidos. «Según la resolución 3D» los ajusta a la escala de la escena (2× a 1080p, 3× a 125–150 %, 4× desde 200 %). 2× cuesta poco; 4× usa unos 64 MiB más de VRAM por mapa. Las sombras pintadas en las texturas del escenario no cambian.')
-        self._choice(video, 'Relación de aspecto · Aspect ratio', 'aspect', {'Conservar proporciones': 'fit', 'Estirar a la ventana': 'stretch'},
-                     help_text='Solo cambia la presentación: conservar proporciones puede dejar bandas; estirar llena la ventana y deforma la imagen. No amplía el campo de visión.')
+        self._choice(video, 'Relación de aspecto · Aspect ratio', 'aspect', {'Conservar proporciones': 'fit', 'Estirar a la ventana': 'stretch', 'Ultrawide · vista más ancha (experimental)': 'ultrawide'},
+                     help_text='Solo cambia la presentación: conservar proporciones puede dejar bandas; estirar llena la ventana y deforma la imagen. Ultrawide llena una pantalla más ancha que 16:9 ampliando la vista 3D a los lados; el HUD queda en el centro con sus proporciones y las fotos se toman con la vista 16:9 de siempre. Los menús se ven en 16:9 con bandas. Experimental.')
         self._heading(video, 'Color original del juego')
         self._help(video, 'Salida neutra: conserva los colores y el posprocesado propios de Snap. '
                    'Sin perfiles de contraste, saturación, gamma, HDR añadido ni nitidez adicional del port.')
