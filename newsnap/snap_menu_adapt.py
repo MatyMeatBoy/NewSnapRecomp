@@ -9,7 +9,8 @@ ratio with ultrawide. Ids past UI_MENU_LAST_ID: English text only, the menu's ot
 IDS = ('UI_SNAP_RES', 'UI_SNAP_RES_DESC', 'UI_SNAP_RES_UPSCALER', 'UI_SNAP_FG', 'UI_SNAP_FG_DESC', 'UI_SNAP_FG_NEEDS',
        'UI_SNAP_HDPH', 'UI_SNAP_HDPH_DESC', 'UI_SNAP_SHADOW', 'UI_SNAP_SHADOW_DESC', 'UI_SNAP_TEXPACK',
        'UI_SNAP_TEXPACK_DESC', 'UI_SNAP_TEXPACK_NONE', 'UI_SNAP_ASPECT', 'UI_SNAP_ASPECT_DESC', 'UI_SNAP_TAB',
-       'UI_SNAP_ENH', 'UI_SNAP_HDSH', 'UI_SNAP_HDSH_DESC')
+       'UI_SNAP_ENH', 'UI_SNAP_HDSH', 'UI_SNAP_HDSH_DESC', 'UI_SNAP_TAB_SYS', 'UI_SNAP_SYS_CONT', 'UI_SNAP_SYS_CONT_DESC',
+       'UI_SNAP_SYS_RESTART', 'UI_SNAP_SYS_RESTART_DESC', 'UI_SNAP_SYS_QUIT', 'UI_SNAP_SYS_QUIT_DESC')
 
 TEXTS = {
     'UI_SNAP_RES': 'Game internal resolution',
@@ -34,10 +35,17 @@ TEXTS = {
     'UI_SNAP_TEXPACK_DESC': 'Uses the HD textures in the texpack folder next to the game, made on this PC from your own '
                             'game. Takes effect after a restart.',
     'UI_SNAP_TEXPACK_NONE': 'no pack in the texpack folder',
-    'UI_SNAP_HDSH': 'HD scenery shadows (experimental)',
+    'UI_SNAP_HDSH': 'HD shadows mode (AI, experimental)',
     'UI_SNAP_HDSH_DESC': 'The shadows of plants, rocks and scenery are painted into the light maps of each level. On: each '
                          'light map is saved the first time it loads, and Generate HD shadows in the launcher enlarges '
                          'them on this PC; the HD ones are used the next time the level loads. Takes effect after a restart.',
+    'UI_SNAP_TAB_SYS': 'System',
+    'UI_SNAP_SYS_CONT': 'Back to the game',
+    'UI_SNAP_SYS_CONT_DESC': 'Closes this menu and goes on playing.',
+    'UI_SNAP_SYS_RESTART': 'Restart the game',
+    'UI_SNAP_SYS_RESTART_DESC': 'Closes the game and starts it again, for settings that apply after a restart. Progress since your last save is lost.',
+    'UI_SNAP_SYS_QUIT': 'Quit to desktop',
+    'UI_SNAP_SYS_QUIT_DESC': 'Closes the game. Progress since your last save is lost; the game saves on its own after each expedition.',
     'UI_SNAP_TAB': 'Enhancements',
     'UI_SNAP_ENH': 'NewSnap enhancements (they do not change the game\'s logic)',
     'UI_SNAP_ASPECT': 'Aspect ratio',
@@ -69,6 +77,16 @@ static void snap_row_internal_res(void) {
 }
 
 static void snap_rows_enhancements(void) {
+    opt_toggle("AC_HD_PHOTOS", UI_SNAP_HDPH, UI_SNAP_HDPH_DESC);
+    opt_toggle("AC_HD_SHADOWS", UI_SNAP_HDSH, UI_SNAP_HDSH_DESC);
+    {
+        static char note[64];
+        int n = snap_texpack_files();
+        if (n <= 0) opt_disable_next(UI_SNAP_TEXPACK_NONE);
+        else snprintf(note, sizeof note, "%d textures", n);
+        opt_toggle("AC_TEX_PACK", UI_SNAP_TEXPACK, UI_SNAP_TEXPACK_DESC);
+        (void)note;
+    }
     {
         static const char *const vals[] = {"off", "fsr"};
         static const char *const names[] = {"Off", "AMD FSR (1 generated frame)"};
@@ -77,21 +95,6 @@ static void snap_rows_enhancements(void) {
         bool fsr = (runs && strstr(runs, "FSR")) || !strcmp(up, "fsr3") || !strcmp(up, "fsr4");
         if (!fsr) opt_disable_next(UI_SNAP_FG_NEEDS);
         opt_choice_list("AC_FRAME_GEN", UI_SNAP_FG, vals, names, 2, UI_SNAP_FG_DESC);
-    }
-    opt_toggle("AC_HD_PHOTOS", UI_SNAP_HDPH, UI_SNAP_HDPH_DESC);
-    opt_toggle("AC_HD_SHADOWS", UI_SNAP_HDSH, UI_SNAP_HDSH_DESC);
-    {
-        static const char *const vals[] = {"1", "2", "4", "auto"};
-        static const char *const names[] = {"1x (original)", "2x", "4x", "Auto (3D resolution)"};
-        opt_choice_list("AC_SHADOW_SCALE", UI_SNAP_SHADOW, vals, names, 4, UI_SNAP_SHADOW_DESC);
-    }
-    {
-        static char note[64];
-        int n = snap_texpack_files();
-        if (n <= 0) opt_disable_next(UI_SNAP_TEXPACK_NONE);
-        else snprintf(note, sizeof note, "%d textures", n);
-        opt_toggle("AC_TEX_PACK", UI_SNAP_TEXPACK, UI_SNAP_TEXPACK_DESC);
-        (void)note;
     }
 }
 
@@ -107,6 +110,21 @@ static void snap_tab_enhancements(float scale) {
     opt_group(UI_SNAP_ENH);
     snap_rows_enhancements();
     opt_end();
+}
+
+'''
+
+SYSTEM_TAB = '''// MENU-04: the System tab, last: back to the game, restart the game, quit to the desktop.
+static void snap_tab_system(float scale) {
+    opt_begin("##snapsys", scale);
+    bool back = opt_button("##snapcont", UI_SNAP_SYS_CONT, UI_SNAP_SYS_CONT_DESC);
+    bool restart = opt_button("##restart", UI_SNAP_SYS_RESTART, UI_SNAP_SYS_RESTART_DESC);
+    bool quit = opt_button("##snapquit", UI_SNAP_SYS_QUIT, UI_SNAP_SYS_QUIT_DESC);
+    opt_end();
+    if (back) set_open(0);
+    if (quit) gfx_window_request_close();
+    if (restart) ImGui::OpenPopup("##restart_confirm");
+    restart_confirm();
 }
 
 '''
@@ -141,6 +159,10 @@ def edits():
         'runtime/ui_text.c': [
             ('    [UI_MENU_AA_BY_UPSCALER] = "the upscaler smooths the edges",\n',
              '    [UI_MENU_AA_BY_UPSCALER] = "the upscaler smooths the edges",\n' + texts),
+            # MENU-04: the whole menu in Spanish (overlays/ui_text_es.inc) in place of the keyboard-only row
+            ('SWKBD_ONLY(text_es, "Introducir texto", "Introduce un nombre", "Caballo", "Aceptar", "Cancelar",\n'
+             '           "Mando: A = Aceptar, B = Cancelar");\n',
+             '#include "ui_text_es.inc"\n'),
         ],
         'runtime/ui/menu.cpp': [
             ('    opt_choice_list("AC_WINDOW_SIZE", UI_MENU_WINDOW_SIZE, pv, pn, n, UI_MENU_WINDOW_SIZE_DESC);',
@@ -160,6 +182,17 @@ def edits():
             ('static void rows_upscaling(void) {', FUNCS + 'static void rows_upscaling(void) {'),
             ('    row_output_res();\n    rows_upscaling();', '    snap_row_internal_res();\n    rows_upscaling();\n    snap_row_aspect();'),
             ('UI_MENU_TAB_CONTROLS, UI_MENU_TAB_MENU,   UI_MENU_TAB_MODS};', 'UI_MENU_TAB_CONTROLS, UI_MENU_TAB_MENU,   UI_SNAP_TAB};'),
-            ('            case TAB_MODS: tab_mods(scale); break;', '            case TAB_MODS: snap_tab_enhancements(scale); break;'),
+            ('            case TAB_MODS: tab_mods(scale); break;', '            case TAB_MODS: snap_tab_enhancements(scale); break;\n'
+             '            case TAB_SYSTEM: snap_tab_system(scale); break;'),
+            # MENU-04: a last tab, System: back to the game, restart, quit to the desktop
+            ('enum { TAB_SCREEN, TAB_GAME, TAB_SOUND, TAB_CONTROLS, TAB_MENU, TAB_MODS, TAB_COUNT };',
+             'enum { TAB_SCREEN, TAB_GAME, TAB_SOUND, TAB_CONTROLS, TAB_MENU, TAB_MODS, TAB_SYSTEM, TAB_COUNT };'),
+            ('static const UiTextId kTabNames[TAB_COUNT] = {', SYSTEM_TAB + 'static const UiTextId kTabNames[TAB_COUNT] = {'),
+            ('UI_MENU_TAB_MENU,   UI_SNAP_TAB};', 'UI_MENU_TAB_MENU,   UI_SNAP_TAB, UI_SNAP_TAB_SYS};'),
+            # the menu in every language of the game that has its text (ui_text_*.inc)
+            ('    static const UiTextId langs[] = {UI_MENU_MENU_LANG_AUTO, UI_MENU_LANGNAME_EN, UI_MENU_LANGNAME_RU,\n'
+             '                                     UI_MENU_LANGNAME_PT_BR, UI_MENU_LANGNAME_ZH_HANS};',
+             '    static const UiTextId langs[] = {UI_MENU_MENU_LANG_AUTO, UI_MENU_LANGNAME_EN, UI_MENU_LANGNAME_ES,\n'
+             '                                     UI_MENU_LANGNAME_RU, UI_MENU_LANGNAME_PT_BR, UI_MENU_LANGNAME_ZH_HANS};'),
         ],
     }

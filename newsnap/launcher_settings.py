@@ -184,6 +184,8 @@ def load_settings(path):
             match = ENTRY.match(line)
             if match and (key := _key(match[2])) in DEFAULTS:
                 value = line.split('=', 1)[1].strip().strip('"')
+                if key == 'shadow_scale':
+                    value = 'auto'   # 0.9.11: shadow maps always follow the internal resolution
                 if key == 'vk_present' and value == 'fifo_relaxed':
                     value = 'fifo'   # FIFO Relaxed is no longer offered (0.9.11): plain VSync, its closest mode
                 if key in BINDING_DEFAULTS:

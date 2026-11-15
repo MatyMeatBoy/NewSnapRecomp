@@ -91,23 +91,21 @@ class Launcher:
     def _style(self):
         style = ttk.Style(self.root)
         style.theme_use('clam')
-        style.configure('.', font=('Segoe UI', 11), background=CREAM, foreground=INK)
+        style.configure('.', font=('Segoe UI', 11), background=CREAM, foreground=INK, focuscolor=CREAM)
         style.configure('TFrame', background=CREAM)
-        style.configure('TNotebook', background=CREAM, borderwidth=0, tabmargins=(0, 0, 0, 0))
-        style.configure('TNotebook.Tab', padding=(18, 10), background='#e5e5d9', expand=(0, 0, 0, 0))
-        style.map('TNotebook.Tab', background=[('selected', GREEN)], foreground=[('selected', CREAM)],
-                  padding=[('selected', (18, 10)), ('!selected', (18, 10))],
-                  expand=[('selected', (0, 0, 0, 0)), ('!selected', (0, 0, 0, 0))])
-        style.layout('Pages.TNotebook.Tab', [])   # the sidebar (sidebar_ui.py) chooses the page
-        style.configure('Pages.TNotebook', background=CREAM, borderwidth=0, tabmargins=(0, 0, 0, 0))
-        style.configure('TButton', padding=(15, 9), background='#e5e5d9')
-        style.configure('Accent.TButton', background=GREEN, foreground=CREAM, font=('Segoe UI', 13, 'bold'), padding=(25, 14))
-        style.map('Accent.TButton', background=[('active', '#245846'), ('disabled', '#84978c')])
-        style.configure('Accent.TButton',focuscolor=AMBER,focusthickness=2)
-        style.configure('Snap.Horizontal.TProgressbar',background=GREEN,troughcolor='#dedfce',borderwidth=0,thickness=9)
+        style.configure('TCheckbutton', background=CREAM, indicatorbackground='#fffdf6', indicatorforeground='#163d32')
+        style.map('TCheckbutton', background=[('active', CREAM)])
+        style.configure('TScrollbar', background='#e1e0d0', troughcolor=CREAM, bordercolor=CREAM, arrowcolor=GREEN,
+                        lightcolor='#e1e0d0', darkcolor='#e1e0d0', relief='flat')
         style.configure('Title.TLabel', font=('Segoe UI', 20, 'bold'))
         style.configure('Muted.TLabel', foreground='#597067')
-        style.configure('Status.TLabel', background='#e5e5d9', font=('Segoe UI', 10))
+        style.configure('Status.TLabel', background='#e9e8db', font=('Segoe UI', 10))
+        from .theme import Bubble   # rounded buttons, fields, cards, tabs and bars for every page
+        self.bubble = Bubble(self.root)
+        try:
+            self.bubble.apply(style)
+        except Exception:   # the elements exist already (a second launcher in one process): keep them
+            pass
 
     def _play(self):
         frame = self.play_tab
@@ -263,6 +261,20 @@ class Launcher:
         for key in ('render_scale', 'aniso', 'upscaling'):
             self.variables[key].trace_add('write', self._quality_preset_changed)
 
+    def _auto_hd_shadows(self):
+        """Modo Sombras HD: after the game, the light maps it saved are enlarged by themselves (hdshadows_ui)."""
+        if self.variables.get('hd_shadows') is None or self.variables['hd_shadows'].get() != '1':
+            return False
+        button = getattr(self, 'hd_shadows_button', None)
+        if button is None or not button.waiting():
+            return False
+        if getattr(self, 'hidden_for_game', False) or getattr(self, 'autoplay', False):
+            self.root.deiconify()
+            self.tabs.select(self.mods_tab)
+        button.start(after=lambda: self.root.after(1500, self.close)
+                     if getattr(self, 'autoplay', False) or getattr(self, 'hidden_for_game', False) else None)
+        return True
+
     def _vrr_mode(self, frame):
         """«Modo VRR»: VSync (FIFO) and the frame limit just under the monitor's refresh («VRR», 138 at 144 Hz), the
         combination that keeps a FreeSync / G-SYNC display inside its range: no tearing, no V-Sync stalls. The driver turns
@@ -404,25 +416,29 @@ class Launcher:
         self._settings_footer(self.mods_tab)
         content = self._scrolling_options(self.mods_tab)
         self._help(content, 'Mejoras propias del port, cada una se puede activar o desactivar. No cambian la lógica del juego ni la puntuación de las fotos. Se aplican al próximo inicio.')
+        self._heading(content, 'Fotos')
         self._choice(content, 'Miniaturas de fotos en HD', 'hd_photos', {'Activadas · 1080×720': '1', 'Originales · 360×240': '0'},
                      help_text='La vista previa al hacer una foto y las fotos grandes de las carpetas y la selección se muestran con la foto de 1080×720 en vez de la miniatura de 360×240 del juego. Las fotos guardadas y la puntuación no cambian. Funciona en cualquier GPU.')
-        self._choice(content, 'Resolución de sombras', 'shadow_scale', {'Original (1×)': '1', 'Alta (2×)': '2', 'Muy alta (4×)': '4', 'Según la resolución 3D': 'auto'},
-                     help_text='Amplía todos los mapas de sombras del juego (sol, vegetación, personajes) sin cambiar su suavidad: los bordes salen más definidos. «Según la resolución 3D» los ajusta a la escala de la escena (2× a 1080p, 3× a 125–150 %, 4× desde 200 %). 2× cuesta poco; 4× usa unos 64 MiB más de VRAM por mapa. Las sombras pintadas en las texturas del escenario no cambian.')
-        self._choice(content, 'Generación de fotogramas · FSR', 'frame_gen', {'Desactivada': 'off', 'AMD FSR · 1 fotograma generado': 'fsr'},
-                     help_text='Inserta un fotograma generado entre cada dos reales: con el juego a 60 fps se muestran unos 120. Necesita FSR 3.1 o FSR 4. Solo genera si el monitor puede mostrarlo (unos 110 Hz o más a 60 fps); en un monitor más lento se pausa sola y el juego sigue a su ritmo, con cualquier modo de presentación. Añade un fotograma de latencia. El HUD se separa de la escena para que no deje estela. Experimental.')
-        self._choice(content, 'Sombras HD del escenario', 'hd_shadows', {'Desactivadas · originales': '0', 'Activadas (experimental)': '1'},
-                     help_text='Las sombras de plantas, rocas y escenario están pintadas en los mapas de luz de cada nivel, de baja resolución. '
-                               'Con esto activado, el juego guarda cada mapa de luz la primera vez que lo carga; «Generar sombras HD» los '
-                               'amplía en este PC con IA (Real-ESRGAN, se descarga una vez) conservando la luz y el color del juego, y la '
-                               'próxima vez que entres a ese nivel se usan los nuevos. Juega un nivel, genera, y vuelve a entrar.')
+        self._heading(content, 'Sombras')
+        self._help(content, 'La resolución de las sombras en tiempo real sigue sola a la resolución interna (2× a 1080p, 3× a 125–150 %, 4× desde 200 %).')
+        self._choice(content, 'Modo Sombras HD', 'hd_shadows', {'Desactivado · sombras originales': '0', 'Activado · IA (experimental)': '1'},
+                     help_text='Las sombras de plantas, rocas, casas y escenario están pintadas en los mapas de luz de cada nivel, de baja resolución '
+                               '(por eso se ven pixeladas). Activado: el juego guarda cada mapa de luz la primera vez que lo carga y, al cerrar el '
+                               'juego, el launcher los amplía solo en este PC con IA (Real-ESRGAN, se descarga una vez), conservando la luz y el '
+                               'color del juego. La próxima vez que entres a ese nivel salen en HD. Incluye también las sombras en tiempo '
+                               'real al máximo (4×). «Generar sombras HD» lo hace a mano.')
         from .hdshadows_ui import HdShadowsButton
-        HdShadowsButton(self, content)
+        self.hd_shadows_button = HdShadowsButton(self, content)
+        self._heading(content, 'Texturas HD')
         self._choice(content, 'Pack de texturas HD', 'tex_pack', {'Activado si existe': '1', 'Desactivado': '0'},
                      help_text='Usa las texturas HD de la carpeta texpack junto al juego, generadas en este PC a partir de tu propio juego. Sin pack no cambia nada.')
         self._choice(content, 'Guardar texturas para el pack', 'tex_pack_save', {'No': '0', 'Sí, mientras juego': '1'},
                      help_text='El juego guarda cada textura de color la primera vez que la carga (texpack/src); «Generar pack de texturas HD» las amplía en este PC con IA (Real-ESRGAN, se descarga una vez) y las comprime (BC1/BC3). Juega los niveles que quieras mejorar, genera, y desactiva esta opción: guardar texturas alarga algo las cargas.')
         from .hdshadows_ui import TexturePackButton
         TexturePackButton(self, content)
+        self._heading(content, 'Fluidez')
+        self._choice(content, 'Generación de fotogramas · FSR', 'frame_gen', {'Desactivada': 'off', 'AMD FSR · 1 fotograma generado': 'fsr'},
+                     help_text='Inserta un fotograma generado entre cada dos reales: con el juego a 60 fps se muestran unos 120. Necesita FSR 3.1 o FSR 4. Solo genera si el monitor puede mostrarlo (unos 110 Hz o más a 60 fps); en un monitor más lento se pausa sola y el juego sigue a su ritmo, con cualquier modo de presentación. Añade un fotograma de latencia. El HUD se separa de la escena para que no deje estela. Experimental.')
 
     def _aim_options(self, content):
         self._heading(content, 'Giroscopio')
@@ -712,6 +728,7 @@ class Launcher:
                              requested_present_mode=env.get('AC_VK_PRESENT','runtime-default'))
                 started_at=time.time()
                 self.process = subprocess.Popen(command, cwd=self.project, env=env, stdout=log, stderr=subprocess.STDOUT, creationflags=hidden)
+                self.events.put(('game_started', None))
                 self.events.put(('status', 'Reiniciando expedición…' if attempt > 1 else 'Expedición en curso · cierra el juego para volver'))
                 self.events.put(('game_started',None))
                 self.events.put(('display_file',display_file,self.process.pid,started_at))
@@ -847,6 +864,12 @@ class Launcher:
                     self.diagnostics_running = False
                     self.diagnostics_button.configure(state='normal')
                     self.status.set('Diagnóstico exportado: '+event[1] if event[1] else 'No se pudo exportar el diagnóstico: '+event[2])
+                elif kind == 'game_started':
+                    # the game is up: the launcher steps out of the way; it keeps the session's log in the background,
+                    # comes back if the game fails, and closes when the game ends
+                    if not getattr(self, 'hidden_for_game', False):
+                        self.hidden_for_game = True
+                        self.root.withdraw()
                 elif kind == 'settings_saved':
                     self.baseline=dict(event[1]);self._set_option_values(event[1])
                 elif kind == 'maintenance_needed':
@@ -859,12 +882,17 @@ class Launcher:
                     self.reload_options()
                     self.status.set('Listo para explorar' if event[1] is None else 'La expedición se detuvo')
                     if event[1]:
+                        if getattr(self, 'hidden_for_game', False):
+                            self.hidden_for_game = False
+                            self.root.deiconify()
                         self.home.progress.finish('No se pudo iniciar o continuar el juego',error=True)
                         messagebox.showerror('No se pudo completar el inicio', event[1], parent=self.root)
                     else:
                         self.home.progress.finish('Juego cerrado · listo para iniciar otra expedición')
-                        if getattr(self, 'autoplay', False):   # --play (Steam, desktop shortcut): back to where it came from
-                            self.root.after(300, self.close)
+                        if self._auto_hd_shadows():
+                            pass   # it closes (or shows the launcher again) when the light maps are done
+                        elif getattr(self, 'autoplay', False) or getattr(self, 'hidden_for_game', False):
+                            self.root.after(300, self.close)   # the game was its reason to stay: back to the desktop
                     self._album_loaded=False
                     self.display.stop();self.home.refresh();self._tab_changed()
                 elif kind == 'album_locked' and event[1] == self.album_generation:
