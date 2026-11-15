@@ -11,7 +11,12 @@ Read this before taking work. History and the previous Spanish board:
 - Owner hardware: RX 6900 XT, Samsung C27HG7x 144 Hz monitor, FreeSync. RTX tester: RTX 4060.
 - Open queue: SS-03 RTX check of HD thumbnails, ULTRAWIDE-01 (photo capture and HUD
   sites, see [ULTRAWIDE.md](ULTRAWIDE.md)), DLSS-G (needs RTX 40/50),
-  loading times in the extended modes.
+  loading times measured (below).
+- Loading (2026-11-14, RX 6900 XT, 0.8.8, photo route 200 s, warm pipeline cache): 200 % internal
+  resolution loads like 100 % (largest hitches: boot ≈350–375 ms, texture upload 312 ms at 100 %
+  vs 203 ms at 200 %; after the first minute 0–1 frames over 25 ms at 200 %). The slow loads seen
+  in extended modes come from the cold pipeline cache after a runtime rebuild or a resolution
+  change; «Preparar gráficos» before playing removes them.
 - Release recipe: bottom of this file.
 
 ## Tasks
