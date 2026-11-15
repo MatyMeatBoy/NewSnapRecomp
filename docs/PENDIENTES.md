@@ -3,9 +3,9 @@
 Read this before taking work. History and the previous Spanish board:
 [PENDIENTES-HECHOS.md](PENDIENTES-HECHOS.md). Rules: [CONTRIBUTING.md](../CONTRIBUTING.md).
 
-## Current state (2026-11-14, after 0.9.0-tester): read first
+## Current state (2026-11-14, after 0.9.0 stable): read first
 
-- `main` = 0.9.0-tester (launcher presets with «Recomendado», «Mejoras» tab, in-game Screen/Enhancements rows, window auto, internal resolution by display, TEXPACK-01 runtime; 0.8.9 experimental ultrawide, ULTRAWIDE-01; 0.8.8 FSR frame generation with a HUD-less image, FG-02; 0.8.7 HD photo thumbnails and shadow «auto», SS-03; 0.8.6 FPS «display»; 0.8.5 NSP/NSZ/XCI/XCZ import): AMD RDNA 1/2 fixes (FOTO-01, CRISTAL-01), gyro (GYRO-01/02), windowed
+- `main` = 0.9.0 stable, the first public stable release (shader cache kept across updates with the same `SHADER_EPOCH` and translator; launcher presets with «Recomendado», «Mejoras» tab, in-game Screen/Enhancements rows, window auto, internal resolution by display, TEXPACK-01 runtime; 0.8.9 experimental ultrawide, ULTRAWIDE-01; 0.8.8 FSR frame generation with a HUD-less image, FG-02; 0.8.7 HD photo thumbnails and shadow «auto», SS-03; 0.8.6 FPS «display»; 0.8.5 NSP/NSZ/XCI/XCZ import): AMD RDNA 1/2 fixes (FOTO-01, CRISTAL-01), gyro (GYRO-01/02), windowed
   present (PRESENT-WIN-01), internal resolution by host scaling (SS-02), high FPS 90/120/144
   (FPS-01, RTX tester), FSR frame generation off by default with refresh fallback (FG-01/02).
 - Owner hardware: RX 6900 XT, Samsung C27HG7x 144 Hz monitor, FreeSync. RTX tester: RTX 4060.

@@ -5,11 +5,11 @@ VSVersionInfo(
   kids=[StringFileInfo([StringTable('040904B0', [
     StringStruct('CompanyName', 'MatyMeatBoy'),
     StringStruct('FileDescription', 'NewSnapRecomp Launcher'),
-    StringStruct('FileVersion', '0.9.0 tester'),
+    StringStruct('FileVersion', '0.9.0'),
     StringStruct('InternalName', 'NewSnapLauncher'),
     StringStruct('LegalCopyright', 'Copyright 2026 MatyMeatBoy and contributors'),
     StringStruct('OriginalFilename', 'NewSnapLauncher.exe'),
     StringStruct('ProductName', 'NewSnapRecomp'),
-    StringStruct('ProductVersion', '0.9.0 tester')
+    StringStruct('ProductVersion', '0.9.0')
   ])]), VarFileInfo([VarStruct('Translation', [1033, 1200])])]
 )
