@@ -421,19 +421,20 @@ class Launcher:
                      help_text='La vista previa al hacer una foto y las fotos grandes de las carpetas y la selección se muestran con la foto de 1080×720 en vez de la miniatura de 360×240 del juego. Las fotos guardadas y la puntuación no cambian. Funciona en cualquier GPU.')
         self._heading(content, 'Sombras')
         self._help(content, 'La resolución de las sombras en tiempo real sigue sola a la resolución interna (2× a 1080p, 3× a 125–150 %, 4× desde 200 %).')
-        self._choice(content, 'Modo Sombras HD', 'hd_shadows', {'Desactivado · sombras originales': '0', 'Activado · IA (experimental)': '1'},
+        self._choice(content, 'Modo Sombras HD', 'hd_shadows', {'Desactivado · sombras originales': '0', 'Activado (experimental)': '1'},
                      help_text='Las sombras de plantas, rocas, casas y escenario están pintadas en los mapas de luz de cada nivel, de baja resolución '
                                '(por eso se ven pixeladas). Activado: el juego guarda cada mapa de luz la primera vez que lo carga y, al cerrar el '
-                               'juego, el launcher los amplía solo en este PC con IA (Real-ESRGAN, se descarga una vez), conservando la luz y el '
+                               'juego, el launcher los amplía solo en este PC (la herramienta se descarga una vez), conservando la luz y el '
                                'color del juego. La próxima vez que entres a ese nivel salen en HD. Incluye también las sombras en tiempo '
                                'real al máximo (4×). «Generar sombras HD» lo hace a mano.')
         from .hdshadows_ui import HdShadowsButton
         self.hd_shadows_button = HdShadowsButton(self, content)
         self._heading(content, 'Texturas HD')
-        self._choice(content, 'Pack de texturas HD', 'tex_pack', {'Activado si existe': '1', 'Desactivado': '0'},
-                     help_text='Usa las texturas HD de la carpeta texpack junto al juego, generadas en este PC a partir de tu propio juego. Sin pack no cambia nada.')
+        if any((runtime_dir(self.project) / 'texpack').glob('*.dds')):   # shown only once a pack exists
+            self._choice(content, 'Pack de texturas HD', 'tex_pack', {'Activado si existe': '1', 'Desactivado': '0'},
+                         help_text='Usa las texturas HD de la carpeta texpack junto al juego, generadas en este PC a partir de tu propio juego. Sin pack no cambia nada.')
         self._choice(content, 'Guardar texturas para el pack', 'tex_pack_save', {'No': '0', 'Sí, mientras juego': '1'},
-                     help_text='El juego guarda cada textura de color la primera vez que la carga (texpack/src); «Generar pack de texturas HD» las amplía en este PC con IA (Real-ESRGAN, se descarga una vez) y las comprime (BC1/BC3). Juega los niveles que quieras mejorar, genera, y desactiva esta opción: guardar texturas alarga algo las cargas.')
+                     help_text='El juego guarda cada textura de color la primera vez que la carga (texpack/src); «Generar pack de texturas HD» las amplía en este PC (la herramienta se descarga una vez) y las comprime (BC1/BC3). Juega los niveles que quieras mejorar, genera, y desactiva esta opción: guardar texturas alarga algo las cargas.')
         from .hdshadows_ui import TexturePackButton
         TexturePackButton(self, content)
         self._heading(content, 'Fluidez')

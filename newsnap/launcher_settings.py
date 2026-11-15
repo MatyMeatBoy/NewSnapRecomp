@@ -158,9 +158,10 @@ def validate_video_combination(values, complete=True):
         raise ValueError('La generación de fotogramas FSR necesita el escalado AMD FSR 3.1 o FSR 4, o Automático (cualquier calidad, también Nativo).')
     # MENU-03: Automatic steps aside by itself above 100 % (the runtime reads it as Original); a chosen
     # upscaler does not, so that combination is still refused.
-    if have('upscaling', 'render_scale') and upscaling not in ('off', 'auto') and explicit:
+    native = values.get('upscaling_quality') == 'native'   # AA-01: Native AA works above 100 %
+    if have('upscaling', 'render_scale') and upscaling not in ('off', 'auto') and explicit and not native:
         raise ValueError('Con un escalado elegido (FSR o DLSS), la resolución interna la marca su calidad. Elige 100 % o menos, o deja el escalado en Automático.')
-    if have('frame_gen', 'upscaling', 'render_scale') and frame_gen and upscaling == 'auto' and explicit:
+    if have('frame_gen', 'upscaling', 'render_scale') and frame_gen and upscaling == 'auto' and explicit and not native:
         raise ValueError('La generación de fotogramas FSR necesita FSR, y con una resolución interna superior al 100 % el '
                          'escalado Automático no usa ninguno. Elige AMD FSR 3.1 o FSR 4 con una resolución interna de 100 % o menos.')
     if have('operation_mode', 'render_scale') and values.get('operation_mode') == 'handheld' and explicit:

@@ -35,7 +35,7 @@ TEXTS = {
     'UI_SNAP_TEXPACK_DESC': 'Uses the HD textures in the texpack folder next to the game, made on this PC from your own '
                             'game. Takes effect after a restart.',
     'UI_SNAP_TEXPACK_NONE': 'no pack in the texpack folder',
-    'UI_SNAP_HDSH': 'HD shadows mode (AI, experimental)',
+    'UI_SNAP_HDSH': 'HD shadows mode (experimental)',
     'UI_SNAP_HDSH_DESC': 'The shadows of plants, rocks and scenery are painted into the light maps of each level. On: each '
                          'light map is saved the first time it loads, and Generate HD shadows in the launcher enlarges '
                          'them on this PC; the HD ones are used the next time the level loads. Takes effect after a restart.',
@@ -82,9 +82,10 @@ static void snap_rows_enhancements(void) {
     {
         static char note[64];
         int n = snap_texpack_files();
-        if (n <= 0) opt_disable_next(UI_SNAP_TEXPACK_NONE);
-        else snprintf(note, sizeof note, "%d textures", n);
-        opt_toggle("AC_TEX_PACK", UI_SNAP_TEXPACK, UI_SNAP_TEXPACK_DESC);
+        if (n > 0) {   // shown only once a pack exists
+            snprintf(note, sizeof note, "%d textures", n);
+            opt_toggle("AC_TEX_PACK", UI_SNAP_TEXPACK, UI_SNAP_TEXPACK_DESC);
+        }
         (void)note;
     }
     {

@@ -90,7 +90,7 @@ menu controllers. Expect it to share its cause with item 1.
 ### 3. HD shadows — an Enhancements option, not a separate mod
 
 Owner's definition: improve every shadow that is not a character's (plants, scenery: visibly lower quality than
-the character shadows) with generative upscaling, so they look smooth and high definition.
+the character shadows) with upscaling, so they look smooth and high definition.
 
 Findings so far, **none confirmed**:
 
