@@ -210,8 +210,8 @@ class Launcher:
                      help_text='Admite un tamaño propio como 2560x1080. Cambia la ventana, no la resolución interna ni la salida nativa.')
         self._choice(video, 'Salida nativa del juego', 'operation_mode', {'TV · 1920 × 1080': 'docked', 'Portátil · 1280 × 720': 'handheld'},
                      help_text='El modo TV produce una salida de 1080p; el modo portátil, 720p. Una ventana 4K no convierte la salida nativa en 4K.')
-        self._choice(video, 'Límite de FPS · Frame cap', 'fps', {'30 FPS': '30', '60 FPS · predeterminado': '60', '90 FPS': '90', '120 FPS': '120', '144 FPS': '144', 'Según la pantalla (sin tirones)': 'display'},
-                     help_text='60 FPS conserva el límite original. 90, 120 y 144 FPS son límites de presentación experimentales. El rendimiento depende del equipo y del modo de presentación; las escenas que solicitan una cadencia menor la conservan. «Según la pantalla» elige la fracción exacta del refresco más cercana a 60 (72 en 144 Hz, 100 en 100 Hz, 60 en 120 Hz) para que cada fotograma dure lo mismo con VSync. Se puede cambiar en vivo desde el menú del juego. La aceptación física AMD sigue pendiente.')
+        self._choice(video, 'Límite de FPS · Frame cap', 'fps', {'30 FPS': '30', '60 FPS · predeterminado': '60', '90 FPS': '90', '120 FPS': '120', '144 FPS': '144'},
+                     help_text='60 FPS conserva el límite original. 90, 120 y 144 FPS son límites de presentación experimentales. El rendimiento depende del equipo y del modo de presentación; las escenas que solicitan una cadencia menor la conservan. Se puede cambiar en vivo desde el menú del juego. La aceptación física AMD sigue pendiente.')
         self.presentation = tk.StringVar(value=next(label for label, value in PRESENTATION_LABELS.items() if value == values['vk_present']))
         row = ttk.Frame(video)
         row.pack(fill='x', pady=9)

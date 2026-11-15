@@ -310,6 +310,9 @@ static void barrier(VkCommandBuffer cb, VkImage img, VkImageLayout from, VkImage
 // complete: it is copied (same bytes, UNORM) to a ring slot of the frame's prepare id, and the generation dispatch of
 // that frame gets it as HUDLessColor, so FFX keeps the interface out of the interpolation (no HUD trails). Matched by
 // format and size, no vendor branch. Replay thread (vk_exec.c vk_exec_pass_begin).
+static volatile uint64_t fg_generated;   // generated frames dispatched (FG-03)
+uint64_t snap_fg_generated_count(void) { return __atomic_load_n(&fg_generated, __ATOMIC_RELAXED); }
+
 #define HUDLESS_N 3
 static struct { VkImage img; VmaAllocation mem; uint32_t w, h; uint64_t id; } HL[HUDLESS_N];
 static VkImage hl_src;
@@ -442,6 +445,7 @@ VkImage snap_fg_present_source(VkCommandBuffer cb, VkImage src, VkFormat fmt, in
     }
     G.reset = 0;
     result = G.out;
+    __atomic_add_fetch(&fg_generated, 1, __ATOMIC_RELAXED);   // FG-03: the performance overlay's FG rate
     static int logged;
     if (!logged) logged = 1, rt_log("frame generation: first generated frame %dx%d (frame id %llu)", w, h, (unsigned long long)id);
 out:
@@ -470,5 +474,6 @@ VkImage snap_fg_present_source(VkCommandBuffer cb, VkImage src, VkFormat fmt, in
     return VK_NULL_HANDLE;
 }
 void snap_fg_release(void) {}
+uint64_t snap_fg_generated_count(void) { return 0; }
 void snap_fg_hudless_pass(VkCommandBuffer cb, const VkTexImage *img, VkFormat view) { (void)cb; (void)img; (void)view; }
 #endif
