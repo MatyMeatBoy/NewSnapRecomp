@@ -167,7 +167,7 @@ static int guest_string(uint64_t at, char *out, size_t size) {
 static void pos_log(const char *what, uint64_t object, const char *name, float x, float y, uint64_t from) {
     static unsigned lines;
     const char *filter = pos_trace();
-    if (!filter || !strstr(name, filter) || __atomic_fetch_add(&lines, 1, __ATOMIC_RELAXED) >= 400000) return;
+    if (!filter || !strstr(name, filter) || __atomic_fetch_add(&lines, 1, __ATOMIC_RELAXED) >= 2000000) return;
     rt_log("snap_ui_pos: %s frame %llu game frame %llu step %d object %llx %s %.3f %.3f from %llx", what,
            (unsigned long long)__atomic_load_n(&gfx_counters.frames, __ATOMIC_RELAXED), (unsigned long long)pad_tick,
            pace.step, (unsigned long long)object, name, (double)x, (double)y, (unsigned long long)from);
@@ -232,12 +232,12 @@ static LONG CALLBACK watch_handler(EXCEPTION_POINTERS *e) {
     return EXCEPTION_CONTINUE_EXECUTION;
 }
 
-static void watch_pad(uint64_t pad, uint64_t now) {
+// Arms the four breakpoints once on `first`, `first` + 4, + 8 and + 12 (every thread alive now) and logs the hits
+// every 10 s of calls. `what` names the watched thing in the log.
+static void watch_fields(uint64_t first, uint64_t now, const char *what) {
     static int armed;
     static uint64_t last_ns;
     if (!armed) {
-        const char *w = getenv("NEWSNAP_PAD_WATCH");
-        if (!w || strcmp(w, "1")) { armed = -1; return; }
         armed = 1;
         watch_base = (uint64_t)(uintptr_t)GetModuleHandleW(NULL);
         AddVectoredExceptionHandler(1, watch_handler);
@@ -254,8 +254,6 @@ static void watch_pad(uint64_t pad, uint64_t now) {
             CONTEXT ctx = {0};
             ctx.ContextFlags = CONTEXT_DEBUG_REGISTERS;
             if (GetThreadContext(t, &ctx)) {
-                const char *at = getenv("NEWSNAP_PAD_WATCH_AT");   // first of four 4-byte fields, default +0x54
-                uint64_t first = pad + (at ? strtoull(at, NULL, 16) : 0x54);
                 ctx.Dr0 = first, ctx.Dr1 = first + 4, ctx.Dr2 = first + 8, ctx.Dr3 = first + 12;
                 ctx.Dr7 = 0x55 | 0xffff0000ull;   // DR0..DR3 enabled, read+write, 4 bytes each
                 armed_threads += SetThreadContext(t, &ctx) != 0;
@@ -263,19 +261,128 @@ static void watch_pad(uint64_t pad, uint64_t now) {
             if (te.th32ThreadID != self) ResumeThread(t), CloseHandle(t);
         }
         CloseHandle(snap);
-        rt_log("snap_ui_pace: pad watch on %llx (+0x44, +0x48): %d threads, exe base %llx, this thread %lu",
-               (unsigned long long)pad, armed_threads, (unsigned long long)watch_base, (unsigned long)self);
+        rt_log("snap_ui_pace: %s watch on %llx (four 4-byte fields): %d threads, exe base %llx, this thread %lu", what,
+               (unsigned long long)first, armed_threads, (unsigned long long)watch_base, (unsigned long)self);
         last_ns = now;
     }
-    if (armed < 0 || now - last_ns < 10000000000ull) return;
+    if (now - last_ns < 10000000000ull) return;
     last_ns = now;
     for (LONG i = 0; i < watch_count; i++)
-        rt_log("snap_ui_pace: pad watch %s rva %llx thread %u: %u on steps, %u on other frames", (const char *[]){"+0", "+4", "+8", "+c"}[watch_hits[i].field],
+        rt_log("snap_ui_pace: %s watch %s rva %llx thread %u: %u on steps, %u on other frames", what,
+               (const char *[]){"+0", "+4", "+8", "+c"}[watch_hits[i].field],
                (unsigned long long)watch_hits[i].rip, watch_hits[i].thread, watch_hits[i].step, watch_hits[i].other);
+}
+
+static void watch_pad(uint64_t pad, uint64_t now) {
+    static int on = -1;
+    static uint64_t at = 0x54;   // first of four 4-byte fields
+    if (on < 0) {
+        const char *w = getenv("NEWSNAP_PAD_WATCH"), *offset = getenv("NEWSNAP_PAD_WATCH_AT");
+        on = w && !strcmp(w, "1");
+        if (offset) at = strtoull(offset, NULL, 16);
+    }
+    if (on) watch_fields(pad + at, now, "pad");
+}
+
+// NEWSNAP_UI_POS_WATCH=<clip name> (with the pad watch off): the same breakpoints on a clip the game places, at
+// NEWSNAP_UI_POS_WATCH_AT (hex, default 88: the first four floats of its matrix on screen), to name the code that
+// reads and writes a clip's transform and whether it runs on interface steps only.
+static void watch_clip(uint64_t clip, const char *name) {
+    static int on = -1;
+    static const char *wanted;
+    static uint64_t at = 0x88;
+    if (on < 0) {
+        const char *offset = getenv("NEWSNAP_UI_POS_WATCH_AT");
+        wanted = getenv("NEWSNAP_UI_POS_WATCH");
+        on = wanted && *wanted;
+        if (offset) at = strtoull(offset, NULL, 16);
+    }
+    if (on && clip && !strcmp(name, wanted)) watch_fields(clip + at, kern_now_ns(), name);
 }
 #else
 static void watch_pad(uint64_t pad, uint64_t now) { (void)pad; (void)now; }
+static void watch_clip(uint64_t clip, const char *name) { (void)clip; (void)name; }
 #endif
+
+// The clip a queued position is about to be applied to (main+0x78d68c: x0, found by name; main+0x78d7ac: x22, found
+// by path), x19 the queue entry: only for the clip watch.
+static void motion_placed(uint64_t clip);
+static void pos_clip(uint64_t clip, uint64_t entry) {
+    static int watch = -1;
+    char name[96];
+    motion_placed(clip);
+    if (watch < 0) watch = getenv("NEWSNAP_UI_POS_WATCH") != NULL;
+    if (watch && guest_string(entry, name, sizeof name)) watch_clip(clip, name);
+}
+void snap_ui_pos_clip_named(Cpu *c) { pos_clip(c->x[0], c->x[19]); }
+void snap_ui_pos_clip_path(Cpu *c) { pos_clip(c->x[22], c->x[19]); }
+
+// The other transforms game code asks for by clip name, queued and applied the same way (NEWSNAP_UI_POS_TRACE):
+// width and height (vtable entry main+0x799950, queue +0x858), scale (main+0x799b20, +0x870) and rotation
+// (main+0x7995f0, +0x8a0). x0 object, x1 name, s0 and s1 the values.
+static void transform_ask(Cpu *c, const char *what) {
+    if (!pos_trace()) return;
+    char name[96];
+    float a, b;
+    uint32_t ba = (uint32_t)c->v[0], bb = (uint32_t)c->v[1];
+    memcpy(&a, &ba, 4), memcpy(&b, &bb, 4);
+    if (guest_string(c->x[1], name, sizeof name)) pos_log(what, c->x[0], name, a, b, c->x[30] - 0x7000000000ull);
+}
+void snap_ui_size_ask(Cpu *c) { transform_ask(c, "size"); }
+void snap_ui_scale_ask(Cpu *c) { transform_ask(c, "scale"); }
+void snap_ui_rotation_ask(Cpu *c) { transform_ask(c, "rotation"); }
+
+// MENU-FPS-01 (snap_ui_motion.h). The interface player draws a movie in two passes over its clips: each clip's
+// matrix on screen (+0x88, six floats) is brought up to date from its own matrix (+0x70) and its parent's (+0x40)
+// (vtable +0x30), then each clip that draws something hands that matrix to the renderer (renderer vtable +0x20)
+// before its shapes or text (vtable +0x38: shapes main+0x9b5be0, text main+0x9b60c0 and main+0x9b78a0; the two
+// container classes hand nothing). At those three calls x1, the matrix handed over, is replaced by the matrix on
+// the way from the last interface step's to this one's when the clip is in motion. Above 60 fps only, while the
+// interface is paced; AC_SNAP_UI_MOTION_PATCH=0 removes the three sites. NEWSNAP_UI_MOTION_TRACE=1 logs the counts.
+#include "snap_ui_motion.h"
+static SnapUiMotion motion;
+static int motion_lock;
+static uint64_t step_count;                              // interface steps so far
+static int motion_on;                                    // set by the pad update of a paced game frame
+static float motion_phase;                               // real time since this step was due, in steps
+static struct { uint64_t clip, tick; } placed[32];       // clips the game placed by name lately
+
+static void motion_placed(uint64_t clip) {
+    uint64_t tick = pad_tick;
+    int oldest = 0;
+    for (int i = 0; i < 32; i++) {
+        if (placed[i].clip == clip) { placed[i].tick = tick; return; }
+        if (placed[i].tick < placed[oldest].tick) oldest = i;
+    }
+    placed[oldest].clip = clip, placed[oldest].tick = tick;
+}
+
+void snap_ui_motion_hand(Cpu *c) {
+    uint64_t key = c->x[1];
+    if (!motion_on || !key) return;
+    static uint64_t handed, blended, window_ns;
+    uint64_t tick = pad_tick;
+    int live = 0;
+    uint64_t object = key - 0x88;
+    for (int depth = 0; depth < 16 && object && !live; depth++) {   // the clip and the clips it is inside
+        for (int i = 0; i < 32; i++)
+            if (placed[i].clip == object && tick - placed[i].tick < SNAP_UI_MOTION_LIVE_FRAMES) { live = 1; break; }
+        object = *(const uint64_t *)(uintptr_t)(object + 0x40);
+    }
+    while (__atomic_test_and_set(&motion_lock, __ATOMIC_ACQUIRE)) {}
+    const float *out = snap_ui_motion_matrix(&motion, key, (const float *)(uintptr_t)key, tick, step_count, pace.step,
+                                             motion_phase, live);
+    handed++, blended += (uint64_t)(uintptr_t)out != key;
+    __atomic_clear(&motion_lock, __ATOMIC_RELEASE);
+    c->x[1] = (uint64_t)(uintptr_t)out;
+    if (!pace_trace()) return;
+    uint64_t now = kern_now_ns();
+    if (!window_ns) window_ns = now;
+    if (now - window_ns < 5000000000ull) return;
+    rt_log("snap_ui_motion: %llu matrices handed over, %llu of them between two steps", (unsigned long long)handed,
+           (unsigned long long)blended);
+    window_ns = now, handed = blended = 0;
+}
 
 void snap_ui_pace_pad(Cpu *c) {
     uint64_t cap = frame_step_cap_ns(), pad = c->x[19], now = kern_now_ns();
@@ -293,6 +400,10 @@ void snap_ui_pace_pad(Cpu *c) {
         uint64_t before = __atomic_load_n(&pad_tick_ns, __ATOMIC_RELAXED);
         __atomic_store_n(&pad_dt_ns, before && now > before ? now - before : 0, __ATOMIC_RELAXED);
         snap_ui_pace_decide(&pace, pad_tick++, now, cap);
+        int paced = cap && cap + SNAP_UI_PACE_SLACK_NS < SNAP_UI_PACE_STEP_NS;
+        if (pace.step) step_count++;
+        motion_phase = (float)((double)pace.acc_ns / (double)SNAP_UI_PACE_STEP_NS);
+        motion_on = paced;
         __atomic_store_n(&pad_tick_ns, now, __ATOMIC_RELEASE);
     }
     uint32_t *mask = (uint32_t *)(uintptr_t)(pad + 0x44);   // [0] held, [1] pressed, [2] released, [3] previous

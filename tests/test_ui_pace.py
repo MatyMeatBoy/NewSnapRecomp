@@ -46,9 +46,14 @@ class UiPaceTests(unittest.TestCase):
              cbz_x16(0x78d850, 0x794b4c)],
         ])
         # observers: the helper then the original instruction, in the observation set
-        self.assertEqual(lines[8:], [
+        self.assertEqual([line for line in lines if line[:2] == ['site', 'snap_timer_trace']], [
             ['site', 'snap_timer_trace', 'main', '799570', 'd10103ff', '@fn:snap_ui_pos_ask', 'd10103ff'],
             ['site', 'snap_timer_trace', 'main', '78d808', '91008273', '@fn:snap_ui_pos_apply', '91008273'],
+            ['site', 'snap_timer_trace', 'main', '78d68c', 'bd401a60', '@fn:snap_ui_pos_clip_named', 'bd401a60'],
+            ['site', 'snap_timer_trace', 'main', '78d7ac', 'bd401a60', '@fn:snap_ui_pos_clip_path', 'bd401a60'],
+            ['site', 'snap_timer_trace', 'main', '799950', 'd10183ff', '@fn:snap_ui_size_ask', 'd10183ff'],
+            ['site', 'snap_timer_trace', 'main', '799b20', 'd10183ff', '@fn:snap_ui_scale_ask', 'd10183ff'],
+            ['site', 'snap_timer_trace', 'main', '7995f0', 'fc1c0fe8', '@fn:snap_ui_rotation_ask', 'fc1c0fe8'],
         ])
         self.assertIn("'snap-2.0.1-ui-pace.txt'", (ROOT / 'newsnap/build.py').read_text(encoding='utf-8'))
 
@@ -62,7 +67,9 @@ class UiPaceTests(unittest.TestCase):
         self.assertIn('void snap_ui_pace_event(Cpu *c);', declared)
         self.assertIn('void snap_ui_pace_pad(Cpu *c);', declared)
         self.assertIn('void snap_ui_pace_pointer(Cpu *c);', declared)
-        for name in ('snap_ui_pace_draw', 'snap_ui_pace_placed', 'snap_ui_pos_ask', 'snap_ui_pos_apply'):
+        for name in ('snap_ui_pace_draw', 'snap_ui_pace_placed', 'snap_ui_pos_ask', 'snap_ui_pos_apply',
+                     'snap_ui_pos_clip_named', 'snap_ui_pos_clip_path', 'snap_ui_size_ask', 'snap_ui_scale_ask',
+                     'snap_ui_rotation_ask', 'snap_ui_motion_hand'):
             self.assertIn(f'void {name}(Cpu *c);', declared)
 
     def test_decision_keeps_sixty_steps_a_second_at_any_rate(self):

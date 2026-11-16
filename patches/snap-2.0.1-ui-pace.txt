@@ -25,6 +25,23 @@ site snap_ui_pace main 643cc8 bd401e61 bd401e61 @fn:snap_ui_pace_pointer
 set snap_ui_positions AC_SNAP_UI_POSITIONS_PATCH 1
 site snap_ui_positions main 794b4c f940c7f6 f940c7f6 @fn:snap_ui_pace_draw b4fc57d0
 site snap_ui_positions main 78d850 f9443118 f9443118 @fn:snap_ui_pace_placed b40397f0
+# MENU-FPS-01 (experimental, off unless AC_SNAP_UI_MOTION_PATCH=1): interface motion drawn between two interface
+# steps. Where a clip hands its matrix on screen (x1 = clip + 0x88) to the renderer before drawing, the helper may
+# put in x1 the matrix on the way from the last step's to this one's (snap_ui_motion_hand, snap_ui_motion.h):
+#   9b5c70 mov x1,x21          shapes (display main+0x9b5be0), once per part
+#   9b60fc add x1,x0,#0x88     text (display main+0x9b60c0)
+#   9b78f0 add x1,x20,#0x88    text (display main+0x9b78a0)
+set snap_ui_motion AC_SNAP_UI_MOTION_PATCH 0
+site snap_ui_motion main 9b5c70 aa1503e1 aa1503e1 @fn:snap_ui_motion_hand
+site snap_ui_motion main 9b60fc 91022001 91022001 @fn:snap_ui_motion_hand
+site snap_ui_motion main 9b78f0 91022281 91022281 @fn:snap_ui_motion_hand
 # Observed only (NEWSNAP_UI_POS_TRACE): a position asked for (main+0x799570) and one applied (main+0x78d808).
 site snap_timer_trace main 799570 d10103ff @fn:snap_ui_pos_ask d10103ff
 site snap_timer_trace main 78d808 91008273 @fn:snap_ui_pos_apply 91008273
+# The clip about to be placed (NEWSNAP_UI_POS_WATCH), and the other transforms asked for by name: width/height
+# (main+0x799950), scale (main+0x799b20), rotation (main+0x7995f0).
+site snap_timer_trace main 78d68c bd401a60 @fn:snap_ui_pos_clip_named bd401a60
+site snap_timer_trace main 78d7ac bd401a60 @fn:snap_ui_pos_clip_path bd401a60
+site snap_timer_trace main 799950 d10183ff @fn:snap_ui_size_ask d10183ff
+site snap_timer_trace main 799b20 d10183ff @fn:snap_ui_scale_ask d10183ff
+site snap_timer_trace main 7995f0 fc1c0fe8 @fn:snap_ui_rotation_ask fc1c0fe8

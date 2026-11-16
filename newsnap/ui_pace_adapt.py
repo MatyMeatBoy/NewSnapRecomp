@@ -53,6 +53,8 @@ def edits():
         ('typedef void (*GuestFn)(Cpu *);',
          'void snap_ui_pace_enter(Cpu *c);\nvoid snap_ui_pace_event(Cpu *c);\nvoid snap_ui_pace_pad(Cpu *c);\nvoid snap_ui_pace_pointer(Cpu *c);\n'
          'void snap_ui_pace_draw(Cpu *c);\nvoid snap_ui_pace_placed(Cpu *c);\nvoid snap_ui_pos_ask(Cpu *c);\nvoid snap_ui_pos_apply(Cpu *c);\n'
+         'void snap_ui_pos_clip_named(Cpu *c);\nvoid snap_ui_pos_clip_path(Cpu *c);\nvoid snap_ui_size_ask(Cpu *c);\n'
+         'void snap_ui_scale_ask(Cpu *c);\nvoid snap_ui_rotation_ask(Cpu *c);\nvoid snap_ui_motion_hand(Cpu *c);\n'
          'typedef void (*GuestFn)(Cpu *);'),
     ], 'runtime/boot.c': [
         ('// AC_SHOTS=lo-hi:step [AC_SHOTS_DIR=dir]: every step-th present',
