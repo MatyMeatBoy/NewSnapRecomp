@@ -45,3 +45,12 @@ site snap_timer_trace main 78d7ac bd401a60 @fn:snap_ui_pos_clip_path bd401a60
 site snap_timer_trace main 799950 d10183ff @fn:snap_ui_size_ask d10183ff
 site snap_timer_trace main 799b20 d10183ff @fn:snap_ui_scale_ask d10183ff
 site snap_timer_trace main 7995f0 fc1c0fe8 @fn:snap_ui_rotation_ask fc1c0fe8
+# POINTER-03: the menu pointer (main+0x643a70) calls the handler once more for each of its buttons (from
+# main+0x6441ec) on every game frame; those buttons run as written every frame, so their hover animation advanced one
+# timeline frame per game frame (2.4 times as fast at 144 fps). The two loops that advance the movies skip the
+# advance for such a call on a frame that does not step (snap_ui_pace_advance, x16 = 0 skip / 1 advance):
+#   7838f8 ldr x0,[x20,#0x10]   kept; the helper; cbz x16 -> 783900 (past bl 9d0de0)
+#   790dfc ldr x0,[x21,#0x10]   kept; the helper; cbz x16 -> 790e04 (past bl 9d0de0)
+set snap_ui_buttons AC_SNAP_UI_BUTTONS_PATCH 1
+site snap_ui_buttons main 7838f8 f9400a80 f9400a80 @fn:snap_ui_pace_advance b4000050
+site snap_ui_buttons main 790dfc f9400aa0 f9400aa0 @fn:snap_ui_pace_advance b4000050

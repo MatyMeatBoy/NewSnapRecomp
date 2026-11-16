@@ -60,7 +60,7 @@ static int pace_step(uint64_t now) {
 // RETICLE-HZ-01: the handler call in progress on this thread, by its stack pointer (the handler's frame is fixed
 // after its prologue): draw_only_sp while it goes from its entry to its drawing section without stepping,
 // placing_sp while that call runs the game's own loop over the positions asked for.
-static _Thread_local uint64_t draw_only_sp, placing_sp;
+static _Thread_local uint64_t draw_only_sp, placing_sp, hold_advance_sp;
 
 // At the handler's entry, after it saved its object (x0): x16 (dead here) = 1 to run the handler as
 // written, 0 to branch to its drawing section. The shortcut is only taken for an object in the state
@@ -76,19 +76,21 @@ static int button_pacing(void) {   // AC_SNAP_UI_BUTTONS=0 turns POINTER-03 off
 
 void snap_ui_pace_enter(Cpu *c) {
     uint64_t now = kern_now_ns();
-    int step = pace_step(now);
+    int step = pace_step(now), frame_step = step;
     if (!step) {
         uint8_t flags[8];
         if (!c->x[0] || !plat_mem_read(c->x[0] + 0xc0, flags, sizeof flags) || !flags[0] || !flags[6] || flags[4])
             step = 1;
-        // POINTER-03: the menu pointer (main+0x643a70) calls this handler once more for each of its buttons, from
-        // main+0x6441ec, every game frame. The buttons never reach the started state (+0xc0 is 0), so the test above
-        // ran them on every frame and their hover animation (the ring that turns and changes colour) went 2.4 times
-        // as fast at 144 fps. Called from there on a frame that does not step, they are drawn only, as the rest of
-        // the interface (skipping the call would not draw them at all).
-        if (step && c->x[0] && c->x[30] == MOD_MAIN_BASE + 0x6441f0 && button_pacing()) step = 0;
+
     }
     c->x[16] = (uint64_t)step;
+    // POINTER-03: the menu pointer (main+0x643a70) calls this handler once more for each of its buttons, from
+    // main+0x6441ec, on every game frame. The buttons never reach the started state (+0xc0 is 0), so they run as
+    // written on every frame, and their hover animation (the ring that lights up and changes colour) advanced one
+    // timeline frame per call: 2.4 times as fast at 144 fps. Their logic and drawing still run on every frame (drawn
+    // only, they showed the wrong state); on a frame that does not step only the advance of their movies is left
+    // out (snap_ui_pace_advance), so the animation keeps the game's 60 frames a second.
+    hold_advance_sp = !frame_step && c->x[30] == MOD_MAIN_BASE + 0x6441f0 && button_pacing() ? c->sp : 0;
     draw_only_sp = step ? 0 : c->sp;   // RETICLE-HZ-01: a call that only draws may still place its clips
     if (!pace_trace()) return;
     if (!pace.step && step) {   // a frame that does not step, an object that still runs: log each such object once
@@ -543,3 +545,8 @@ void snap_ui_pace_pointer(Cpu *c) {
     c->v[1] = bits;
 }
 
+// POINTER-03: before the handler advances its movies one timeline frame (main+0x7838fc, main+0x790e00, bl 9d0de0):
+// x16 = 0 to leave the advance out (a pointer button on a frame that does not step), 1 to advance as written.
+void snap_ui_pace_advance(Cpu *c) {
+    c->x[16] = !(hold_advance_sp && hold_advance_sp == c->sp);
+}
