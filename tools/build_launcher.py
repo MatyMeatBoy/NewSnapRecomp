@@ -15,7 +15,7 @@ from newsnap.version import VERSION
 
 def source_fingerprints(root=ROOT):
     files = []
-    for pattern in ('newsnap/**/*.py', 'newsnap/overlays/*', 'assets/icons/*', 'assets/controllers/*', 'assets/launcher/*', 'profiles/*.json',
+    for pattern in ('newsnap/**/*.py', 'newsnap/overlays/*', 'assets/icons/*', 'assets/controllers/*', 'assets/launcher/*', 'assets/fonts/*', 'profiles/*.json',
                     'tools/fetch_*.py', 'tools/package_build_kit.py', 'tools/triage_game_log.py',
                     'toolchain/hactool/*'):
         files.extend(p for p in root.glob(pattern) if p.is_file())
@@ -40,7 +40,7 @@ def build():
     # the launcher never reads (its texts are its own, it formats no dates through Tcl); the package lists shorter.
     for unused in ('_tcl_data/tzdata', '_tcl_data/msgs', '_tk_data/msgs', '_tk_data/images'):
         shutil.rmtree(application / '_internal' / unused, ignore_errors=True)
-    for folder in ('assets/icons', 'assets/controllers', 'assets/launcher', 'licenses'):
+    for folder in ('assets/icons', 'assets/controllers', 'assets/launcher', 'assets/fonts', 'licenses'):
         shutil.copytree(ROOT / folder, application / folder, dirs_exist_ok=True)
     # Older installed updaters accept only the curated Snap specifications here.
     # Native shader pins belong to the separate build kit, not the launcher.
