@@ -30,7 +30,7 @@ class Sidebar(tk.Canvas):
         mk = self._mk = lambda picture: ImageTk.PhotoImage(picture, master=self)
         size = (WIDTH - 2 * ITEM_X, ITEM_H)
         self.pills = {
-            'rest': mk(artwork.with_alpha(pill(size, '#ffffff', outline='#ffffff'), 0.07)),
+            'rest': mk(_ghost(size)),
             'hover': mk(artwork.with_alpha(pill(size, '#ffffff'), 0.17)),
             'pressed': mk(artwork.with_alpha(pill(size, '#000000'), 0.22)),
             'selected': mk(_raised(size, '#fffdf6', '#ece6d2')),
@@ -190,6 +190,18 @@ class Sidebar(tk.Canvas):
         """The main action follows the state of the game data: «Jugar», «Verificar», «Verificando…»."""
         self.action = {'label': label, 'kind': kind, 'enabled': enabled}
         self._paint_play()
+
+
+def _ghost(size):
+    """A button at rest on the green column: a faint lighter fill with a slightly stronger rim."""
+    from PIL import Image, ImageChops
+    body = pill(size, '#ffffff')
+    inner = Image.new('L', size, 0)
+    inner.paste(pill((size[0] - 2, size[1] - 2), '#ffffff').getchannel('A'), (1, 1))
+    rim = ImageChops.subtract(body.getchannel('A'), inner)
+    out = body.copy()
+    out.putalpha(ImageChops.add(body.getchannel('A').point(lambda v: int(v * 0.075)), rim.point(lambda v: int(v * 0.20))))
+    return out
 
 
 def _raised(size, top, bottom, gloss=120, press=0):

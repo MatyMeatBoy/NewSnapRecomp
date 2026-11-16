@@ -323,7 +323,7 @@ class Chrome:
             if root.state() == 'normal' and not root.winfo_ismapped():
                 root.attributes('-alpha', 0.0)
                 self._shown = False
-                root.after(2500, self._reveal)
+                root.after(2500, self._failsafe)
         except tk.TclError:
             pass
 
@@ -331,6 +331,17 @@ class Chrome:
         if event.widget is self.root:
             self.ensure()
             self.root.after(40, self._reveal)
+
+    def _failsafe(self):
+        """The window is never left transparent: shown anyway if its frame was not set up in time. While it is
+        minimised or hidden (--play) there is nothing to show yet, so this waits for it."""
+        try:
+            if not self._shown and self.root.state() in ('iconic', 'withdrawn'):
+                self.root.after(2500, self._failsafe)
+                return
+        except tk.TclError:
+            return
+        self._reveal()
 
     def _reveal(self):
         if not self._shown:

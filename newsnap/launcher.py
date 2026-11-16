@@ -92,7 +92,9 @@ class Launcher:
         self._album()
         self._options()
         from .update_ui import UpdatePanel
-        self.updates = UpdatePanel(self, self._scrolling_options(self.update_tab), automatic=check_updates)
+        update_content = self._scrolling_options(self.update_tab)
+        self.updates = UpdatePanel(self, update_content, automatic=check_updates)
+        self._fit_labels(update_content)
         self.tabs.bind('<<NotebookTabChanged>>',self._tab_changed,add='+')
         self.root.after(100, self._poll)
         self.album_status.set('Abre el álbum para cargar las fotografías del perfil.')
@@ -257,6 +259,7 @@ class Launcher:
         self._heading(video, 'Color original del juego')
         self._help(video, 'Salida neutra: conserva los colores y el posprocesado propios de Snap. '
                    'Sin perfiles de contraste, saturación, gamma, HDR añadido ni nitidez adicional del port.')
+        self._fit_labels(video)
         self._audio_options()
         self._game_options()
         self._control_options()
@@ -531,6 +534,19 @@ class Launcher:
                 return 'break'
         self.root.bind_all('<MouseWheel>', wheel, add='+')
         return content
+
+    @staticmethod
+    def _fit_labels(content):
+        """Long texts of a scrolling page wrap at the page's width instead of a fixed one (no clipped lines)."""
+        def fit(event):
+            if event.widget is content:
+                for child in content.winfo_children():
+                    try:
+                        if child.winfo_class() == 'TLabel' and int(str(child.cget('wraplength')) or 0) >= 400:
+                            child.configure(wraplength=max(400, event.width - 34))
+                    except (tk.TclError, ValueError):
+                        pass
+        content.bind('<Configure>', fit, add='+')
 
     @staticmethod
     def _rule(frame):
