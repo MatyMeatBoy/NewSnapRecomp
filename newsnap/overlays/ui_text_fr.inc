@@ -164,6 +164,10 @@ static const char *const text_fr[UI_TEXT_COUNT] = {
                           "automatiquement à l'ouverture du launcher) ; elles sont visibles une fois l'opération "
                           "terminée. Les ombres en temps réel passent aussi à leur carte la plus grande (désactivé, "
                           "elles suivent la résolution interne). S'applique après redémarrage.",
+    [UI_SNAP_UIMOTION] = "Menus et interface fluides (expérimental)",
+    [UI_SNAP_UIMOTION_DESC] = "Au-delà de 60 FPS, le mouvement des menus et de l'interface est dessiné à chaque image au lieu "
+                              "de 60 pas par seconde. La logique du jeu ne change pas. Désactivez-le si un menu apparaît en "
+                              "double ou clignote. S'applique après redémarrage.",
     [UI_SNAP_TAB] = "Améliorations",
     [UI_SNAP_ENH] = "Améliorations de NewSnap (elles ne changent pas la logique du jeu)",
     [UI_SNAP_ASPECT] = "Format d'image",

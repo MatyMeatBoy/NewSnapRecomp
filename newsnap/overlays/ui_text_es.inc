@@ -147,6 +147,10 @@ static const char *const text_es[UI_TEXT_COUNT] = {
                           "niveles («Generar sombras HD»; empieza solo al abrir el launcher); se ven al terminar. Las "
                           "sombras en tiempo real también van a su mapa más grande (desactivado, siguen a la resolución "
                           "interna). Se aplica tras reiniciar.",
+    [UI_SNAP_UIMOTION] = "Menús e interfaz fluidos (experimental)",
+    [UI_SNAP_UIMOTION_DESC] = "Por encima de 60 FPS, el movimiento de los menús y de la interfaz se dibuja en cada "
+                              "fotograma en lugar de 60 pasos por segundo. La lógica del juego no cambia. Desactívalo "
+                              "si un menú se ve doble o parpadea. Se aplica tras reiniciar.",
     [UI_SNAP_TAB] = "Mejoras",
     [UI_SNAP_ENH] = "Mejoras de NewSnap (no cambian la lógica del juego)",
     [UI_SNAP_ASPECT] = "Relación de aspecto",

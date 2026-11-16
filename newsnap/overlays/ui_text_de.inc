@@ -155,6 +155,10 @@ static const char *const text_de[UI_TEXT_COUNT] = {
                           "alle Level (»HD-Schatten erzeugen«; startet von selbst beim Öffnen des Launchers); sichtbar "
                           "sind sie, sobald das fertig ist. Die Echtzeitschatten nutzen dann auch ihre größte Karte "
                           "(aus: sie folgen der internen Auflösung). Gilt nach einem Neustart.",
+    [UI_SNAP_UIMOTION] = "Flüssige Menüs und Oberfläche (experimentell)",
+    [UI_SNAP_UIMOTION_DESC] = "Über 60 FPS wird die Bewegung von Menüs und Oberflächenelementen in jedem angezeigten Bild statt "
+                              "in 60 Schritten pro Sekunde gezeichnet. Die Spiellogik ändert sich nicht. Schalte es aus, wenn "
+                              "ein Menü doppelt erscheint oder flackert. Gilt nach einem Neustart.",
     [UI_SNAP_TAB] = "Verbesserungen",
     [UI_SNAP_ENH] = "NewSnap-Verbesserungen (ändern die Spiellogik nicht)",
     [UI_SNAP_ASPECT] = "Seitenverhältnis",

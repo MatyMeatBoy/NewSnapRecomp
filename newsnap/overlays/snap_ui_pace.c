@@ -526,3 +526,9 @@ void snap_ui_pace_pointer(Cpu *c) {
     memcpy(&bits, &t, 4);
     c->v[1] = bits;
 }
+
+// POINTER-03: before the menu pointer calls a button's update (main+0x6441ec): x16 = 1 on an interface step, 0 on
+// a frame that only draws above 60 fps, so the buttons' hover animations keep the game's 60 steps a second.
+void snap_ui_pace_buttons(Cpu *c) {
+    c->x[16] = (uint64_t)pace_step(kern_now_ns());
+}
