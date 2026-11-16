@@ -11,7 +11,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/images/expedition-200.jpg" alt="An expedition at 200 % internal resolution" width="760">
+  <a href="docs/showcase/overview.png"><img src="docs/showcase/overview.png" alt="NewSnapRecomp project overview: native PC features, up to 4K internal resolution and up to 144 Hz" width="100%"></a>
 </p>
 
 **NewSnap** (NewSnapRecomp) is a native Windows recompilation of **New Pokémon Snap** (update 2.0.1). It runs the
@@ -24,14 +24,7 @@ keys or game-derived executables are distributed here; the launcher builds the g
 
 ## Project showcase
 
-[![Native Windows recompilation of New Pokémon Snap: Vulkan, DLSS/DLAA, FSR, shader preparation, remappable controls, photo export, up to 4K internal resolution and up to 144 Hz.](docs/showcase/overview.png)](docs/showcase/overview.png)
-
-<details>
-<summary>Original game vs NewSnapRecomp</summary>
-
 [![Comparison of the original Nintendo Switch game with NewSnapRecomp's PC features.](docs/showcase/comparison.png)](docs/showcase/comparison.png)
-
-</details>
 
 These are illustrated feature summaries; see the sections below for current platform and feature details.
 
