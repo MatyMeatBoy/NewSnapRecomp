@@ -526,3 +526,23 @@ void snap_ui_pace_pointer(Cpu *c) {
     memcpy(&bits, &t, 4);
     c->v[1] = bits;
 }
+
+// POINTER-COLOR-03: the screen adapters produce the selectable result on interface
+// updates only. The pointer moves every game frame, but zero in the local result
+// between updates is not a fresh hit-test miss. Sample hover at the same cadence as
+// its producer; use the existing hover byte (w9) for the intervening comparison.
+// Only w8, the comparison operand, changes. Position, scripts, colours and the
+// original selectable/unselectable commands are untouched; no frame is withheld.
+void snap_ui_pointer_hover(Cpu *c) {
+    unsigned raw = (unsigned)c->x[8];
+    if (!pace_step(kern_now_ns())) c->x[8] = (uint32_t)c->x[9];
+    static int on = -1;
+    static unsigned lines;
+    if (on < 0) { const char *e = getenv("NEWSNAP_POINTER_HOVER_TRACE"); on = e && !strcmp(e, "1"); }
+    if (!on || lines++ >= 20000) return;
+    uint8_t old = 0, hit = 0;
+    plat_mem_read(c->x[21] + 0x128, &old, 1);
+    plat_mem_read(c->sp + 0x118, &hit, 1);
+    rt_log("snap_hover: game %llu step %d object %llx old %u hit %u effective %u", (unsigned long long)pad_tick,
+           pace.step, (unsigned long long)c->x[21], old, raw, (unsigned)c->x[8]);
+}

@@ -45,3 +45,6 @@ site snap_timer_trace main 78d7ac bd401a60 @fn:snap_ui_pos_clip_path bd401a60
 site snap_timer_trace main 799950 d10183ff @fn:snap_ui_size_ask d10183ff
 site snap_timer_trace main 799b20 d10183ff @fn:snap_ui_scale_ask d10183ff
 site snap_timer_trace main 7995f0 fc1c0fe8 @fn:snap_ui_rotation_ask fc1c0fe8
+
+# POINTER-COLOR-03: consume selectable state only on interface updates; pointer position still updates every frame.
+site snap_ui_pace main 644344 394463e8 394463e8 @fn:snap_ui_pointer_hover

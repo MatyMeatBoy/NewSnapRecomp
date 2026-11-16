@@ -36,6 +36,8 @@ class UiPaceTests(unittest.TestCase):
             # FPS-02: the pointer's frame time, the original load then the helper
             ['site', 'snap_ui_pace', 'main', '643cc8', 'bd401e61', 'bd401e61', '@fn:snap_ui_pace_pointer'],
         ])
+        self.assertIn(['site', 'snap_ui_pace', 'main', '644344', '394463e8', '394463e8',
+                       '@fn:snap_ui_pointer_hover'], lines)
         # RETICLE-HZ-01: its own switch; a draw-only call goes from the drawing section to the handler's loop over
         # the queued positions and back from the loop's end
         self.assertEqual(lines[5:8], [
@@ -119,6 +121,60 @@ int main(void) {
             exe = p / 'pace.exe'
             subprocess.run([compiler, str(p / 'fixture.c'), '-I', str(ROOT / 'newsnap/overlays'), '-o', str(exe)],
                            check=True, capture_output=True)
+            result = subprocess.run([str(exe)], capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_hover_does_not_treat_a_frame_without_an_interface_update_as_a_leave(self):
+        compiler = self.compiler()
+        with tempfile.TemporaryDirectory() as tmp:
+            p = Path(tmp)
+            (p / 'platform').mkdir()
+            (p / 'cpu.h').write_text('#include <stdint.h>\ntypedef struct {uint64_t x[32],sp,pc,nzcv; __uint128_t v[32]; char rest[512];} Cpu;\n')
+            (p / 'host.h').write_text('#include <stdint.h>\nuint64_t kern_now_ns(void); uint64_t frame_step_cap_ns(void);'
+                                      ' void rt_log(const char *,...);\n')
+            (p / 'gfx.h').write_text('#include <stdint.h>\ntypedef struct { uint64_t frames; } GfxStats;\n')
+            (p / 'platform/platform.h').write_text('#include <stddef.h>\n#include <stdint.h>\nint plat_mem_read(uint64_t,void *,size_t);\n'
+                                                   'int plat_mem_readable(uint64_t,uint64_t);\n')
+            (p / 'fixture.c').write_text(r'''
+#include <string.h>
+#include "cpu.h"
+#include "gfx.h"
+GfxStats gfx_counters;
+static uint64_t now=1000, cap=6944444;
+uint64_t kern_now_ns(void){return now;}
+uint64_t frame_step_cap_ns(void){return cap;}
+void rt_log(const char *f,...){(void)f;}
+int plat_mem_read(uint64_t a,void *out,size_t n){memcpy(out,(void *)(uintptr_t)a,n);return 1;}
+int plat_mem_readable(uint64_t a,uint64_t n){return 1;}
+void snap_ui_pace_enter(Cpu *);
+void snap_ui_pointer_hover(Cpu *);
+int main(void){
+ unsigned char object[0x100]={0}; object[0xc0]=object[0xc6]=1;
+ unsigned rates[]={60,90,120,144};
+ for(unsigned r=0;r<4;r++){
+  cap=1000000000ull/rates[r];
+  unsigned old=0,transitions=0,skipped=0;
+  for(unsigned f=0;f<rates[r]*4;f++,now+=cap,gfx_counters.frames++){
+   Cpu c,before; memset(&c,0x5a,sizeof c); c.x[0]=(uint64_t)(uintptr_t)object;
+   snap_ui_pace_enter(&c); int step=c.x[16];
+   // Captured failure: adapters report a hit on updates and zero on intervening frames.
+   unsigned desired=f<rates[r]*2,raw=step?desired:0;
+   c.x[8]=raw; c.x[9]=old; before=c;
+   snap_ui_pointer_hover(&c);
+   unsigned effective=(unsigned)c.x[8];
+   c.x[8]=before.x[8];
+   if(memcmp(&c,&before,sizeof c)) return 1;
+   if(effective!=(step?desired:old)) return 2;
+   transitions+=effective!=old; old=effective; skipped+=!step;
+  }
+  if(transitions!=2 || old || (r && !skipped))return 3;
+ }
+ return 0;
+}
+''')
+            exe = p / 'hover.exe'
+            subprocess.run([compiler, str(p / 'fixture.c'), str(ROOT / 'newsnap/overlays/snap_ui_pace.c'), '-I', str(p),
+                            '-I', str(ROOT / 'newsnap/overlays'), '-o', str(exe)], check=True, capture_output=True)
             result = subprocess.run([str(exe)], capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
