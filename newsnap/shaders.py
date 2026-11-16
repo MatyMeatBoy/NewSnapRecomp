@@ -1,4 +1,5 @@
 """Prepare observed shader variants on this GPU before guest execution."""
+import hashlib
 import shutil
 import struct
 import json
@@ -109,11 +110,82 @@ def seed_libraries(folder, libraries):
             'coverage': 'default texture answers plus observed variants; exact unseen variants/pipelines unverified'}
 
 
+RECEIPT = 'newsnap-shader-preparation.json'
+
+
+def preparation_inputs(folder, all_libraries=False, libraries=None):
+    """Everything a preparation is made from: the runtime, the translator, the recordings of play and, with
+    all_libraries, the decoded shader libraries (their manifest and the name, size and time of each file).
+
+    The executable, the translator and the recordings are recognised by their receipts when unchanged
+    (verified_files), so asking this before every game start reads no large file again.
+    """
+    from .verified_files import STORE, VerifiedFiles
+    folder = Path(folder)
+    receipts = VerifiedFiles(folder / STORE)
+    names = ('newsnap.exe', 'ac_xlate.exe', 'ac_xlate.id', 'shader-answers.bin', 'shader-programs.bin')
+    files = {name: receipts.digest(folder / name) if (folder / name).is_file() else None for name in names}
+    receipts.save()
+    listing = None
+    if all_libraries:
+        libraries = Path(libraries if libraries is not None else shader_library_dir(ROOT))
+        value = hashlib.sha256((libraries / 'manifest.json').read_bytes())
+        with os.scandir(libraries) as found:
+            for name, size, moment in sorted((entry.name, entry.stat().st_size, entry.stat().st_mtime_ns)
+                                             for entry in found if entry.is_file()):
+                value.update(f'{name}\0{size}\0{moment}\n'.encode('utf-8'))
+        listing = value.hexdigest()
+    return {'format': 1, 'scope': 'all' if all_libraries else 'observed', 'files': files, 'libraries': listing}
+
+
+def already_prepared(folder, inputs):
+    """The number of variants of the last finished preparation when it was made from exactly these inputs and
+    what it left is still there; None when the preparation has to run.
+
+    Running it again from the same inputs gives the same record. The driver's own cache is not ours to check:
+    with another driver the game rebuilds it in the background at its start (vk_pipeline.c, «driver cache»),
+    with or without a preparation before. NEWSNAP_PREPARE_ALWAYS=1 runs the preparation regardless.
+    """
+    folder = Path(folder)
+    try:
+        if os.environ.get('NEWSNAP_PREPARE_ALWAYS') == '1':
+            return None
+        receipt = json.loads((folder / RECEIPT).read_text(encoding='utf-8'))
+        if not isinstance(receipt, dict) or receipt.get('inputs') != inputs or type(receipt.get('variants')) is not int:
+            return None
+        marker = folder / 'newsnap-game.json'
+        if marker.is_file() and json.loads(marker.read_text(encoding='utf-8')).get('shader_preparation_required') is True:
+            return None   # a rebuilt runtime asks for a preparation: it runs
+        prepared = folder / 'shader-prepared.bin'
+        data = prepared.read_bytes()
+        if (len(data) < 16 or data[:8] != b'ACSPRP\0\0' or (len(data) - 16) // 36 != receipt['variants']
+                or hashlib.sha256(data).hexdigest() != receipt.get('prepared_sha256')):
+            return None
+        if any(not (folder / name).is_file() for name in ('seed-answers.bin', 'seed-programs.bin')):
+            return None
+        if (folder / 'shader-prepare-journal.bin').exists():   # the driver crashed in the last run
+            return None
+        if receipt.get('shader_cache') is not (folder / 'shader-cache').is_dir():
+            return None   # the translated shaders the preparation left were removed
+        return receipt['variants']
+    except (OSError, ValueError, TypeError, AttributeError):
+        return None
+
+
 def prepare_observed(folder, all_libraries=False):
     folder = Path(folder).resolve()
     exe = folder / 'newsnap.exe'
     if not exe.is_file():
         raise ValueError('Build newsnap.exe before preparing shaders')
+    try:
+        inputs = preparation_inputs(folder, all_libraries)
+    except (OSError, ValueError):
+        inputs = None   # e.g. no library manifest: the preparation below reports it
+    count = already_prepared(folder, inputs) if inputs else None
+    if count is not None:
+        print(f'Shaders already prepared from these recordings and this runtime ({count} variants): nothing to do.',
+              flush=True)
+        return count
     for source, target, magic, version, record in (
         ('shader-answers.bin', 'seed-answers.bin', b'ACSANS\0\0', 2, 221),
         ('shader-programs.bin', 'seed-programs.bin', b'ACSPRG\0\0', 1, 0),
@@ -145,9 +217,10 @@ def prepare_observed(folder, all_libraries=False):
         if len(data) < 16 or data[:8] != b'ACSPRP\0\0' or struct.unpack_from('<II', data, 8) != (1, 36) or (len(data) - 16) % 36:
             raise ValueError('The runtime did not produce a valid preparation record')
         count = (len(data) - 16) // 36
-        write_json(folder / 'newsnap-shader-preparation.json', {
+        write_json(folder / RECEIPT, {
             'scope': 'library defaults and observed variants' if all_libraries else 'observed variants only',
-            'census': census, 'variants': count,
+            'census': census, 'variants': count, 'inputs': inputs,
+            'shader_cache': (folder / 'shader-cache').is_dir(),
             'prepared_sha256': source_digest(prepared), 'exe_sha256': source_digest(exe),
             'translator_sha256': source_digest(folder / 'ac_xlate.exe')})
     print(f'Prepared {count} shader variants before gameplay. Unvisited scenes remain unverified.', flush=True)

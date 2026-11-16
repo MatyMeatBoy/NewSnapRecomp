@@ -333,6 +333,42 @@ class KitRecognition(KitFixture):
             with self.assertRaisesRegex(ValueError, 'Unsafe build kit path', msg=name):
                 m.verify_build_kit(self.kit, self.root, None, V.VerifiedFiles())
 
+    def test_link_or_junction_inside_a_saved_kit_is_refused_in_both_modes(self):
+        kit.ensure_build_kit(self.root)
+        outside = self.base / 'outside'
+        outside.mkdir()
+        (outside / 'tool.exe').write_bytes(b'not part of the kit')
+        link = self.kit / 'sdk/extra'
+        try:
+            if os.name == 'nt':
+                import _winapi
+                _winapi.CreateJunction(str(outside), str(link))
+            else:
+                link.symlink_to(outside, target_is_directory=True)
+        except OSError:
+            self.skipTest('links cannot be created here')
+        try:
+            for full in (False, True):
+                with self.assertRaisesRegex(kit.updater.UpdateError, 'links or junctions'):
+                    kit.ensure_build_kit(self.root, full=full)
+            with self.assertRaisesRegex(ValueError, 'links are not allowed'):
+                m.verify_build_kit(self.kit, self.root, None, kit.kit_receipts(self.kit))
+            with self.assertRaisesRegex(ValueError, 'links are not allowed'):
+                m.verify_build_kit(self.kit, self.root)
+        finally:
+            if os.name == 'nt':
+                os.rmdir(link)
+            else:
+                link.unlink()
+
+    def test_inventory_walk_matches_the_files_on_disk(self):
+        (self.kit / 'empty-folder').mkdir()
+        found = dict(kit._entries(self.kit))
+        files = {name for name, info in found.items() if not os.path.isdir(self.kit / name)}
+        self.assertEqual(files, set(self.NAMES) | {'build-kit.json'})
+        self.assertIn('empty-folder', found)
+        self.assertIn('source/third_party/astral/tools', found)
+
     def test_kits_outside_the_cache_have_no_receipts(self):
         self.assertIsNone(kit.kit_receipts(self.base / 'elsewhere' / self.kit.name))
         self.assertIsNone(kit.kit_receipts(self.cache / 'not-a-kit'))

@@ -72,6 +72,24 @@ def kit_receipts(kit):
     return VerifiedFiles(cache / f'.verified-{kit.name}.json', limit=MAX_FILES + 16)
 
 
+def _entries(folder, prefix=''):
+    """(relative name, file information) of everything under folder, from the directory listings.
+
+    A link or junction is refused where it is found, as updater._no_links does. That function also walks up from
+    every path to the drive root (three system calls per level, for each of the thousands of files of a kit);
+    here the kit folder and what is above it are checked once by the caller, and what is below it as it is listed.
+    """
+    with os.scandir(folder) as found:
+        entries = sorted(found, key=lambda entry: entry.name)
+    for entry in entries:
+        info = entry.stat(follow_symlinks=False)
+        if stat.S_ISLNK(info.st_mode) or getattr(info, 'st_file_attributes', 0) & 0x400:
+            raise updater.UpdateError(f'Update paths cannot contain links or junctions: {entry.path}')
+        yield prefix + entry.name, info
+        if stat.S_ISDIR(info.st_mode):
+            yield from _entries(entry.path, prefix + entry.name + '/')
+
+
 def _verify(kit, root, revision, cancel_event, receipts=None):
     """The exact inventory, then maintenance.verify_build_kit. receipts: see verify_build_kit; None reads it all."""
     updater._no_links(kit)
@@ -79,17 +97,15 @@ def _verify(kit, root, revision, cancel_event, receipts=None):
     files = _inventory(manifest, revision)
     observed = set()
     expanded = 0
-    for path in kit.rglob('*'):
+    for name, info in _entries(kit):
         _cancel(cancel_event)
-        updater._no_links(path)
-        name = path.relative_to(kit).as_posix()
         updater._relative(name)
-        if path.is_file():
+        if stat.S_ISREG(info.st_mode):
             observed.add(name)
-            expanded += path.stat().st_size
+            expanded += info.st_size
             if len(observed) > MAX_FILES + 1 or expanded > MAX_EXPANDED_BYTES:
                 raise updater.UpdateError('Cached build kit exceeds its size limit')
-        elif not path.is_dir():
+        elif not stat.S_ISDIR(info.st_mode):
             raise updater.UpdateError('Build kit contains a special file')
     if observed != set(files) | {'build-kit.json'}:
         raise updater.UpdateError('Build kit files differ from the exact inventory')
