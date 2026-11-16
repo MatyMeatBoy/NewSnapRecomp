@@ -15,6 +15,8 @@ from .paths import runtime_dir
 from .upstream import ROOT
 from .version import VERSION
 
+TEXTURE_PACKS_UI = False   # «Texturas HD» in the Mejoras tab (generate a pack of colour textures)
+
 GREEN, CREAM, AMBER, INK = '#163d32', '#f5f1e5', '#dfa648', '#203c34'
 PAGE_SIZE = 12
 PRESENTATION_LABELS = {'VSync · FIFO': 'fifo', 'Mailbox': 'mailbox', 'Sin VSync · Immediate': 'immediate'}
@@ -449,14 +451,19 @@ class Launcher:
                                'real al máximo (4×). «Generar sombras HD» lo inicia o lo detiene a mano.')
         from .hdshadows_ui import HdShadowsButton
         self.hd_shadows_button = HdShadowsButton(self, content)
-        self._heading(content, 'Texturas HD')
-        if any((runtime_dir(self.project) / 'texpack').glob('*.dds')):   # shown only once a pack exists
-            self._choice(content, 'Pack de texturas HD', 'tex_pack', {'Activado si existe': '1', 'Desactivado': '0'},
-                         help_text='Usa las texturas HD de la carpeta texpack junto al juego, generadas en este PC a partir de tu propio juego. Sin pack no cambia nada.')
-        self._choice(content, 'Guardar texturas para el pack', 'tex_pack_save', {'No': '0', 'Sí, mientras juego': '1'},
-                     help_text='El juego guarda cada textura de color la primera vez que la carga (texpack/src); «Generar pack de texturas HD» las amplía en este PC (la herramienta se descarga una vez) y las comprime (BC1/BC3). Juega los niveles que quieras mejorar, genera, y desactiva esta opción: guardar texturas alarga algo las cargas.')
-        from .hdshadows_ui import TexturePackButton
-        TexturePackButton(self, content)
+        # TEXPACK-01 is hidden for now (owner, 2026-11-15): no colour textures redrawn by a generative upscaler;
+        # only the shadows, which are abstract. The runtime still loads a texpack folder made by hand.
+        if TEXTURE_PACKS_UI:
+            self._heading(content, 'Texturas HD')
+            if any((runtime_dir(self.project) / 'texpack').glob('*.dds')):   # shown only once a pack exists
+                self._choice(content, 'Pack de texturas HD', 'tex_pack', {'Activado si existe': '1', 'Desactivado': '0'},
+                             help_text='Usa las texturas HD de la carpeta texpack junto al juego, generadas en este PC a partir de tu propio juego. Sin pack no cambia nada.')
+            self._choice(content, 'Guardar texturas para el pack', 'tex_pack_save', {'No': '0', 'Sí, mientras juego': '1'},
+                         help_text='El juego guarda cada textura de color la primera vez que la carga (texpack/src); «Generar pack de texturas HD» las amplía en este PC (la herramienta se descarga una vez) y las comprime (BC1/BC3). Juega los niveles que quieras mejorar, genera, y desactiva esta opción: guardar texturas alarga algo las cargas.')
+            from .hdshadows_ui import TexturePackButton
+            TexturePackButton(self, content)
+        elif self.variables['tex_pack_save'].get() == '1':
+            self.variables['tex_pack_save'].set('0')   # nothing left saving textures for a step that is hidden
         self._heading(content, 'Fluidez')
         self._choice(content, 'Generación de fotogramas · FSR', 'frame_gen', {'Desactivada': 'off', 'AMD FSR · 1 fotograma generado': 'fsr'},
                      help_text='Inserta un fotograma generado entre cada dos reales: con el juego a 60 fps se muestran unos 120. Necesita FSR 3.1 o FSR 4. Solo genera si el monitor puede mostrarlo (unos 110 Hz o más a 60 fps); en un monitor más lento se pausa sola y el juego sigue a su ritmo, con cualquier modo de presentación. Añade un fotograma de latencia. El HUD se separa de la escena para que no deje estela. Experimental.')

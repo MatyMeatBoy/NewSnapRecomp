@@ -50,7 +50,6 @@ keys or game-derived executables are distributed here; the launcher builds the g
 - **HD shadows mode** (experimental): real-time shadows at their largest map, and the shadows painted into every
   level (light maps and the sun shadows of each mesh) read from your own game and enlarged on your PC, without
   playing the levels first.
-- **HD texture packs:** textures saved while you play and enlarged on your PC, compressed to BC1/BC3.
 
 ### Launcher
 - Graphics presets with **«Recomendado»** by default, sidebar navigation, status at a glance.
