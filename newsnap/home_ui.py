@@ -14,7 +14,7 @@ class HomePanel:
     def __init__(self,launcher,parent):
         self.launcher=launcher
         self.events=queue.Queue();self.cancel=threading.Event();self.resume=False
-        self.verifying=False
+        self.verifying=False;self.checking=False;self.last_state={'loaded':False,'verified':False}
         footer=ttk.Frame(parent,padding=(0,12,0,0));footer.pack(side='bottom',fill='x')
         self.notice_slot=ttk.Frame(parent);self.notice_slot.pack(fill='x')
         content=ttk.Frame(parent);content.pack(fill='both',expand=True)
@@ -46,7 +46,7 @@ class HomePanel:
         Tooltip(prepare, 'Prepara los shaders y pipelines registrados para esta GPU antes de jugar. Si es el primer inicio y aún no hay registros, el juego arranca y los compila durante la expedición. Un cambio de GPU/controlador/runtime puede requerir preparar de nuevo la caché.')
         from .progress_ui import PreparationPanel
         self.progress=PreparationPanel(body);self.progress.pack(fill='x',pady=(2,0))
-        launcher.play_button=ttk.Button(footer,text='Iniciar expedición  →',style='Accent.TButton',command=launcher.launch)
+        launcher.play_button=ttk.Button(footer,text='Jugar  →',style='Accent.TButton',command=launcher.primary_action)
         launcher.play_button.pack(side='right')
         self.update_notice=ttk.Button(self.notice_slot,text='',command=lambda:launcher.tabs.select(launcher.update_tab))
         from .shortcuts_ui import ShortcutButtons
@@ -73,7 +73,25 @@ class HomePanel:
         self.data_state.configure(text=text)
         self._chips(value)
         self.verify_button.configure(state='normal' if value['loaded'] and not self.launcher.busy else 'disabled')
+        self.last_state=value;self.sync_action()
         return value
+
+    def sync_action(self):
+        """The main button, here and in the sidebar, says what a press does now: «Verificar» while the game data
+        has no current verification (a new install, an update, changed files), «Jugar» once it has (play_action.py)."""
+        from .play_action import play_action
+        launcher=self.launcher
+        action=play_action(self.last_state,busy=bool(getattr(launcher,'busy',False)),verifying=self.checking)
+        self.action=action
+        button=getattr(launcher,'play_button',None)
+        if button is not None:
+            button.configure(text=action['label']+('  →' if action['kind']=='play' else ''),
+                             style='Verify.TButton' if action['kind']=='verify' else 'Accent.TButton',
+                             state='normal' if action['enabled'] else 'disabled')
+        sidebar=getattr(launcher,'sidebar',None)
+        if sidebar is not None and hasattr(sidebar,'set_action'):
+            sidebar.set_action(action['label'],action['kind'],action['enabled'])
+        return action
 
     def _chips(self,value):
         from .sidebar_ui import chip
@@ -96,6 +114,7 @@ class HomePanel:
         self.cancel_button.configure(state='normal' if self.verifying else 'disabled')
         if busy and not self.progress.active:self.progress.begin('Preparando el inicio…')
         elif not busy:self.progress.stop()
+        self.sync_action()
 
     def choose_data(self):
         if self.launcher.busy:return
@@ -154,7 +173,7 @@ class HomePanel:
         if self.launcher.busy:return False
         if not self.refresh()['loaded']:
             self.choose_data();return False
-        self.verifying=True;self.resume=resume_game;self.cancel.clear()
+        self.verifying=self.checking=True;self.resume=resume_game;self.cancel.clear()
         self.launcher._set_busy(True)
         self.launcher.status.set('Verificando ExeFS y RomFS de tu juego…')
         self.progress.report('Verificando ExeFS y RomFS de tu juego…')
@@ -173,7 +192,7 @@ class HomePanel:
         try:
             while True:
                 kind,value=self.events.get_nowait()
-                self.verifying=False;self.launcher._set_busy(False)
+                self.verifying=self.checking=False;self.launcher._set_busy(False)
                 if kind=='imported':
                     self._use_data(value);self.progress.finish('Juego importado');continue
                 self.refresh()

@@ -83,7 +83,7 @@ class Launcher:
         self.sidebar = Sidebar(shell, self.tabs, ((self.play_tab, 'Inicio'), (self.album_tab, 'Álbum'),
                                                   (self.options_tab, 'Opciones'), (self.controls_tab, 'Controles'),
                                                   (self.mods_tab, 'Mejoras'), (self.update_tab, 'Actualizaciones')),
-                               version=VERSION, play=self.launch,
+                               version=VERSION, play=self.primary_action,
                                icon_path=self.project / 'assets/icons/icon-64.png')
         self.sidebar.pack(side='left', fill='y')
         main.pack(side='left', fill='both', expand=True)
@@ -689,6 +689,17 @@ class Launcher:
         if hasattr(self,'sidebar'):self.sidebar.set_busy(busy)
         if hasattr(self,'controller_test_button'):self.controller_test_button.configure(state='disabled' if busy else 'normal')
         if hasattr(self,'trace_present_button'):self.trace_present_button.configure(state='disabled' if busy else 'normal')
+
+    def primary_action(self):
+        """The main button (Home and the sidebar): verifies the game data when that is pending, otherwise plays.
+        Its label says which (play_action.py); after a verification it becomes «Jugar» without starting the game."""
+        if self.busy:
+            return
+        from .play_action import play_action
+        if play_action(self.home.refresh())['action'] == 'verify':
+            self.home.verify()
+        else:
+            self.launch()
 
     def launch(self):
         if self.busy:
