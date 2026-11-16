@@ -1,5 +1,76 @@
 # High frame rate options and investigation
 
+## RETICLE-HZ-01 the bracket over a subject, the reticle and the pointer placed on every frame — 2026-11-16
+
+**Symptom (owner).** Above 60 fps the bracket that marks the subject inside a course still moved 60 times a second.
+
+**How it is placed.** The bracket is the clip `marker_off_mc`. Game code (`main+0x4c4098`) projects the subject and
+asks for the clip's position on every game frame through the interface object's vtable entry `+0xc0`
+(`main+0x799570`), which only queues {clip name, x, y} in the object (`+0x810..+0x820`). The reticle and the pointer
+(`cursor_mc`, from `main+0x4c0ba8`, `0x4c0ec8`, `0x4c1240` in a course and `main+0x643ddc` in menus), the attention
+marks and the tutorial window's parts go the same way. The handler (`main+0x7835d0`) applies the queue inside its
+logic (`main+0x78d644..0x78d850`: find the clip, `main+0x9cd540` sets x, `main+0x9cd660` sets y), and above 60 fps
+that logic runs on interface steps only (UI-HZ-01). Found with `NEWSNAP_UI_POS_TRACE=1` (every position asked for
+and applied, with the presented frame): at 144 fps the game asked on every game frame and the position was applied
+on 104 of 244 presents. This is also the open remark of POINTER-02 (`cursor_mc` drawn only on steps).
+
+**Fix** (`patches/snap-2.0.1-ui-pace.txt` set `snap_ui_positions`, `snap_ui_pace_draw` / `snap_ui_pace_placed`).
+A handler call that only draws runs that one loop of the handler before its drawing section: at `main+0x794b4c` a
+draw-only call branches to `main+0x78d644`, and at `main+0x78d850` it branches back. The positions are the game's
+own, applied by the game's own code; on a step the queue ends in the same state as before (the last request for a
+clip wins either way), so what the interface logic reads on its steps does not change. The helpers set `x16` only.
+At 60 fps and below no call is draw-only. `AC_SNAP_UI_POSITIONS_PATCH=0` removes both sites.
+
+**A dense series has to be deferred.** `AC_SHOTS=lo-hi:1` writes each picture as it is presented, which takes longer
+than a 60 Hz frame: the game ran under 60 fps during the series, every frame stepped, and the series showed nothing
+of the frames in between. `AC_SHOTS_DEFER=1` keeps up to 240 pictures in memory and writes them after the range
+(`AC_SHOTS=w<lo>-<hi>:0.001` takes every present of a stretch of game seconds).
+
+**Evidence (RTX 4060 Laptop, private runtime from this tree, the tutorial and first course of
+`tests/routes/photo-tutorial-expedition.txt`, 144 fps, bracket measured in the pictures by its four corners).**
+
+| Check | Knob off | Knob on |
+| --- | --- | --- |
+| Camp, camera still, 243 consecutive presents: presents with a position applied | 104 of 244 | 243 of 243 |
+| Same: the subject moved in 88 presents; the bracket followed in the same present / one later / two later | 61 / 14 / 12 | 85 / 1 / 1 |
+| Same: bracket in the picture within 2 px of the traced position | 244 of 244 | 243 of 243 |
+| Course, camera moving, consecutive presents with the bracket visible: bracket stood still | 15 of 76 | 0 of 82 |
+| Same: steps of the bracket per present | 0 to 5 px | 1 to 2 px |
+| 60 fps, whole route to the course: positions applied by the new path | — | 0 of 8,633 |
+
+The course series ran at about 80 fps while it was being captured (133 and 123 presents in 1.6 s), so fewer frames
+fall between two steps than at a full 144. Looked at: 18 consecutive presents at the camp and in the course with the
+knob on: one bracket around the subject in each, no double image; the reticle, name plate, photo counter, thumbnail
+and viewfinder corners as before.
+
+**Limits.** The Pokémon themselves move about 52 to 60 times a second at 144 fps (Pikachu's position changed in 88
+of 243 presents): with the camera still the bracket cannot be smoother than its subject, it moves with it instead of
+after it. The pointer of the pause menu, the Photodex and photo selection goes through the same queue but no route
+reaches those screens: not looked at. RTX 4060 only.
+
+## MENU-FPS-01 interface motion between two interface steps (experimental) — 2026-11-16
+
+**Where the interface is drawn.** The interface player draws a movie in two passes over its clips (found with
+hardware breakpoints on a clip's matrix, `NEWSNAP_UI_POS_WATCH=<clip name>`). Each clip keeps its own matrix
+(`+0x70`, six floats; `main+0x9cd540` writes x at `+0x80`) and its matrix on screen (`+0x88`), brought up to date
+from the parent's (`+0x40`) when a dirty flag (`+0x128`) is set (vtable `+0x30`: `main+0x9b57c0`, `0x9b5dc0`,
+`0x9b6b30`, `0x9b9580`, `0x9bf2a0`). Then each clip that draws something hands its matrix on screen to the renderer
+(renderer vtable `+0x20`, `x1` = clip `+0x88`) before its shapes or text (vtable `+0x38`): shapes `main+0x9b5be0`
+(call at `0x9b5c74`), text `main+0x9b60c0` (`0x9b6104`) and `main+0x9b78a0` (`0x9b78f8`). The two container classes
+(`main+0x9b98a0`, `0x9bf5e0`) hand nothing. Timelines are stored per frame, so there is no animation to evaluate at
+a fraction of a frame: what can be done is to draw between two steps.
+
+**Chosen: interpolation, on the renderer's side.** At those three calls the matrix handed over is replaced, for a
+clip in motion, by the matrix on the way from the previous interface step's to the last one's, by the real time
+since that step was due (`newsnap/overlays/snap_ui_motion.h`, `snap_ui_motion_hand`). Motion is drawn on every frame
+and one interface step (16.7 ms) late. Extrapolating instead would have no delay but overshoots where a motion stops
+and flies off at a jump. The player's own matrices are never written, so the interface logic and its scripts read
+what they always read. Handed over unchanged: a clip seen for the first time or not drawn in the previous frame, the
+first step of a motion, a step more than four times the previous one (a jump: an animation starting over, a row
+reused), a matrix that changed on a frame that did not step, and everything inside a clip the game places by name
+(pointer, reticle, bracket: already per frame, without delay). Transparency and colour still change 60 times a
+second. Setting: `ui_motion = 0|1` (`AC_UI_MOTION`, restart), on by default as an experiment; nothing at 60 fps.
+
 ## FPS-02 audit of fixed 60 Hz steps — 2026-11-15
 
 A scan of every `adrp`+`ldr s` load in `main` finds the float 1/60 (`0xae7e4c`) used in four places and 60.0
