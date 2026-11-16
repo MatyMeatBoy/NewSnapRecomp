@@ -27,15 +27,18 @@ int snap_fg_rate_ok(uint64_t interval_ns) {
 
 float snap_fg_view[16];   // vk_dlaa.c mv_pass
 
-int snap_fg_enabled(void) {
-    static int on = -1;
-    if (on < 0) {
+int snap_fg_mode(void) {
+    static int mode = -1;
+    if (mode < 0) {
         const char *v = cfg_value("AC_FRAME_GEN");
-        on = v && !strcmp(v, "fsr");
-        if (on) rt_log("frame generation: FSR, one generated frame between real ones (AC_FRAME_GEN=fsr)");
+        mode = v && !strcmp(v, "fsr") ? 1 : v && !strcmp(v, "dlss") ? 2 : 0;
+        if (mode) rt_log("frame generation: %s, one generated frame between real ones (AC_FRAME_GEN=%s)",
+                         mode == 1 ? "FSR" : "NVIDIA DLSS", v);
     }
-    return on;
+    return mode;
 }
+
+int snap_fg_enabled(void) { return snap_fg_mode() != 0; }
 
 #if defined(_WIN32) && defined(NEWSNAP_FSR_SDK)
 #define WIN32_LEAN_AND_MEAN
@@ -45,6 +48,7 @@ int snap_fg_enabled(void) {
 #include <api/include/ffx_api.h>
 #include <api/include/vk/ffx_api_vk.h>
 #include <framegeneration/include/ffx_framegeneration.h>
+#include "snap_dlssg.h"
 
 static PlatMutex fg_lock;   // the context is used from the replay thread (prepare) and the present thread
 static struct {
@@ -211,7 +215,7 @@ static void camera_vectors(float pos[3], float right[3], float up[3], float fwd[
 
 void snap_fg_prepare(VkCommandBuffer cb, const SnapFsrFrame *f, uint32_t render_w, uint32_t render_h,
                      uint32_t output_w, uint32_t output_h) {
-    if (!snap_fg_enabled() || !f || !load()) return;
+    if (snap_fg_mode() != 1 || !f || !load()) return;
     plat_mutex_lock(&fg_lock);
     if (G.fails > 3) goto out;
     // The back buffer's format is known at the first generation; until then RGBA8 (Snap's window textures).
@@ -305,6 +309,30 @@ static void barrier(VkCommandBuffer cb, VkImage img, VkImageLayout from, VkImage
     vkCmdPipelineBarrier(cb, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0, 0, NULL, 0, NULL, 1, &b);
 }
 
+// The replay's command buffer belongs to the recorder thread (vk_rec.h): vkCmdPipelineBarrier is not one of its
+// wrapped calls and would be made at once, ahead of the copies queued before it and while the recorder writes the same
+// command buffer. These two use vkCmdPipelineBarrier2, which the recorder makes in call order. Replay thread only.
+static void replay_layout_general(VkCommandBuffer cb, VkImage img, VkImageAspectFlags aspect) {
+    VkImageMemoryBarrier2 b = {.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
+                               .srcStageMask = VK_PIPELINE_STAGE_2_NONE, .dstStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
+                               .dstAccessMask = VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT,
+                               .oldLayout = VK_IMAGE_LAYOUT_UNDEFINED, .newLayout = VK_IMAGE_LAYOUT_GENERAL,
+                               .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED, .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                               .image = img, .subresourceRange = {aspect, 0, 1, 0, 1}};
+    VkDependencyInfo di = {.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO, .imageMemoryBarrierCount = 1, .pImageMemoryBarriers = &b};
+    vkCmdPipelineBarrier2(cb, &di);
+}
+
+static void replay_sync(VkCommandBuffer cb) {   // what was written so far is visible to what follows, and the reverse
+    VkMemoryBarrier2 mb = {.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2,
+                           .srcStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
+                           .srcAccessMask = VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT,
+                           .dstStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,
+                           .dstAccessMask = VK_ACCESS_2_MEMORY_READ_BIT | VK_ACCESS_2_MEMORY_WRITE_BIT};
+    VkDependencyInfo di = {.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO, .memoryBarrierCount = 1, .pMemoryBarriers = &mb};
+    vkCmdPipelineBarrier2(cb, &di);
+}
+
 // FG-02: the HUD-less picture. Snap tonemaps the scene into a full-size RGBA8_SRGB target and the next pass draws the
 // interface over it into the RGBA8 picture that is presented. When that next pass begins, the tonemapped target is
 // complete: it is copied (same bytes, UNORM) to a ring slot of the frame's prepare id, and the generation dispatch of
@@ -333,7 +361,7 @@ static int hl_slot_locked(int i, uint32_t w, uint32_t h, VkCommandBuffer cb) {
         return 0;
     }
     HL[i].w = w, HL[i].h = h, HL[i].id = 0;
-    barrier(cb, HL[i].img, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL, 0, VK_ACCESS_TRANSFER_WRITE_BIT);
+    replay_layout_general(cb, HL[i].img, VK_IMAGE_ASPECT_COLOR_BIT);
     return 1;
 }
 
@@ -351,15 +379,12 @@ void snap_fg_hudless_pass(VkCommandBuffer cb, const VkTexImage *img, VkFormat vi
     plat_mutex_lock(&fg_lock);
     uint64_t id = G.prepared;
     int i = (int)(id % HUDLESS_N);
-    if (id && G.ctx && hl_slot_locked(i, hl_w, hl_h, cb)) {
-        VkMemoryBarrier mb = {.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER, .srcAccessMask = VK_ACCESS_MEMORY_WRITE_BIT,
-                              .dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT | VK_ACCESS_TRANSFER_WRITE_BIT};
-        vkCmdPipelineBarrier(cb, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 1, &mb, 0, NULL, 0, NULL);
+    if (id && (G.ctx || snap_fg_mode() == 2) && hl_slot_locked(i, hl_w, hl_h, cb)) {
+        replay_sync(cb);
         VkImageCopy rg = {.srcSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1},
                           .dstSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1}, .extent = {hl_w, hl_h, 1}};
         vkCmdCopyImage(cb, src, VK_IMAGE_LAYOUT_GENERAL, HL[i].img, VK_IMAGE_LAYOUT_GENERAL, 1, &rg);
-        mb.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT, mb.dstAccessMask = VK_ACCESS_MEMORY_READ_BIT;
-        vkCmdPipelineBarrier(cb, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0, 1, &mb, 0, NULL, 0, NULL);
+        replay_sync(cb);
         HL[i].id = id;
     }
     plat_mutex_unlock(&fg_lock);
@@ -397,8 +422,242 @@ static void hudless_configure_locked(uint64_t id, uint32_t w, uint32_t h, VkComm
     }
 }
 
+// ---- FG-DLSS: NVIDIA DLSS frame generation (snap_dlssg.h) ---------------------------------------------------------
+// DLSS takes the real picture, the depth and the motion vectors of the frame in one call, on the present thread, while
+// the replay may already be drawing the next frame over its depth: so the replay copies both into a ring slot of the
+// frame's id when DLSS Super Resolution has run (snap_fg_prepare_dlss), as it does for the HUD-less picture.
+static struct {
+    VkImage z, mv;
+    VmaAllocation z_mem, mv_mem;
+    VkImageView z_view, mv_view;
+    VkFormat z_fmt;
+    uint32_t w, h, ow, oh;
+    uint64_t id;
+    float jx, jy;
+    int reset;
+    SnapDlssgCamera cam;
+} DR[HUDLESS_N];
+static struct { VkImage img; VmaAllocation mem; VkImageView view; uint32_t w, h; } BB;   // the real picture, as UNORM bytes
+static struct { VkImage of; VkImageView view; } DV[HUDLESS_N], OV;                          // views of HL[i].img and G.out
+
+static VkImageAspectFlags depth_aspects(VkFormat f) {
+    return f == VK_FORMAT_D24_UNORM_S8_UINT || f == VK_FORMAT_D32_SFLOAT_S8_UINT || f == VK_FORMAT_D16_UNORM_S8_UINT
+               ? VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT : VK_IMAGE_ASPECT_DEPTH_BIT;
+}
+
+static VkImageView make_view(VkImage img, VkFormat f, VkImageAspectFlags aspect) {
+    VkImageViewCreateInfo vi = {.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO, .image = img,
+                                .viewType = VK_IMAGE_VIEW_TYPE_2D, .format = f, .subresourceRange = {aspect, 0, 1, 0, 1}};
+    VkImageView v = VK_NULL_HANDLE;
+    return vkCreateImageView(vk_ctx()->device, &vi, NULL, &v) == VK_SUCCESS ? v : VK_NULL_HANDLE;
+}
+
+static void drop(VkImage *img, VmaAllocation *mem, VkImageView *view) {   // after wait_idle
+    const VkCtx *c = vk_ctx();
+    if (*view) vkDestroyImageView(c->device, *view, NULL), *view = VK_NULL_HANDLE;
+    if (*img) vmaDestroyImage(c->vma, *img, *mem), *img = VK_NULL_HANDLE;
+}
+
+static int make_image(VkFormat f, uint32_t w, uint32_t h, VkImageUsageFlags usage, VkImageAspectFlags view_aspect,
+                      VkImage *img, VmaAllocation *mem, VkImageView *view) {
+    VkImageCreateInfo ii = {.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO, .imageType = VK_IMAGE_TYPE_2D, .format = f,
+                            .extent = {w, h, 1}, .mipLevels = 1, .arrayLayers = 1, .samples = VK_SAMPLE_COUNT_1_BIT,
+                            .tiling = VK_IMAGE_TILING_OPTIMAL, .usage = usage, .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED};
+    VmaAllocationCreateInfo ai = {.usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE};
+    if (vmaCreateImage(vk_ctx()->vma, &ii, &ai, img, mem, NULL) != VK_SUCCESS) {
+        *img = VK_NULL_HANDLE;
+        return 0;
+    }
+    *view = make_view(*img, f, view_aspect);
+    if (!*view) {
+        vmaDestroyImage(vk_ctx()->vma, *img, *mem), *img = VK_NULL_HANDLE;
+        return 0;
+    }
+    return 1;
+}
+
+static void layout_general(VkCommandBuffer cb, VkImage img, VkImageAspectFlags aspect) {
+    VkImageMemoryBarrier b = {.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER, .dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT,
+                              .oldLayout = VK_IMAGE_LAYOUT_UNDEFINED, .newLayout = VK_IMAGE_LAYOUT_GENERAL,
+                              .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED, .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                              .image = img, .subresourceRange = {aspect, 0, 1, 0, 1}};
+    vkCmdPipelineBarrier(cb, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0, 0, NULL, 0, NULL, 1, &b);
+}
+
+static void sync(VkCommandBuffer cb) {   // everything written so far is visible to what follows, and the reverse
+    VkMemoryBarrier mb = {.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER,
+                          .srcAccessMask = VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT,
+                          .dstAccessMask = VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT};
+    vkCmdPipelineBarrier(cb, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0, 1, &mb, 0, NULL, 0, NULL);
+}
+
+void snap_fg_prepare_dlss(VkCommandBuffer cb, VkImage depth, VkFormat depth_format, uint32_t level, uint32_t layer,
+                          VkImage motion, uint32_t w, uint32_t h, uint32_t ow, uint32_t oh, float jitter_x,
+                          float jitter_y, int reset) {
+    if (snap_fg_mode() != 2 || !depth || !motion || !w || !h) return;
+    plat_mutex_lock(&fg_lock);
+    if (G.fails > 3) goto out;
+    uint64_t id = G.next_id + 1;
+    int i = (int)(id % HUDLESS_N);
+    if (DR[i].z && (DR[i].w != w || DR[i].h != h || DR[i].z_fmt != depth_format)) {
+        wait_idle();
+        drop(&DR[i].z, &DR[i].z_mem, &DR[i].z_view), drop(&DR[i].mv, &DR[i].mv_mem, &DR[i].mv_view);
+    }
+    if (!DR[i].z) {
+        VkImageAspectFlags da = depth_aspects(depth_format);
+        if (!make_image(depth_format, w, h, VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
+                        VK_IMAGE_ASPECT_DEPTH_BIT, &DR[i].z, &DR[i].z_mem, &DR[i].z_view) ||
+            !make_image(VK_FORMAT_R16G16_SFLOAT, w, h, VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
+                        VK_IMAGE_ASPECT_COLOR_BIT, &DR[i].mv, &DR[i].mv_mem, &DR[i].mv_view)) {
+            drop(&DR[i].z, &DR[i].z_mem, &DR[i].z_view);
+            if (G.fails++ < 4) rt_log("frame generation: DLSS depth and motion copies %ux%u (depth format %d) failed", w, h, (int)depth_format);
+            goto out;
+        }
+        DR[i].w = w, DR[i].h = h, DR[i].z_fmt = depth_format;
+        replay_layout_general(cb, DR[i].z, da), replay_layout_general(cb, DR[i].mv, VK_IMAGE_ASPECT_COLOR_BIT);
+    }
+    replay_sync(cb);
+    VkImageCopy zc = {.srcSubresource = {VK_IMAGE_ASPECT_DEPTH_BIT, level, layer, 1},
+                      .dstSubresource = {VK_IMAGE_ASPECT_DEPTH_BIT, 0, 0, 1}, .extent = {w, h, 1}};
+    vkCmdCopyImage(cb, depth, VK_IMAGE_LAYOUT_GENERAL, DR[i].z, VK_IMAGE_LAYOUT_GENERAL, 1, &zc);
+    VkImageCopy mc = {.srcSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1},
+                      .dstSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1}, .extent = {w, h, 1}};
+    vkCmdCopyImage(cb, motion, VK_IMAGE_LAYOUT_GENERAL, DR[i].mv, VK_IMAGE_LAYOUT_GENERAL, 1, &mc);
+    replay_sync(cb);
+    DR[i].id = id, DR[i].ow = ow, DR[i].oh = oh, DR[i].jx = jitter_x, DR[i].jy = jitter_y, DR[i].reset = reset;
+    snap_dlssg_camera(&DR[i].cam);
+    camera_vectors(DR[i].cam.pos, DR[i].cam.right, DR[i].cam.up, DR[i].cam.fwd);
+    G.next_id = id, G.prepared = id;
+out:
+    plat_mutex_unlock(&fg_lock);
+}
+
+static VkImage dlss_present_source(VkCommandBuffer cb, VkImage src, VkFormat fmt, int w, int h) {
+    fmt = unorm(fmt);
+    plat_mutex_lock(&fg_lock);
+    VkImage result = VK_NULL_HANDLE;
+    uint64_t id = G.armed;
+    G.armed = 0;
+    int i = (int)(id % HUDLESS_N);
+    if (!id || G.fails > 3 || DR[i].id != id || !DR[i].z) goto out;
+    if ((uint32_t)w != DR[i].ow || (uint32_t)h != DR[i].oh) goto out;   // a picture of another size: no generated frame
+    if (fmt != VK_FORMAT_R8G8B8A8_UNORM && fmt != VK_FORMAT_B8G8R8A8_UNORM) goto out;
+    if (!output_locked(fmt, (uint32_t)w, (uint32_t)h)) goto out;
+    if (OV.of != G.out) {
+        if (OV.view) wait_idle(), vkDestroyImageView(vk_ctx()->device, OV.view, NULL);
+        OV.view = make_view(G.out, fmt, VK_IMAGE_ASPECT_COLOR_BIT), OV.of = OV.view ? G.out : VK_NULL_HANDLE;
+        if (!OV.view) goto out;
+    }
+    if (BB.img && (BB.w != (uint32_t)w || BB.h != (uint32_t)h)) wait_idle(), drop(&BB.img, &BB.mem, &BB.view);
+    if (!BB.img) {
+        if (!make_image(fmt, (uint32_t)w, (uint32_t)h, VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
+                        VK_IMAGE_ASPECT_COLOR_BIT, &BB.img, &BB.mem, &BB.view)) {
+            if (G.fails++ < 4) rt_log("frame generation: DLSS picture copy %dx%d failed", w, h);
+            goto out;
+        }
+        BB.w = (uint32_t)w, BB.h = (uint32_t)h;
+        layout_general(cb, BB.img, VK_IMAGE_ASPECT_COLOR_BIT);
+        G.reset = 1;
+    }
+    barrier(cb, G.out, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL, 0, VK_ACCESS_SHADER_WRITE_BIT);
+    sync(cb);
+    VkImageCopy pc = {.srcSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1},
+                      .dstSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1}, .extent = {(uint32_t)w, (uint32_t)h, 1}};
+    vkCmdCopyImage(cb, src, VK_IMAGE_LAYOUT_GENERAL, BB.img, VK_IMAGE_LAYOUT_GENERAL, 1, &pc);   // the window's own cb: made at once
+    sync(cb);
+    SnapDlssgFrame f = {.backbuffer = {BB.img, BB.view, fmt, (uint32_t)w, (uint32_t)h},
+                        .depth = {DR[i].z, DR[i].z_view, DR[i].z_fmt, DR[i].w, DR[i].h},
+                        .mv = {DR[i].mv, DR[i].mv_view, VK_FORMAT_R16G16_SFLOAT, DR[i].w, DR[i].h},
+                        .out = {G.out, OV.view, fmt, (uint32_t)w, (uint32_t)h},
+                        .jitter_x = DR[i].jx, .jitter_y = DR[i].jy, .reset = G.reset || DR[i].reset, .cam = DR[i].cam};
+    static int hud_state = -1, hud_changes;
+    int hud = HL[i].img && HL[i].id == id && HL[i].w == (uint32_t)w && HL[i].h == (uint32_t)h && fmt == VK_FORMAT_R8G8B8A8_UNORM;
+    if (hud) {
+        if (DV[i].of != HL[i].img) {
+            if (DV[i].view) wait_idle(), vkDestroyImageView(vk_ctx()->device, DV[i].view, NULL);
+            DV[i].view = make_view(HL[i].img, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_ASPECT_COLOR_BIT);
+            DV[i].of = DV[i].view ? HL[i].img : VK_NULL_HANDLE;
+        }
+        if (DV[i].view) f.hudless = (SnapDlssgImage){HL[i].img, DV[i].view, VK_FORMAT_R8G8B8A8_UNORM, (uint32_t)w, (uint32_t)h};
+        else hud = 0;
+    }
+    if (hud_state != hud && hud_changes++ < 8) {
+        hud_state = hud;
+        rt_log("frame generation: %s", hud ? "HUD-less image from the tonemapped scene (no HUD trails)" : "no HUD-less image this frame");
+    }
+    static int test = -1;   // NEWSNAP_DLSSG_TEST (diagnostics): 1 no HUD-less image, 2 with OutputReal, 8 no evaluation
+    if (test < 0) { const char *t = getenv("NEWSNAP_DLSSG_TEST"); test = t ? atoi(t) : 0; }
+    if (test & 1) f.hudless.image = VK_NULL_HANDLE;
+    static VkImage rl; static VmaAllocation rl_mem; static VkImageView rl_view;
+    if ((test & 2) && !rl && make_image(fmt, (uint32_t)w, (uint32_t)h, VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT, VK_IMAGE_ASPECT_COLOR_BIT, &rl, &rl_mem, &rl_view))
+        layout_general(cb, rl, VK_IMAGE_ASPECT_COLOR_BIT);
+    if ((test & 2) && rl) f.real = (SnapDlssgImage){rl, rl_view, fmt, (uint32_t)w, (uint32_t)h};
+    int ok = test & 8 ? 0 : snap_dlssg_generate(cb, &f);
+    sync(cb);
+    if (test & 8) goto out;
+    if (!ok) {
+        G.fails++;
+        goto out;
+    }
+    G.reset = 0;
+    result = G.out;
+    __atomic_add_fetch(&fg_generated, 1, __ATOMIC_RELAXED);
+    static int logged;
+    if (!logged) logged = 1, rt_log("frame generation: first DLSS generated frame %dx%d (frame id %llu)", w, h, (unsigned long long)id);
+out:
+    plat_mutex_unlock(&fg_lock);
+    return result;
+}
+
+// NEWSNAP_FG_SHOTS=<folder> (diagnostics): from generated frame NEWSNAP_FG_SHOTS_FROM on, every 300th generated frame
+// is saved as the window shows it (gen-<n>.png), with the real frames shown before and after it (real-<n>a.png,
+// real-<n>b.png), to look at what the generation makes. Present thread.
+void vk_present_shot(const char *path);   // gfx_present.c: the picture of the present being recorded
+static void fg_shot(int generated) {
+    static const char *dir;
+    static int init, pending;
+    static uint64_t from, n, at;
+    if (!init) {
+        init = 1;
+        dir = getenv("NEWSNAP_FG_SHOTS");
+        const char *f = getenv("NEWSNAP_FG_SHOTS_FROM");
+        from = f ? strtoull(f, NULL, 10) : 0;
+        if (dir && !*dir) dir = NULL;
+        if (dir) plat_fs_mkdir(dir);
+    }
+    if (!dir) return;
+    char path[1200];
+    if (generated) {
+        n++;
+        if (pending == 1) {   // the generated frame after the real one that was saved
+            snprintf(path, sizeof path, "%s/gen-%llu.png", dir, (unsigned long long)at);
+            vk_present_shot(path);
+            pending = 2;
+        }
+        return;
+    }
+    if (pending == 2) {
+        snprintf(path, sizeof path, "%s/real-%llub.png", dir, (unsigned long long)at);
+        vk_present_shot(path);
+        pending = 0;
+    } else if (!pending && n >= from && n % 300 == 0 && n != at) {
+        at = n;
+        snprintf(path, sizeof path, "%s/real-%llua.png", dir, (unsigned long long)at);
+        vk_present_shot(path);
+        pending = 1;
+    }
+}
+
+static VkImage fsr_present_source(VkCommandBuffer cb, VkImage src, VkFormat fmt, int w, int h);
+
 VkImage snap_fg_present_source(VkCommandBuffer cb, VkImage src, VkFormat fmt, int w, int h) {
     if (!snap_fg_enabled() || !src || w <= 0 || h <= 0) return VK_NULL_HANDLE;
+    VkImage made = snap_fg_mode() == 2 ? dlss_present_source(cb, src, fmt, w, h) : fsr_present_source(cb, src, fmt, w, h);
+    fg_shot(made != VK_NULL_HANDLE);
+    return made;
+}
+
+static VkImage fsr_present_source(VkCommandBuffer cb, VkImage src, VkFormat fmt, int w, int h) {
     fmt = unorm(fmt);
     plat_mutex_lock(&fg_lock);
     VkImage result = VK_NULL_HANDLE;
@@ -454,6 +713,20 @@ out:
 }
 
 void snap_fg_release(void) {
+    if (snap_fg_mode() == 2) {   // FG-DLSS: the device is idle here (gfx_present.c release)
+        plat_mutex_lock(&fg_lock);
+        snap_dlssg_release();
+        for (int i = 0; i < HUDLESS_N; i++) {
+            drop(&DR[i].z, &DR[i].z_mem, &DR[i].z_view), drop(&DR[i].mv, &DR[i].mv_mem, &DR[i].mv_view);
+            if (DV[i].view) vkDestroyImageView(vk_ctx()->device, DV[i].view, NULL), DV[i].view = VK_NULL_HANDLE;
+            if (HL[i].img) vmaDestroyImage(vk_ctx()->vma, HL[i].img, HL[i].mem), HL[i].img = VK_NULL_HANDLE;
+        }
+        drop(&BB.img, &BB.mem, &BB.view);
+        if (OV.view) vkDestroyImageView(vk_ctx()->device, OV.view, NULL), OV.view = VK_NULL_HANDLE;
+        if (G.out) { vmaDestroyImage(vk_ctx()->vma, G.out, G.out_mem); G.out = VK_NULL_HANDLE; }
+        plat_mutex_unlock(&fg_lock);
+        return;
+    }
     if (!G.module) return;
     plat_mutex_lock(&fg_lock);
     if (G.ctx) { G.destroy(&G.ctx, NULL); G.ctx = NULL; }
@@ -468,6 +741,13 @@ void snap_fg_prepare(VkCommandBuffer cb, const SnapFsrFrame *f, uint32_t rw, uin
     (void)cb; (void)f; (void)rw; (void)rh; (void)ow; (void)oh;
 }
 uint64_t snap_fg_take(void) { return 0; }
+void snap_fg_prepare_dlss(VkCommandBuffer cb, VkImage depth, VkFormat depth_format, uint32_t level, uint32_t layer,
+                          VkImage motion, uint32_t w, uint32_t h, uint32_t ow, uint32_t oh, float jitter_x,
+                          float jitter_y, int reset) {
+    (void)cb; (void)depth; (void)depth_format; (void)level; (void)layer; (void)motion; (void)w; (void)h; (void)ow;
+    (void)oh; (void)jitter_x; (void)jitter_y; (void)reset;
+}
+void snap_dlssg_release(void);
 void snap_fg_arm(uint64_t id) { (void)id; }
 VkImage snap_fg_present_source(VkCommandBuffer cb, VkImage src, VkFormat fmt, int w, int h) {
     (void)cb; (void)src; (void)fmt; (void)w; (void)h;

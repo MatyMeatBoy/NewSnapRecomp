@@ -90,5 +90,17 @@ class RetiredFilesTests(unittest.TestCase):
             self.assertEqual(remove_retired_files(install / 'missing'), [])
 
 
+    def test_dlss_frame_generation_needs_dlss_as_the_upscaler(self):
+        self.assertEqual(settings.validate_settings({'frame_gen': 'dlss'}), {'frame_gen': 'dlss'})
+        settings.validate_video_combination({'upscaling': 'dlss', 'frame_gen': 'dlss'})
+        settings.validate_video_combination({'upscaling': 'dlss', 'frame_gen': 'dlss', 'upscaling_quality': 'native',
+                                             'render_scale': '150'})
+        for upscaling in ('off', 'auto', 'fsr3', 'fsr4'):
+            with self.assertRaises(ValueError):
+                settings.validate_video_combination({'upscaling': upscaling, 'frame_gen': 'dlss'})
+        with self.assertRaises(ValueError):
+            settings.validate_settings({'frame_gen': 'dlssg'})
+
+
 if __name__ == '__main__':
     unittest.main()

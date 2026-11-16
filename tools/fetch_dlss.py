@@ -1,4 +1,4 @@
-"""Provision the optional pinned official NVIDIA DLSS SR runtime (no game inputs)."""
+"""Provision the optional pinned official NVIDIA DLSS runtime: Super Resolution and Frame Generation (no game inputs)."""
 import argparse
 import hashlib
 import json
@@ -9,12 +9,14 @@ VERSION = '310.9.16'
 COMMIT = '9981c6350dc58c0ce21f024fd65e31e851c31689'
 BASE = f'https://raw.githubusercontent.com/NVIDIA/DLSS/{COMMIT}/'
 DLL = 'lib/Windows_x86_64/rel/nvngx_dlss.dll'
+FG_DLL = 'lib/Windows_x86_64/rel/nvngx_dlssg.dll'   # FG-DLSS: frame generation (RTX 40 and 50 series)
 FILES = {
     DLL: (58956912, 'd00b5b0ab29c3ca101b70c3a5ecb3a01b7ef33766a3383a28a18623083e6123e'),
+    FG_DLL: (7506544, '8d59d49b36410dd6b62fef2503a5871d347415bd85d943fa0848563a95dd50c7'),
     'LICENSE.txt': (26620, 'd4216e39ebef5f9b50a6712ebb37beeb5379862a67733a9999c651f21592aaf0'),
 }
 DEFAULT_OUT = Path(__file__).resolve().parents[1] / f'toolchain/dlss-sdk-{VERSION}'
-INSTALLED_FILES = {DLL: 'nvngx_dlss.dll', 'LICENSE.txt': 'licenses/NVIDIA-DLSS.txt'}
+INSTALLED_FILES = {DLL: 'nvngx_dlss.dll', FG_DLL: 'nvngx_dlssg.dll', 'LICENSE.txt': 'licenses/NVIDIA-DLSS.txt'}
 
 
 def verify_file(path, size, digest):
@@ -37,7 +39,7 @@ def _write(path, data):
 
 def _receipt():
     return (json.dumps({'version': VERSION, 'commit': COMMIT, 'source': BASE,
-                        'feature': 'Super Resolution / DLAA only', 'files': FILES}, indent=2)
+                        'feature': 'Super Resolution / DLAA and Frame Generation', 'files': FILES}, indent=2)
             + '\n').encode('utf-8')
 
 

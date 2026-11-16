@@ -135,6 +135,18 @@ class BuildKitAcquisitionTests(unittest.TestCase):
         self.assertEqual(self.calls, [])
         self.assertEqual(list(self.cache.glob('.build-kit-*')), [])
 
+    def test_first_installation_leaves_receipts_that_followed_the_files_into_the_cache(self):
+        from newsnap import verified_files
+        result = kit.ensure_build_kit(self.root)
+        stored = json.loads((self.cache / f'.verified-{result.name}.json').read_text())['files']
+        prefix = verified_files.key_of(result) + os.sep
+        self.assertTrue(all(name.startswith(prefix) for name in stored))
+        if os.stat(result / 'python/python.exe').st_ino:   # receipts follow a file only by its file id
+            self.assertEqual({name[len(prefix):].replace(os.sep, '/') for name in stored},
+                             {name.lower() if os.name == 'nt' else name for name in self.data})
+            self.assertEqual({entry['sha256'] for entry in stored.values()},
+                             {hashlib.sha256(b'public fixture').hexdigest()})
+
     def bundle(self):
         archive = self.root / 'build-kits' / self.name
         archive.parent.mkdir(exist_ok=True)

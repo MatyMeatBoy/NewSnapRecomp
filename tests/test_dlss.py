@@ -15,7 +15,8 @@ class DlssProvisionTests(unittest.TestCase):
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name) / 'cache'
         self.runtime = Path(self.temp.name) / 'runtime'
-        self.data = {dlss.DLL: b'MZ vendor fixture', 'LICENSE.txt': b'full vendor terms\n'}
+        self.data = {dlss.DLL: b'MZ vendor fixture', dlss.FG_DLL: b'MZ frame generation fixture',
+                     'LICENSE.txt': b'full vendor terms\n'}
         identities = {n: (len(b), hashlib.sha256(b).hexdigest()) for n, b in self.data.items()}
         self.patch = patch.object(dlss, 'FILES', identities)
         self.patch.start()
@@ -34,7 +35,8 @@ class DlssProvisionTests(unittest.TestCase):
         receipt = json.loads((self.runtime / 'licenses/NVIDIA-DLSS-receipt.json').read_text())
         self.assertEqual(receipt['commit'], dlss.COMMIT)
         self.assertEqual(receipt['version'], dlss.VERSION)
-        self.assertEqual(list(self.runtime.glob('*.dll')), [installed])
+        self.assertEqual((self.runtime / 'nvngx_dlssg.dll').read_bytes(), self.data[dlss.FG_DLL])
+        self.assertEqual(sorted(self.runtime.glob('*.dll')), [installed, self.runtime / 'nvngx_dlssg.dll'])
 
     def test_verified_cache_does_not_download_again(self):
         dlss.fetch(self.root, self.opener)

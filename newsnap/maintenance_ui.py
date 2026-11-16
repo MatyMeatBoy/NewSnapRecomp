@@ -33,6 +33,9 @@ class RuntimeMaintenance:
         self.repair.pack(side='left')
         self.cancel=ttk.Button(row,text='Cancelar preparación',command=self.cancel_event.set,state='disabled')
         self.cancel.pack(side='left',padx=8)
+        from .progress_bar import page_bar
+        self.bar=page_bar(row,width=220,height=12)   # this page's own view of the rebuild's progress
+        if self.bar is not None:self.bar.pack(side='left',padx=(8,0))
         launcher.root.after(150,self.poll)
 
     def start(self, *, force=False, resume_game=False):
@@ -45,6 +48,7 @@ class RuntimeMaintenance:
         self.repair.configure(state='disabled')
         self.cancel.configure(state='normal')
         self.status.configure(text='Preparando la reconstrucción local…')
+        self._show_progress(None)
         def progress(message):
             self.events.put(('progress',message))
         def work():
@@ -57,13 +61,24 @@ class RuntimeMaintenance:
                 if not force and not assess_runtime(self.launcher.project)['needs_rebuild']:
                     self.events.put(('done',{'rebuilt':False}))
                     return
-                kit=ensure_build_kit(self.launcher.project,progress=progress,cancel_event=self.cancel_event)
+                # force: the player's «Verificar / reconstruir juego» reads the kit and the original data whole.
+                kit=ensure_build_kit(self.launcher.project,progress=progress,cancel_event=self.cancel_event,full=force)
                 result=rebuild_runtime(self.launcher.project,kit,cancel_event=self.cancel_event,progress=progress,force=force)
                 self.events.put(('done',result))
             except Exception as error:
                 self.events.put(('error',str(error)))
         threading.Thread(target=work,daemon=True).start()
         return True
+
+    def _show_progress(self,ratio,running=True):
+        """Measured part of the current stage from left to right, or the travelling segment while it has no count."""
+        bar=getattr(self,'bar',None)
+        if bar is None:return
+        bar.stop()
+        if ratio is None and running:
+            bar.configure(mode='indeterminate',value=0);bar.start()
+        else:
+            bar.configure(mode='determinate',maximum=1000,value=round((ratio or 0)*1000))
 
     def poll(self):
         try:
@@ -77,8 +92,10 @@ class RuntimeMaintenance:
                     self.status.configure(text=update.label)
                     self.launcher.status.set(update.label)
                     self.launcher.home.progress.report(update)
+                    self._show_progress(update.ratio)
                     continue
                 self.active=False
+                self._show_progress(0,running=False)
                 self.repair.configure(state='normal')
                 self.cancel.configure(state='disabled')
                 self.launcher._set_busy(False)

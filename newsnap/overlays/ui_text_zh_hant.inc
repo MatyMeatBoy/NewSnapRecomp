@@ -128,7 +128,7 @@ static const char *const text_zh_hant[UI_TEXT_COUNT] = {
                         "不參與插補。當遊戲的速度超過螢幕更新率的一半時會自動暫停。"
                         "效能資訊會顯示真實的 FPS 與生成的 FPS。"
                         "重新啟動後套用。",
-    [UI_SNAP_FG_NEEDS] = "需要以 AMD FSR 3.1 或 FSR 4 作為升頻器",
+    [UI_SNAP_FG_NEEDS] = "需要以 AMD FSR 3.1 或 FSR 4、NVIDIA DLSS 作為升頻器",
     [UI_SNAP_HDPH] = "HD 相片縮圖",
     [UI_SNAP_HDPH_DESC] = "拍照後的預覽，以及資料夾與選擇畫面中的相片，會使用 "
                           "1080 x 720 的相片，而不是遊戲 360 x 240 的縮圖。儲存的相片與評分"

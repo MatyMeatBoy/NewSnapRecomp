@@ -104,7 +104,7 @@ def run_logged(command, logfile, env=None):
 
 
 def build(sdk_root, shader_tools=None, jobs=0, generate=True, cpu='v3', *, owner_data=None, work_dir=None,
-          generation_cache_root=None):
+          generation_cache_root=None, full_verification=False):
     sdk_root = Path(sdk_root).resolve()
     verify_translator(sdk_root / 'bin')
     work = Path(work_dir).resolve() if work_dir else ROOT / 'build'
@@ -122,7 +122,14 @@ def build(sdk_root, shader_tools=None, jobs=0, generate=True, cpu='v3', *, owner
         from .upstream import extractor
         owner_data = Path(owner_data).resolve()
         print('Checking original owner modules and RomFS against the supported-version recipe', flush=True)
-        manifest, control = verify_owner_inputs(owner_data, profile)
+        # Data the launcher already verified on this PC and that is unchanged since (size, time, file id, both
+        # ends of the image) is recognised by its receipt; full_verification reads every byte again.
+        from .home_state import owner_receipts
+        receipts = owner_receipts(owner_data, profile)
+        manifest, control = verify_owner_inputs(owner_data, profile, receipts=receipts, full=full_verification)
+        receipts.save()
+        print(f'Owner inputs: {receipts.hashed} read whole, {receipts.reused} recognised from their receipts',
+              flush=True)
         exefs = owner_data / 'exefs'
         romfs = work / 'owner-romfs'
         romfs.mkdir(parents=True, exist_ok=True)
@@ -158,7 +165,8 @@ def build(sdk_root, shader_tools=None, jobs=0, generate=True, cpu='v3', *, owner
     lookup_seconds = generation_seconds = publish_seconds = 0.0
     if owner_data and generate:
         from .generation_cache import GenerationCache, owner_identity
-        # Original ExeFS and the entire RomFS were verified above, even on a hit.
+        # Original ExeFS and the entire RomFS were verified above (read whole, or recognised as the unchanged
+        # files of an earlier whole read), even on a hit.
         identity = owner_identity(owner_data, manifest, profile['romfs_sha256'])
         cache = GenerationCache(generation_cache_root)
         started = time.perf_counter()

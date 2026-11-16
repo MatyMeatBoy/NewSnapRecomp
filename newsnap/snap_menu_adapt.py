@@ -23,10 +23,10 @@ TEXTS = {
     'UI_SNAP_SMAA_MEDIUM': 'Medium',
     'UI_SNAP_SMAA_HIGH': 'High',
     'UI_SNAP_FG': 'Frame generation',
-    'UI_SNAP_FG_DESC': 'AMD FSR frame generation: one generated frame between two real ones. The interface is kept out of '
+    'UI_SNAP_FG_DESC': 'AMD FSR or NVIDIA DLSS (RTX 40 and 50) frame generation: one generated frame between two real ones. The interface is kept out of '
                        'the interpolation. It pauses itself while the game runs faster than about half the monitor\'s '
                        'refresh. The performance overlay shows real fps and the generated ones. Takes effect after a restart.',
-    'UI_SNAP_FG_NEEDS': 'needs AMD FSR 3.1 or FSR 4 as the upscaler',
+    'UI_SNAP_FG_NEEDS': 'needs AMD FSR 3.1, FSR 4 or NVIDIA DLSS as the upscaler',
     'UI_SNAP_HDPH': 'HD photo thumbnails',
     'UI_SNAP_HDPH_DESC': 'The preview after a shot and the photos on the folder and selection screens use the 1080 x 720 '
                          'photo instead of the game\'s 360 x 240 thumbnail. Saved photos and scores do not change.',
@@ -87,20 +87,21 @@ static void snap_rows_enhancements(void) {
     {
         static char note[64];
         int n = snap_texpack_files();
-        if (n > 0) {   // shown only once a pack exists
+        if (0 && n > 0) {   // hidden (owner, 2026-11-15): no colour textures redrawn by a generative upscaler
             snprintf(note, sizeof note, "%d textures", n);
             opt_toggle("AC_TEX_PACK", UI_SNAP_TEXPACK, UI_SNAP_TEXPACK_DESC);
         }
         (void)note;
     }
     {
-        static const char *const vals[] = {"off", "fsr"};
-        static const char *const names[] = {"Off", "AMD FSR (1 generated frame)"};
+        static const char *const vals[] = {"off", "fsr", "dlss"};
+        static const char *const names[] = {"Off", "AMD FSR (1 generated frame)", "NVIDIA DLSS (1 generated frame)"};
         const char *runs = vk_dlaa_upscaler_name();
         const char *up = cfg_upscaling();
         bool fsr = (runs && strstr(runs, "FSR")) || !strcmp(up, "fsr3") || !strcmp(up, "fsr4");
-        if (!fsr) opt_disable_next(UI_SNAP_FG_NEEDS);
-        opt_choice_list("AC_FRAME_GEN", UI_SNAP_FG, vals, names, 2, UI_SNAP_FG_DESC);
+        bool dlss = (runs && strstr(runs, "DLSS")) || !strcmp(up, "dlss");   // FG-DLSS
+        if (!fsr && !dlss) opt_disable_next(UI_SNAP_FG_NEEDS);
+        opt_choice_list("AC_FRAME_GEN", UI_SNAP_FG, vals, names, 3, UI_SNAP_FG_DESC);
     }
 }
 

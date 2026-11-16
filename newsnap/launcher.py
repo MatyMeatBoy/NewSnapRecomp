@@ -10,6 +10,7 @@ import tkinter as tk
 import uuid
 from tkinter import filedialog, messagebox, ttk
 
+from . import fonts
 from . import launcher_settings as settings
 from .paths import runtime_dir
 from .upstream import ROOT
@@ -45,39 +46,45 @@ class Launcher:
         self.page, self.album_generation, self.preview_generation = 0, 0, 0
         self.preview = None
         self.root.title(f'NewSnap · {VERSION}')
-        self.root.geometry('1180x790')
-        self.root.minsize(1000, 730)
+        self.root.geometry('1200x810')
+        self.root.minsize(1020, 750)
         self.root.configure(bg=CREAM)
         self.root.protocol('WM_DELETE_WINDOW', self.close)
+        fonts.load()   # the launcher's own typeface, private to this process, before any Tk font exists
         self._style()
         icon = self.project / 'assets/icons/newsnap.ico'
         if icon.is_file():
             try:
-                self.root.iconbitmap(str(icon))
+                self.root.iconbitmap(default=str(icon))   # the dialogs' title bars too
             except tk.TclError:
                 pass
-        shell = tk.Frame(root, bg=CREAM)
+        frame = tk.Frame(root, bg=CREAM)
+        frame.pack(fill='both', expand=True)
+        from .window_chrome import Chrome   # the launcher's own title bar; the native one if it cannot be set up
+        self.chrome = Chrome(root, frame, title='NewSnap', detail=f'Launcher {VERSION}', on_close=self.close)
+        shell = tk.Frame(frame, bg=CREAM)
         shell.pack(fill='both', expand=True)
-        main = tk.Frame(shell, bg=CREAM)
         self.status = tk.StringVar(value='Carga o verifica los datos del juego para comenzar.')
-        ttk.Label(main, textvariable=self.status, style='Status.TLabel', padding=(25, 9)).pack(side='bottom', fill='x')
+        from .shell_ui import Backdrop   # textured paper with the pages on a raised sheet and the status line
+        main = Backdrop(shell, self.status)
         self.tabs = ttk.Notebook(main, style='Pages.TNotebook')
-        self.tabs.pack(fill='both', expand=True, padx=22, pady=(16, 8))
-        self.play_tab, self.album_tab, self.options_tab, self.controls_tab = [ttk.Frame(self.tabs, padding=16) for _ in range(4)]
+        main.host(self.tabs)
+        self.play_tab, self.album_tab, self.options_tab, self.controls_tab = [ttk.Frame(self.tabs, padding=(18, 14)) for _ in range(4)]
         for frame, title in zip((self.play_tab, self.album_tab, self.options_tab, self.controls_tab), ('Inicio', 'Álbum', 'Opciones', 'Controles')):
             self.tabs.add(frame, text=title)
         option_pages=ttk.Notebook(self.options_tab);option_pages.pack(fill='both',expand=True)
         self.video_tab,self.audio_tab,self.game_tab=[ttk.Frame(option_pages,padding=8) for _ in range(3)]
         for frame,title in ((self.video_tab,'Vídeo'),(self.audio_tab,'Audio'),(self.game_tab,'Juego')):option_pages.add(frame,text=title)
-        self.mods_tab = ttk.Frame(self.tabs, padding=16)
+        self.mods_tab = ttk.Frame(self.tabs, padding=(18, 14))
         self.tabs.add(self.mods_tab, text='Mejoras')
-        self.update_tab = ttk.Frame(self.tabs, padding=16)
+        self.update_tab = ttk.Frame(self.tabs, padding=(18, 14))
         self.tabs.add(self.update_tab, text='Actualizaciones')
         from .sidebar_ui import Sidebar
         self.sidebar = Sidebar(shell, self.tabs, ((self.play_tab, 'Inicio'), (self.album_tab, 'Álbum'),
                                                   (self.options_tab, 'Opciones'), (self.controls_tab, 'Controles'),
                                                   (self.mods_tab, 'Mejoras'), (self.update_tab, 'Actualizaciones')),
-                               version=VERSION, play=self.launch)
+                               version=VERSION, play=self.primary_action,
+                               icon_path=self.project / 'assets/icons/icon-64.png')
         self.sidebar.pack(side='left', fill='y')
         main.pack(side='left', fill='both', expand=True)
         from .home_ui import HomePanel
@@ -85,7 +92,9 @@ class Launcher:
         self._album()
         self._options()
         from .update_ui import UpdatePanel
-        self.updates = UpdatePanel(self, self._scrolling_options(self.update_tab), automatic=check_updates)
+        update_content = self._scrolling_options(self.update_tab)
+        self.updates = UpdatePanel(self, update_content, automatic=check_updates)
+        self._fit_labels(update_content)
         self.tabs.bind('<<NotebookTabChanged>>',self._tab_changed,add='+')
         self.root.after(100, self._poll)
         self.album_status.set('Abre el álbum para cargar las fotografías del perfil.')
@@ -93,21 +102,11 @@ class Launcher:
     def _style(self):
         style = ttk.Style(self.root)
         style.theme_use('clam')
-        style.configure('.', font=('Segoe UI', 11), background=CREAM, foreground=INK, focuscolor=CREAM)
-        style.configure('TFrame', background=CREAM)
-        style.configure('TCheckbutton', background=CREAM, indicatorbackground='#fffdf6', indicatorforeground='#163d32')
-        style.map('TCheckbutton', background=[('active', CREAM)])
-        style.configure('TScrollbar', background='#e1e0d0', troughcolor=CREAM, bordercolor=CREAM, arrowcolor=GREEN,
-                        lightcolor='#e1e0d0', darkcolor='#e1e0d0', relief='flat')
-        style.configure('Title.TLabel', font=('Segoe UI', 20, 'bold'))
-        style.configure('Muted.TLabel', foreground='#597067')
-        style.configure('Status.TLabel', background='#e9e8db', font=('Segoe UI', 10))
-        from .theme import Bubble   # rounded buttons, fields, cards, tabs and bars for every page
+        import tkinter.font as tkfont
+        fonts.confirm(tkfont.families(self.root))   # Segoe UI when the launcher's typeface is not usable
+        from .theme import Bubble   # fonts, colours and rounded buttons, fields, cards, tabs for every page
         self.bubble = Bubble(self.root)
-        try:
-            self.bubble.apply(style)
-        except Exception:   # the elements exist already (a second launcher in one process): keep them
-            pass
+        self.bubble.apply(style)
 
     def _play(self):
         frame = self.play_tab
@@ -123,7 +122,7 @@ class Launcher:
         ttk.Label(copy, text='Una cámara.\nUn mundo por descubrir.', style='Title.TLabel').pack(anchor='w', pady=(3, 10))
         ttk.Label(copy, text='Continúa tu expedición con tu perfil local.\nTus fotografías te esperan en el álbum.',
                   style='Muted.TLabel', wraplength=560, justify='left').pack(anchor='w')
-        ttk.Label(frame, text='PERFIL LOCAL', font=('Segoe UI', 9, 'bold')).pack(anchor='w')
+        ttk.Label(frame, text='PERFIL LOCAL', font=fonts.ui(10, 'bold')).pack(anchor='w')
         self.profile_text = tk.StringVar(value=str(self.profile))
         ttk.Label(frame, textvariable=self.profile_text, wraplength=770, style='Muted.TLabel').pack(anchor='w', pady=(7, 10))
         self.profile_button = ttk.Button(frame, text='Elegir perfil…', command=self.choose_profile)
@@ -192,6 +191,7 @@ class Launcher:
         self.save_buttons = []
         actions = ttk.Frame(self.video_tab, padding=(0, 10, 0, 0))
         actions.pack(side='bottom', fill='x')
+        self._rule(self.video_tab)
         save = ttk.Button(actions, text='Guardar ajustes', style='Accent.TButton', command=self.save_options)
         save.pack(side='left')
         self.save_buttons.append(save)
@@ -259,6 +259,7 @@ class Launcher:
         self._heading(video, 'Color original del juego')
         self._help(video, 'Salida neutra: conserva los colores y el posprocesado propios de Snap. '
                    'Sin perfiles de contraste, saturación, gamma, HDR añadido ni nitidez adicional del port.')
+        self._fit_labels(video)
         self._audio_options()
         self._game_options()
         self._control_options()
@@ -349,6 +350,7 @@ class Launcher:
     def _settings_footer(self, frame, *, controls=False):
         footer = ttk.Frame(frame, padding=(0, 10, 0, 0))
         footer.pack(side='bottom', fill='x')
+        self._rule(frame)
         button = ttk.Button(footer, text='Guardar ajustes', style='Accent.TButton', command=self.save_options)
         button.pack(side='left')
         self.save_buttons.append(button)
@@ -397,9 +399,11 @@ class Launcher:
                      help_text='Ofrece los idiomas declarados por Snap. El juego conserva su propia elección de texto y voces; si un perfil sigue en otro idioma, cámbialo también en sus ajustes de idioma.')
 
     def _control_options(self):
-        self.controller_test_button=ttk.Button(self.controls_tab,text='Probar mando conectado…',command=self.show_controller_test)
-        self.controller_test_button.pack(anchor='w',pady=(0,10))
-        ttk.Label(self.controls_tab, text='Encuentra tu encuadre', style='Title.TLabel').pack(anchor='w', pady=(0, 8))
+        header = ttk.Frame(self.controls_tab)
+        header.pack(fill='x', pady=(0, 8))
+        ttk.Label(header, text='Encuentra tu encuadre', style='Title.TLabel').pack(side='left')
+        self.controller_test_button=ttk.Button(header,text='Probar mando conectado…',command=self.show_controller_test)
+        self.controller_test_button.pack(side='right')
         self._settings_footer(self.controls_tab, controls=True)
         sections = ttk.Notebook(self.controls_tab)
         sections.pack(fill='both', expand=True)
@@ -465,8 +469,9 @@ class Launcher:
         elif self.variables['tex_pack_save'].get() == '1':
             self.variables['tex_pack_save'].set('0')   # nothing left saving textures for a step that is hidden
         self._heading(content, 'Fluidez')
-        self._choice(content, 'Generación de fotogramas · FSR', 'frame_gen', {'Desactivada': 'off', 'AMD FSR · 1 fotograma generado': 'fsr'},
-                     help_text='Inserta un fotograma generado entre cada dos reales: con el juego a 60 fps se muestran unos 120. Necesita FSR 3.1 o FSR 4. Solo genera si el monitor puede mostrarlo (unos 110 Hz o más a 60 fps); en un monitor más lento se pausa sola y el juego sigue a su ritmo, con cualquier modo de presentación. Añade un fotograma de latencia. El HUD se separa de la escena para que no deje estela. Experimental.')
+        self._choice(content, 'Generación de fotogramas', 'frame_gen', {'Desactivada': 'off', 'AMD FSR · 1 fotograma generado': 'fsr',
+                                                                     'NVIDIA DLSS · 1 fotograma generado (RTX 40/50)': 'dlss'},
+                     help_text='Inserta un fotograma generado entre cada dos reales: con el juego a 60 fps se muestran unos 120. La de AMD FSR necesita el escalador FSR 3.1 o FSR 4 y funciona en cualquier GPU; la de NVIDIA DLSS necesita el escalador DLSS y una RTX serie 40 o 50. Solo genera si el monitor puede mostrarlo (unos 110 Hz o más a 60 fps); en un monitor más lento se pausa sola y el juego sigue a su ritmo. Añade un fotograma de latencia. El HUD se separa de la escena para que no deje estela. Experimental.')
 
     def _aim_options(self, content):
         self._heading(content, 'Giroscopio')
@@ -531,13 +536,31 @@ class Launcher:
         self.root.bind_all('<MouseWheel>', wheel, add='+')
         return content
 
+    @staticmethod
+    def _fit_labels(content):
+        """Long texts of a scrolling page wrap at the page's width instead of a fixed one (no clipped lines)."""
+        def fit(event):
+            if event.widget is content:
+                for child in content.winfo_children():
+                    try:
+                        if child.winfo_class() == 'TLabel' and int(str(child.cget('wraplength')) or 0) >= 400:
+                            child.configure(wraplength=max(400, event.width - 34))
+                    except (tk.TclError, ValueError):
+                        pass
+        content.bind('<Configure>', fit, add='+')
+
+    @staticmethod
+    def _rule(frame):
+        """A hairline above a page's fixed footer, so scrolled content does not run into the buttons."""
+        tk.Frame(frame, height=1, bg='#dcdccd').pack(side='bottom', fill='x')
+
     def _help(self, frame, text):
         label = ttk.Label(frame, text=text, style='Muted.TLabel', wraplength=680, justify='left')
         label.pack(anchor='w', fill='x', pady=(0, 12))
         label.bind('<Configure>', lambda event: label.configure(wraplength=max(200, event.width)))
 
     def _heading(self, frame, title):
-        ttk.Label(frame, text=title, font=('Segoe UI', 13, 'bold')).pack(anchor='w', pady=(8, 12))
+        ttk.Label(frame, text=title, style='Heading.TLabel').pack(anchor='w', pady=(12, 10))
 
     def _choice(self, frame, label, key, choices, *, editable=False, help_text=None, changed=None, choice_width=25):
         row = ttk.Frame(frame)
@@ -683,6 +706,17 @@ class Launcher:
         if hasattr(self,'sidebar'):self.sidebar.set_busy(busy)
         if hasattr(self,'controller_test_button'):self.controller_test_button.configure(state='disabled' if busy else 'normal')
         if hasattr(self,'trace_present_button'):self.trace_present_button.configure(state='disabled' if busy else 'normal')
+
+    def primary_action(self):
+        """The main button (Home and the sidebar): verifies the game data when that is pending, otherwise plays.
+        Its label says which (play_action.py); after a verification it becomes «Jugar» without starting the game."""
+        if self.busy:
+            return
+        from .play_action import play_action
+        if play_action(self.home.refresh())['action'] == 'verify':
+            self.home.verify()
+        else:
+            self.launch()
 
     def launch(self):
         if self.busy:
@@ -880,82 +914,84 @@ class Launcher:
     def _poll(self):
         try:
             while True:
-                event = self.events.get_nowait()
-                kind = event[0]
-                if kind == 'status':
-                    self.status.set(event[1])
-                elif kind == 'progress':
-                    self.home.progress.report(event[1])
-                elif kind == 'game_started':
-                    self.home.progress.finish('Juego iniciado')
-                elif kind == 'preparation_fallback':
-                    self.status.set(event[1])
-                    if hasattr(self.home,'show_preparation_note'):
-                        self.home.show_preparation_note(event[1])
-                elif kind == 'diagnostics_done':
-                    self.diagnostics_running = False
-                    self.diagnostics_button.configure(state='normal')
-                    self.status.set('Diagnóstico exportado: '+event[1] if event[1] else 'No se pudo exportar el diagnóstico: '+event[2])
-                elif kind == 'game_started':
-                    # the game is up: the launcher steps out of the way; it keeps the session's log in the background,
-                    # comes back if the game fails, and closes when the game ends
-                    if not getattr(self, 'hidden_for_game', False):
-                        self.hidden_for_game = True
-                        self.root.withdraw()
-                elif kind == 'settings_saved':
-                    self.baseline=dict(event[1]);self._set_option_values(event[1])
-                elif kind == 'maintenance_needed':
-                    self._set_busy(False)
-                    self.updates.maintenance.start(resume_game=True)
-                elif kind == 'display_file':
-                    self.display.observe(*event[1:])
-                elif kind == 'finished':
-                    self._set_busy(False)
-                    self.reload_options()
-                    self.status.set('Listo para explorar' if event[1] is None else 'La expedición se detuvo')
-                    if event[1]:
-                        if getattr(self, 'hidden_for_game', False):
-                            self.hidden_for_game = False
-                            self.root.deiconify()
-                        self.home.progress.finish('No se pudo iniciar o continuar el juego',error=True)
-                        messagebox.showerror('No se pudo completar el inicio', event[1], parent=self.root)
-                    else:
-                        self.home.progress.finish('Juego cerrado · listo para iniciar otra expedición')
-                        if self._auto_hd_shadows():
-                            pass   # it closes (or shows the launcher again) when the light maps are done
-                        elif getattr(self, 'autoplay', False) or getattr(self, 'hidden_for_game', False):
-                            self.root.after(300, self.close)   # the game was its reason to stay: back to the desktop
-                    self._album_loaded=False
-                    self.display.stop();self.home.refresh();self._tab_changed()
-                elif kind == 'album_locked' and event[1] == self.album_generation:
-                    self.refresh_button.configure(state='normal')
-                    self.album_status.set('Cierra la expedición para actualizar el álbum. Puedes seguir viendo las fotografías ya cargadas.')
-                elif kind == 'photos' and event[1] == self.album_generation:
-                    self.photos, error = event[2:]
-                    self.page = 0
-                    self.refresh_button.configure(state='normal')
-                    self.album_status.set(f'No se pudo leer el álbum: {error}' if error else f'{len(self.photos)} fotografías · archivos locales, sin modificar guardados')
-                    if self.preview and self.preview.winfo_exists():
-                        self.preview.destroy()
-                    self.draw_page()
-                elif kind == 'thumb' and event[1:3] == (self.album_generation, self.page):
-                    tile = self.grid.winfo_children()[event[3]]
-                    button = tile.winfo_children()[0]
-                    if event[4] is None:
-                        button.configure(text='No se pudo abrir')
-                    else:
-                        image = self.ImageTk.PhotoImage(event[4], master=self.root)
-                        self.thumbnails.append(image)
-                        button.configure(image=image, text='')
-                elif kind == 'preview' and event[1] == self.preview_generation and self.preview and self.preview.winfo_exists():
-                    if event[2] is None:
-                        self.preview_image.configure(text='No se pudo abrir esta fotografía.')
-                    else:
-                        self.full_image = self.ImageTk.PhotoImage(event[2], master=self.preview)
-                        self.preview_image.configure(image=self.full_image, text='')
+                self._handle(self.events.get_nowait())
         except queue.Empty:
             pass
         self.root.after(100, self._poll)
+
+    def _handle(self, event):
+        """One event from the worker threads, on the Tk thread."""
+        kind = event[0]
+        if kind == 'status':
+            self.status.set(event[1])
+        elif kind == 'progress':
+            self.home.progress.report(event[1])
+        elif kind == 'game_started':
+            # the game is up: the launcher steps out of the way; it keeps the session's log in the background,
+            # comes back if the game fails, and closes when the game ends
+            self.home.progress.finish('Juego iniciado')
+            if not getattr(self, 'hidden_for_game', False):
+                self.hidden_for_game = True
+                self.root.withdraw()
+        elif kind == 'preparation_fallback':
+            self.status.set(event[1])
+            if hasattr(self.home,'show_preparation_note'):
+                self.home.show_preparation_note(event[1])
+        elif kind == 'diagnostics_done':
+            self.diagnostics_running = False
+            self.diagnostics_button.configure(state='normal')
+            self.status.set('Diagnóstico exportado: '+event[1] if event[1] else 'No se pudo exportar el diagnóstico: '+event[2])
+        elif kind == 'settings_saved':
+            self.baseline=dict(event[1]);self._set_option_values(event[1])
+        elif kind == 'maintenance_needed':
+            self._set_busy(False)
+            self.updates.maintenance.start(resume_game=True)
+        elif kind == 'display_file':
+            self.display.observe(*event[1:])
+        elif kind == 'finished':
+            self._set_busy(False)
+            self.reload_options()
+            self.status.set('Listo para explorar' if event[1] is None else 'La expedición se detuvo')
+            if event[1]:
+                if getattr(self, 'hidden_for_game', False):
+                    self.hidden_for_game = False
+                    self.root.deiconify()
+                self.home.progress.finish('No se pudo iniciar o continuar el juego',error=True)
+                messagebox.showerror('No se pudo completar el inicio', event[1], parent=self.root)
+            else:
+                self.home.progress.finish('Juego cerrado · listo para iniciar otra expedición')
+                if self._auto_hd_shadows():
+                    pass   # it closes (or shows the launcher again) when the light maps are done
+                elif getattr(self, 'autoplay', False) or getattr(self, 'hidden_for_game', False):
+                    self.root.after(300, self.close)   # the game was its reason to stay: back to the desktop
+            self._album_loaded=False
+            self.display.stop();self.home.refresh();self._tab_changed()
+        elif kind == 'album_locked' and event[1] == self.album_generation:
+            self.refresh_button.configure(state='normal')
+            self.album_status.set('Cierra la expedición para actualizar el álbum. Puedes seguir viendo las fotografías ya cargadas.')
+        elif kind == 'photos' and event[1] == self.album_generation:
+            self.photos, error = event[2:]
+            self.page = 0
+            self.refresh_button.configure(state='normal')
+            self.album_status.set(f'No se pudo leer el álbum: {error}' if error else f'{len(self.photos)} fotografías · archivos locales, sin modificar guardados')
+            if self.preview and self.preview.winfo_exists():
+                self.preview.destroy()
+            self.draw_page()
+        elif kind == 'thumb' and event[1:3] == (self.album_generation, self.page):
+            tile = self.grid.winfo_children()[event[3]]
+            button = tile.winfo_children()[0]
+            if event[4] is None:
+                button.configure(text='No se pudo abrir')
+            else:
+                image = self.ImageTk.PhotoImage(event[4], master=self.root)
+                self.thumbnails.append(image)
+                button.configure(image=image, text='')
+        elif kind == 'preview' and event[1] == self.preview_generation and self.preview and self.preview.winfo_exists():
+            if event[2] is None:
+                self.preview_image.configure(text='No se pudo abrir esta fotografía.')
+            else:
+                self.full_image = self.ImageTk.PhotoImage(event[2], master=self.preview)
+                self.preview_image.configure(image=self.full_image, text='')
 
     def close(self):
         if self.diagnostics_running:

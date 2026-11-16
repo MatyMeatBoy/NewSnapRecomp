@@ -18,10 +18,11 @@ from pathlib import Path, PurePosixPath
 from .paths import data_dir
 from .importer import write_json
 from .upstream import COMMIT
+from .verified_files import STORE as VERIFIED_STORE, VerifiedFiles
 from .version import VERSION, RUNTIME_API, RUNTIME_CAPABILITIES
 
 RUNTIME_FILES = ('newsnap.exe', 'SDL3.dll', 'libopus-0.dll', 'ac_xlate.exe',
-                 'ac_xlate.id', 'romfs-index.bin', 'libxess.dll', 'nvngx_dlss.dll',
+                 'ac_xlate.id', 'romfs-index.bin', 'libxess.dll', 'nvngx_dlss.dll', 'nvngx_dlssg.dll',
                  'upscalers/amd_fidelityfx_loader_vk.dll', 'upscalers/amd_fidelityfx_upscaler_vk.dll',
                  'upscalers/amd_fidelityfx_framegeneration_vk.dll',
                  'upscalers/license.md', 'upscalers/3rdpartynotice.md',
@@ -63,6 +64,14 @@ def _cancel(event):
         raise MaintenanceCancelled('Reconstrucción cancelada; se conserva el runtime anterior.')
 
 
+def _digest(path, cancel_event=None, receipts=None, full=False):
+    """digest(), or with receipts (verified_files.VerifiedFiles) the digest of a file already hashed on this PC
+    and unchanged since. full=True reads the file whole and renews its receipt."""
+    if receipts is None:
+        return digest(path, cancel_event)
+    return receipts.digest(path, lambda: _cancel(cancel_event), full=full)
+
+
 def _json(path):
     with Path(path).open('rb') as stream:
         raw = stream.read(8 << 20)
@@ -71,8 +80,14 @@ def _json(path):
     return json.loads(raw.decode('utf-8-sig'))
 
 
-def assess_runtime(root):
+def assess_runtime(root, *, full=False):
+    """Whether the installed runtime is the one its receipt describes, for this launcher version.
+
+    Runs before every game start. Files hashed before and unchanged since (verified_files) are not read again;
+    full=True reads every one.
+    """
     directory = data_dir(root)
+    receipts = VerifiedFiles(directory / VERIFIED_STORE)
     try:
         if (directory / TRANSACTION).exists():
             raise ValueError('Hay una reconstrucción interrumpida que necesita recuperación.')
@@ -86,20 +101,25 @@ def assess_runtime(root):
             revision = _json(Path(root) / 'MANIFEST.json').get('source_revision')
             if revision and marker.get('runtime_source_revision', marker.get('source_revision')) != revision:
                 raise ValueError('El runtime local necesita la receta de esta actualización.')
-        if digest(directory / 'newsnap.exe') != marker.get('native_executable_sha256'):
+        executable = _digest(directory / 'newsnap.exe', None, receipts, full)
+        if executable != marker.get('native_executable_sha256'):
             raise ValueError('El ejecutable local falta o necesita reparación.')
-        _verify_runtime_files(directory, marker)
+        _verify_runtime_files(directory, marker, receipts, full, {'newsnap.exe': executable})
         return {'needs_rebuild': False, 'reason': '', 'runtime_version': marker.get('runtime_version')}
     except (OSError, ValueError, TypeError, AttributeError) as error:
         return {'needs_rebuild': True, 'reason': str(error), 'runtime_version': None}
+    finally:
+        receipts.save()
 
 
-def _verify_runtime_files(directory, marker):
+def _verify_runtime_files(directory, marker, receipts=None, full=False, checked=None):
+    """Every file of the runtime receipt against its digest. checked: digests the caller already computed."""
     inventory = marker.get('runtime_files', {})
     if not isinstance(inventory, dict) or not set(inventory).issubset(RUNTIME_FILES):
         raise ValueError('Invalid runtime artifact receipt')
+    checked = checked or {}
     for name, expected in inventory.items():
-        if digest(directory / name) != expected:
+        if (checked.get(name) or _digest(directory / name, None, receipts, full)) != expected:
             raise ValueError(f'El archivo {name} necesita reparación.')
 
 
@@ -110,8 +130,13 @@ def validate_owner_modules(directory, expected):
             raise ValueError(f'Unexpected ExeFS module {name}; use the verified game 2.0.1 inputs')
 
 
-def verify_owner_inputs(directory, profile, cancel_event=None):
-    """Verify original bytes against the public supported-version fingerprints."""
+def verify_owner_inputs(directory, profile, cancel_event=None, receipts=None, full=False):
+    """Verify original bytes against the public supported-version fingerprints.
+
+    receipts (verified_files.VerifiedFiles): a file this PC hashed before and that is unchanged since is compared
+    by its stored digest instead of being read again (the game image is several GB). Without receipts, or with
+    full=True as the player's «Verificar datos» does, every byte is read (and with receipts, recorded).
+    """
     directory = Path(directory)
     expected = profile.get('exefs_sha256')
     if not isinstance(expected, dict) or not expected or not profile.get('romfs_sha256'):
@@ -122,10 +147,10 @@ def verify_owner_inputs(directory, profile, cancel_event=None):
         if PurePosixPath(name).name != name or name in ('.', '..') or '\\' in name:
             raise ValueError('Unsafe ExeFS name in build recipe')
         path = directory / 'exefs' / name
-        if digest(path, cancel_event) != checksum:
+        if _digest(path, cancel_event, receipts, full) != checksum:
             raise ValueError(f'ExeFS {name} differs from the supported verified game 2.0.1')
         files.append({'name': name, 'sha256': checksum, 'size': path.stat().st_size})
-    if digest(directory / 'romfs/romfs.bin', cancel_event) != profile['romfs_sha256']:
+    if _digest(directory / 'romfs/romfs.bin', cancel_event, receipts, full) != profile['romfs_sha256']:
         raise ValueError('RomFS differs from the supported verified game 2.0.1')
     control = profile['verified_control']
     if control.get('display_version') != '2.0.1' or any(type(control.get(k)) is not int or control[k] <= 0
@@ -345,10 +370,16 @@ def install_candidate(root, candidate, cancel_event=None):
             raise ValueError('Unexpected file in runtime candidate')
     marker = _json(candidate / 'newsnap-game.json')
     if (marker.get('runtime_api') != RUNTIME_API or
-            not set(RUNTIME_CAPABILITIES).issubset(marker.get('capabilities', [])) or
-            digest(candidate / 'newsnap.exe') != marker.get('native_executable_sha256')):
+            not set(RUNTIME_CAPABILITIES).issubset(marker.get('capabilities', []))):
         raise ValueError('Runtime candidate failed compatibility/integrity validation')
-    _verify_runtime_files(candidate, marker)
+    # The candidate is read whole here: this is where its files are trusted. Each receipt (file id, size, time)
+    # then follows its file through the rename into GameData, so the check of the installed files below reads
+    # again only a file that is not provably the one hashed here.
+    receipts = VerifiedFiles(directory / VERIFIED_STORE)
+    executable = _digest(candidate / 'newsnap.exe', None, receipts, True)
+    if executable != marker.get('native_executable_sha256'):
+        raise ValueError('Runtime candidate failed compatibility/integrity validation')
+    _verify_runtime_files(candidate, marker, receipts, True, {'newsnap.exe': executable})
     _cancel(cancel_event)
     recover_runtime(root)
     transaction = directory / TRANSACTION
@@ -394,16 +425,19 @@ def install_candidate(root, candidate, cancel_event=None):
         for name in names:
             if (candidate / name).exists():
                 (directory / name).parent.mkdir(parents=True, exist_ok=True)
+                receipts.forget(directory / name)
                 (candidate / name).replace(directory / name)
+                receipts.moved(candidate / name, directory / name)
             else:
                 _remove(directory / name)
+                receipts.forget(directory / name)
             _sync_directory((directory / name).parent)
         # Check the actual destinations while rollback is still possible. A
         # successful remove/replace call alone is not a verified postcondition.
         if (_json(directory/'newsnap-game.json')!=marker or
-                digest(directory/'newsnap.exe')!=marker['native_executable_sha256']):
+                _digest(directory/'newsnap.exe',None,receipts)!=marker['native_executable_sha256']):
             raise ValueError('Installed runtime integrity verification failed')
-        _verify_runtime_files(directory,marker)
+        _verify_runtime_files(directory,marker,receipts)
         for name in invalidated:
             path=_safe_runtime_path(directory,name)
             if path.exists() or path.is_symlink():
@@ -416,6 +450,8 @@ def install_candidate(root, candidate, cancel_event=None):
     _sync_directory(transaction)
     _cleanup_transaction(directory)
     write_json(directory / SHADER_IDENTITY, new_identity)
+    receipts.forget_under(candidate)
+    receipts.save()   # the next game start recognises the installed files without reading them
     if keep_shaders:   # the kept preparation still holds: no forced preparation at the next start
         from .launcher_settings import clear_shader_preparation_required
         clear_shader_preparation_required(root)
@@ -425,7 +461,29 @@ def install_candidate(root, candidate, cancel_event=None):
             'cache_absence_verified':True,'transaction_removed':True}
 
 
-def verify_build_kit(kit_root, root=None, cancel_event=None):
+def _kit_files(kit):
+    """Relative names of every file under kit from one directory walk; links are refused."""
+    found, pending = set(), [(str(kit), '')]
+    while pending:
+        folder, prefix = pending.pop()
+        with os.scandir(folder) as entries:
+            for entry in entries:
+                if entry.is_symlink() or (hasattr(entry, 'is_junction') and entry.is_junction()):
+                    raise ValueError('Build kit links are not allowed')
+                if entry.is_dir(follow_symlinks=False):
+                    pending.append((entry.path, prefix + entry.name + '/'))
+                elif entry.is_file(follow_symlinks=False):
+                    found.add(prefix + entry.name)
+    return found
+
+
+def verify_build_kit(kit_root, root=None, cancel_event=None, receipts=None):
+    """Check a build kit against its manifest and this launcher.
+
+    Without receipts every file is read and hashed. With receipts (verified_files.VerifiedFiles) a file of this
+    kit that was hashed before on this PC and is unchanged since (size, time, file id) is not read again; the
+    inventory, the link check and the manifest checks are the same. The caller saves the receipts.
+    """
     kit = Path(kit_root).resolve()
     manifest = _json(kit / 'build-kit.json')
     if (manifest.get('format') != 1 or manifest.get('runtime_version') != VERSION or
@@ -439,17 +497,28 @@ def verify_build_kit(kit_root, root=None, cancel_event=None):
     listed = manifest.get('files')
     if not isinstance(listed, dict):
         raise ValueError('Build kit has no file inventory')
-    for path in kit.rglob('*'):
-        if path.is_symlink() or (hasattr(path, 'is_junction') and path.is_junction()):
-            raise ValueError('Build kit links are not allowed')
-        if path.is_file() and path.name != 'build-kit.json' and path.relative_to(kit).as_posix() not in listed:
-            raise ValueError(f'Unlisted build kit file: {path.relative_to(kit)}')
+    present = None
+    if receipts is None:
+        for path in kit.rglob('*'):
+            if path.is_symlink() or (hasattr(path, 'is_junction') and path.is_junction()):
+                raise ValueError('Build kit links are not allowed')
+            if path.is_file() and path.name != 'build-kit.json' and path.relative_to(kit).as_posix() not in listed:
+                raise ValueError(f'Unlisted build kit file: {path.relative_to(kit)}')
+    else:
+        present = _kit_files(kit)
+        for name in sorted(present):
+            if name != 'build-kit.json' and name not in listed:
+                raise ValueError(f'Unlisted build kit file: {name}')
     for name, expected in listed.items():
+        _cancel(cancel_event)
         relative = PurePosixPath(name)
         path = kit.joinpath(*relative.parts)
-        if relative.is_absolute() or '..' in relative.parts or '\\' in name or not path.resolve().is_relative_to(kit):
+        # A name found by the walk above lies inside the kit through directories that are not links; any other
+        # is resolved as before (and then fails as a missing file).
+        if (relative.is_absolute() or '..' in relative.parts or '\\' in name or
+                not (present is not None and name in present or path.resolve().is_relative_to(kit))):
             raise ValueError('Unsafe build kit path')
-        if digest(path, cancel_event) != expected:
+        if _digest(path, cancel_event, receipts) != expected:
             raise ValueError(f'Build kit integrity mismatch: {name}')
     for required in ('python/python.exe', 'source/newsnap/maintenance.py', 'source/newsnap/build.py',
                      'source/third_party/astral/tools/build_game.py', 'sdk/llvm/bin/clang.exe', 'sdk/bin/ninja.exe'):
@@ -520,7 +589,15 @@ def rebuild_runtime(root, kit_root, cancel_event=None, progress=None, force=Fals
             return {'rebuilt': False}
         from .progress import ProgressUpdate
         progress(ProgressUpdate('verify-tools','Verificando las herramientas de reconstrucción…'))
-        manifest = verify_build_kit(kit, root, cancel_event)
+        # The launcher verified this kit a moment ago (build_kit.ensure_build_kit; whole when the player asked for
+        # a full check): files it hashed then, unchanged since, are not read a second time.
+        from .build_kit import kit_receipts
+        receipts = kit_receipts(kit)
+        try:
+            manifest = verify_build_kit(kit, root, cancel_event, receipts)
+        finally:
+            if receipts is not None:
+                receipts.save()
         directory = data_dir(root)
         work = Path(tempfile.mkdtemp(prefix='.runtime-build-', dir=directory))
         try:
@@ -530,6 +607,9 @@ def rebuild_runtime(root, kit_root, cancel_event=None, progress=None, force=Fals
             command = [kit / 'python/python.exe', '-B', '-E', '-s', '-m', 'newsnap.maintenance',
                        '--worker', '--data', directory.resolve(), '--work', work.resolve(),
                        '--sdk', kit / 'sdk', '--source-revision', manifest['source_revision']]
+            if force:
+                # «Verificar / reconstruir juego»: the worker reads every byte of the original data again.
+                command += ['--full-verification']
             if generation_cache_root is not None:
                 # Preserve raw link components so the cache's reparse-point
                 # guards can reject them before any writes or eviction.
@@ -574,11 +654,12 @@ def _worker():
     parser.add_argument('--sdk', type=Path, required=True)
     parser.add_argument('--source-revision', required=True)
     parser.add_argument('--generation-cache-root', type=Path)
+    parser.add_argument('--full-verification', action='store_true')
     args = parser.parse_args()
     tools = args.sdk / 'shader-tools'
     exe = build(args.sdk, shader_tools=tools if tools.is_dir() else None,
                 owner_data=args.data, work_dir=args.work, jobs=min(8, os.cpu_count() or 1),
-                generation_cache_root=args.generation_cache_root)
+                generation_cache_root=args.generation_cache_root, full_verification=args.full_verification)
     candidate = args.work / 'candidate'
     candidate.mkdir()
     for name in RUNTIME_FILES:

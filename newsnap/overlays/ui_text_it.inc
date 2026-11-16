@@ -131,7 +131,7 @@ static const char *const text_it[UI_TEXT_COUNT] = {
                         "fuori dall'interpolazione. Si mette in pausa da sola mentre il gioco va più veloce di metà della "
                         "frequenza di aggiornamento del monitor. Le informazioni sulle prestazioni mostrano gli FPS reali e "
                         "quelli generati. Si applica dopo il riavvio.",
-    [UI_SNAP_FG_NEEDS] = "richiede AMD FSR 3.1 o FSR 4 come upscaler",
+    [UI_SNAP_FG_NEEDS] = "richiede AMD FSR 3.1, FSR 4 o NVIDIA DLSS come upscaler",
     [UI_SNAP_HDPH] = "Miniature delle foto in HD",
     [UI_SNAP_HDPH_DESC] = "L'anteprima dopo uno scatto e le foto nelle cartelle e nella selezione usano la foto a "
                           "1080 x 720 invece della miniatura a 360 x 240 del gioco. Le foto salvate e il punteggio non "

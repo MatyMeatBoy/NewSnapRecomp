@@ -64,11 +64,31 @@ PROMOTIONAL_ASSETS = {
     'docs/images/aa-fsr4-native.jpg': (   # owner-requested anti-aliasing comparison (2026-11-15), same capture rules
         146770, bytes.fromhex('ffd8ffe000104a46494600010100000100010000'),
         '514c71168b8a52c404c82b9d2b3063d177e54f90977d75b760f68b635c1e7d5b'),
+    # Owner-requested README picture of the 0.9.20 launcher (2026-11-15): a capture of the launcher's own window
+    # (Mejoras page, artwork drawn by the launcher), no game picture, saves, photos, keys or local paths.
+    'docs/images/launcher-0920.jpg': (
+        148969, bytes.fromhex('ffd8ffe000104a46494600010100000100010000'),
+        '1f31b80cbab8e8380cb6f5312c7cb044ac7f1dce12222f3d5614e81b09debdf4'),
+}
+
+# The launcher's typeface: Nunito, SIL Open Font License 1.1 (licenses/Nunito-OFL.txt), the unmodified variable
+# font from github.com/google/fonts (ofl/nunito) at commit 8b0a1d0f5983c89bc2b93f1b5fb55f9e252744b5; provenance in
+# assets/fonts/README.md. Pinned to its exact indexed path, regular-file mode, size, sfnt header and digest.
+OPEN_FONTS = {
+    'assets/fonts/Nunito[wght].ttf': (
+        276932, bytes.fromhex('00010000'),
+        'bb55a5ca5c2042335b3991af27c4d0705d0ef41cac6164ac737fd8f2a1e85207'),
 }
 
 
 def violations(path, content, mode='100644'):
     p = PurePosixPath(path)
+    if path in OPEN_FONTS:
+        size, header, checksum = OPEN_FONTS[path]
+        if (mode == '100644' and len(content) == size and content.startswith(header) and
+                hashlib.sha256(content).hexdigest() == checksum):
+            return []
+        return ['open-licence font changed; review its approved path, bytes and mode']
     if path in PROMOTIONAL_ASSETS:
         size, header, checksum = PROMOTIONAL_ASSETS[path]
         if (mode == '100644' and len(content) == size and content.startswith(header) and

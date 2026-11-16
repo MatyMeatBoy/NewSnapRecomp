@@ -36,6 +36,13 @@ The launcher and original icon generator use [Pillow](https://python-pillow.gith
 distributed under the HPND license. Pillow's package retains its license and
 dependency notices. Icon artwork in `assets/icons` is original to this project.
 
+The launcher's typeface is [Nunito](https://github.com/googlefonts/nunito) (Copyright 2014 The Nunito Project
+Authors), under the SIL Open Font License 1.1. `assets/fonts/Nunito[wght].ttf` is the unmodified variable font
+from Google Fonts' repository (`google/fonts`, `ofl/nunito`, commit `8b0a1d0f5983c89bc2b93f1b5fb55f9e252744b5`);
+the complete licence is `licenses/Nunito-OFL.txt` and its provenance is in `assets/fonts/README.md`. The launcher
+loads it for its own process only. The launcher's textures, shadows and interface icons are drawn by its own code
+(`newsnap/artwork.py`) and are original to this project.
+
 Windows launcher releases bundle CPython, Tcl/Tk and their runtime dependencies.
 Their notices are preserved under `licenses/runtime` in that release.
 The launcher uses the [PyInstaller](https://pyinstaller.org/) bootloader under
@@ -51,7 +58,7 @@ apply independently of this repository's MIT license. The public precompiled
 native FSR shader header derives from AMD's MIT-licensed FidelityFX SDK 1.1.4;
 its license accompanies the build kit/runtime.
 
-The optional NVIDIA DLSS Super Resolution 310.9.16 binary is pinned to NVIDIA's
+The optional NVIDIA DLSS Super Resolution and Frame Generation 310.9.16 binaries are pinned to NVIDIA's
 `9981c6350dc58c0ce21f024fd65e31e851c31689` distribution. It is proprietary under
 the NVIDIA RTX SDKs license, retained as `licenses/NVIDIA-DLSS.txt` together with
 its version/hash receipt. NVIDIA and DLSS are NVIDIA Corporation trademarks.

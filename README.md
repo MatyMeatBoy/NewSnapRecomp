@@ -29,15 +29,18 @@ keys or game-derived executables are distributed here; the launcher builds the g
 | Tutorial, expeditions, photos, scoring, saves | Works | Played on an AMD RX 6900 XT and an NVIDIA RTX 4060 |
 | Frame rate | Works | 30 / 60 / 90 / 120 / 144 FPS and a VRR mode; the interface, dialogue, input and pointer keep 60 FPS timing |
 | Resolution | Works | Internal resolution 50–300 % or by display, HUD and photos intact; ultrawide (experimental) |
-| Upscalers | Works | AMD FSR 3.1, FSR 4 (RX 6000/7000 through AMD's INT8 model) and NVIDIA DLSS; FSR frame generation |
+| Upscalers | Works | AMD FSR 3.1, FSR 4 (RX 6000/7000 through AMD's INT8 model) and NVIDIA DLSS; SMAA anti-aliasing by default |
+| Frame generation | Experimental | AMD FSR (any GPU) and NVIDIA DLSS (RTX 40 and 50 series) |
 | AMD RDNA 1/2 | Works | Photo, shader and GPU fault fixes specific to these GPUs |
 
 ## Features
 
 ### Picture
 - Internal resolution from 50 % to 300 %, or matched to your display; real-time shadows follow it.
-- AMD FSR 3.1 / FSR 4 and NVIDIA DLSS upscaling or native anti-aliasing (DLAA / Native AA), Automatic by default.
-- AMD FSR frame generation, with the interface kept out of the interpolation.
+- **SMAA anti-aliasing** by default (Low to Ultra), applied before the HUD so text and menus stay sharp.
+- AMD FSR 3.1 / FSR 4 and NVIDIA DLSS upscaling or native anti-aliasing (DLAA / Native AA), when you want them.
+- AMD FSR frame generation and NVIDIA DLSS frame generation (RTX 40 and 50), with the interface kept out of the
+  interpolation.
 - Ultrawide view (experimental): wider 3D view, interface in the middle, photos taken with the usual 16:9 view.
 
 ### Frame rate and display
@@ -49,17 +52,26 @@ keys or game-derived executables are distributed here; the launcher builds the g
 - **HD photo thumbnails:** previews and photo screens show the 1080×720 photo instead of the 360×240 thumbnail.
 - **HD shadows mode** (experimental): real-time shadows at their largest map, and the shadows painted into every
   level (light maps and the sun shadows of each mesh) read from your own game and enlarged on your PC, without
-  playing the levels first.
+  playing the levels first. Built once from the launcher (about 35 minutes and 6 GB), with its own progress bar.
 
 ### Launcher
-- Graphics presets with **«Recomendado»** by default, sidebar navigation, status at a glance.
+
+<p align="center"><img src="docs/images/launcher-0920.jpg" alt="The NewSnap launcher, Enhancements page" width="760"></p>
+
+- Its own look (0.9.20): own title bar, a button with an icon for each section, textured background and the Nunito
+  typeface; every picture is drawn by the launcher itself.
+- Graphics presets with **«Recomendado»** by default, status at a glance, progress bars for every long step.
+- One main button that follows the state: **«Verificar»** when your game data must be checked (after an update, for
+  example), **«Jugar»** when it is ready. The launcher hides while you play and closes when the game ends.
+- Fast starts: files it already verified (game data, the game built for your PC, the rebuild tools, HD shadows,
+  prepared shaders) are recognised without being read again.
 - **Add to Steam** (with cover, logo and icon, for Big Picture and Steam Input) and a **desktop shortcut**.
 - Imports NSP, NSZ, XCI and XCZ; updates itself and rebuilds the game locally; keeps your compiled shaders across
   updates that do not change them.
 
 ### In-game menu (Minus + Plus)
-- Screen, Game, Sound, Controls, Menu, Enhancements and System tabs; English, Spanish, Russian, Brazilian
-  Portuguese and Simplified Chinese.
+- Screen, Game, Sound, Controls, Menu, Enhancements and System tabs, in English, Spanish, French, German, Italian,
+  Japanese, Korean, Traditional and Simplified Chinese, Russian and Brazilian Portuguese.
 
 ## Screenshots
 
@@ -108,7 +120,7 @@ py -3.12 -m venv .venv
 Release recipe, work board and contribution rules: [docs/PENDIENTES.md](docs/PENDIENTES.md) and
 [CONTRIBUTING.md](CONTRIBUTING.md). Technical notes: [SUPERSAMPLING.md](docs/SUPERSAMPLING.md),
 [HIGH_FPS.md](docs/HIGH_FPS.md), [DISPLAY.md](docs/DISPLAY.md), [ULTRAWIDE.md](docs/ULTRAWIDE.md),
-[UPDATING.md](docs/UPDATING.md).
+[UPDATING.md](docs/UPDATING.md), [DLSS.md](docs/DLSS.md).
 
 ## Source and content boundaries
 

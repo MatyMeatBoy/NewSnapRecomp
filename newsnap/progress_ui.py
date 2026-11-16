@@ -3,7 +3,9 @@ import time
 import tkinter as tk
 from tkinter import ttk
 
+from . import fonts
 from .progress import coerce
+from .progress_bar import SnapBar
 
 
 class PreparationPanel(ttk.LabelFrame):
@@ -14,13 +16,13 @@ class PreparationPanel(ttk.LabelFrame):
         self.elapsed=tk.StringVar(self,value='')
         self.note=tk.StringVar(self,value='')
         self.active=False;self.started=None;self._tick_id=None
-        ttk.Label(self,textvariable=self.label,font=('Segoe UI',11,'bold'),wraplength=540).pack(anchor='w')
-        self.bar=ttk.Progressbar(self,mode='determinate',maximum=100,style='Snap.Horizontal.TProgressbar')
+        ttk.Label(self,textvariable=self.label,font=fonts.ui(11,'bold'),wraplength=540).pack(anchor='w')
+        self.bar=SnapBar(self,mode='determinate',maximum=100)   # left to right in both modes (progress_bar.py)
         self.bar.pack(fill='x',pady=(8,5))
         row=ttk.Frame(self);row.pack(fill='x')
-        ttk.Label(row,textvariable=self.detail,style='Muted.TLabel',font=('Segoe UI',9)).pack(side='left')
-        ttk.Label(row,textvariable=self.elapsed,style='Muted.TLabel',font=('Segoe UI',9)).pack(side='right')
-        ttk.Label(self,textvariable=self.note,style='Muted.TLabel',wraplength=540,font=('Segoe UI',9)).pack(anchor='w',pady=(5,0))
+        ttk.Label(row,textvariable=self.detail,style='Muted.TLabel',font=fonts.ui(10)).pack(side='left')
+        ttk.Label(row,textvariable=self.elapsed,style='Muted.TLabel',font=fonts.ui(10)).pack(side='right')
+        ttk.Label(self,textvariable=self.note,style='Muted.TLabel',wraplength=540,font=fonts.ui(10)).pack(anchor='w',pady=(5,0))
         self.bind('<Destroy>',self._destroyed,add='+')
 
     def begin(self,label):

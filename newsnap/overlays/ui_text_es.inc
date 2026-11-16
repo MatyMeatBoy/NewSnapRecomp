@@ -124,11 +124,11 @@ static const char *const text_es[UI_TEXT_COUNT] = {
                          "aplica tras reiniciar.",
     [UI_SNAP_RES_UPSCALER] = "por encima del 100 %: pon el escalado de rendimiento en Desactivado",
     [UI_SNAP_FG] = "Generación de fotogramas",
-    [UI_SNAP_FG_DESC] = "Generación de fotogramas AMD FSR: un fotograma generado entre cada dos reales. La interfaz queda "
+    [UI_SNAP_FG_DESC] = "Generación de fotogramas AMD FSR o NVIDIA DLSS (RTX 40 y 50): un fotograma generado entre cada dos reales. La interfaz queda "
                         "fuera de la interpolación. Se pausa sola mientras el juego va más rápido que la mitad del refresco "
                         "del monitor. La información de rendimiento muestra los FPS reales y los generados. Se aplica tras "
                         "reiniciar.",
-    [UI_SNAP_FG_NEEDS] = "necesita AMD FSR 3.1 o FSR 4 como escalador",
+    [UI_SNAP_FG_NEEDS] = "necesita AMD FSR 3.1, FSR 4 o NVIDIA DLSS como escalador",
     [UI_SNAP_HDPH] = "Miniaturas de fotos en HD",
     [UI_SNAP_HDPH_DESC] = "La vista previa tras una foto y las fotos de las carpetas y la selección usan la foto de "
                           "1080 x 720 en vez de la miniatura de 360 x 240 del juego. Las fotos guardadas y la puntuación no "
