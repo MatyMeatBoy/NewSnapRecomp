@@ -26,7 +26,7 @@ class UiPaceTests(unittest.TestCase):
         lines = [line.split() for line in text.splitlines() if line and not line.startswith('#')]
         self.assertEqual(lines[0], ['set', 'snap_ui_pace', 'AC_SNAP_UI_PACE_PATCH', '1'])
         # each site: the original instruction, the helper, then cbz x16 to the handler's own label
-        self.assertEqual(lines[1:], [
+        self.assertEqual(lines[1:5], [
             ['site', 'snap_ui_pace', 'main', '783610', 'f900c7e0', 'f900c7e0', '@fn:snap_ui_pace_enter',
              cbz_x16(0x783610, 0x794b4c)],
             ['site', 'snap_ui_pace', 'main', '794b90', 'f940c7e0', 'f940c7e0', '@fn:snap_ui_pace_event',
@@ -35,6 +35,20 @@ class UiPaceTests(unittest.TestCase):
             ['site', 'snap_ui_pace', 'main', '9263ac', 'a95b7bfd', '@fn:snap_ui_pace_pad', 'a95b7bfd'],
             # FPS-02: the pointer's frame time, the original load then the helper
             ['site', 'snap_ui_pace', 'main', '643cc8', 'bd401e61', 'bd401e61', '@fn:snap_ui_pace_pointer'],
+        ])
+        # RETICLE-HZ-01: its own switch; a draw-only call goes from the drawing section to the handler's loop over
+        # the queued positions and back from the loop's end
+        self.assertEqual(lines[5:8], [
+            ['set', 'snap_ui_positions', 'AC_SNAP_UI_POSITIONS_PATCH', '1'],
+            ['site', 'snap_ui_positions', 'main', '794b4c', 'f940c7f6', 'f940c7f6', '@fn:snap_ui_pace_draw',
+             cbz_x16(0x794b4c, 0x78d644)],
+            ['site', 'snap_ui_positions', 'main', '78d850', 'f9443118', 'f9443118', '@fn:snap_ui_pace_placed',
+             cbz_x16(0x78d850, 0x794b4c)],
+        ])
+        # observers: the helper then the original instruction, in the observation set
+        self.assertEqual(lines[8:], [
+            ['site', 'snap_timer_trace', 'main', '799570', 'd10103ff', '@fn:snap_ui_pos_ask', 'd10103ff'],
+            ['site', 'snap_timer_trace', 'main', '78d808', '91008273', '@fn:snap_ui_pos_apply', '91008273'],
         ])
         self.assertIn("'snap-2.0.1-ui-pace.txt'", (ROOT / 'newsnap/build.py').read_text(encoding='utf-8'))
 
@@ -48,6 +62,8 @@ class UiPaceTests(unittest.TestCase):
         self.assertIn('void snap_ui_pace_event(Cpu *c);', declared)
         self.assertIn('void snap_ui_pace_pad(Cpu *c);', declared)
         self.assertIn('void snap_ui_pace_pointer(Cpu *c);', declared)
+        for name in ('snap_ui_pace_draw', 'snap_ui_pace_placed', 'snap_ui_pos_ask', 'snap_ui_pos_apply'):
+            self.assertIn(f'void {name}(Cpu *c);', declared)
 
     def test_decision_keeps_sixty_steps_a_second_at_any_rate(self):
         compiler = self.compiler()
@@ -169,6 +185,88 @@ int main(void) {
 }
 ''')
             exe = p / 'helpers.exe'
+            subprocess.run([compiler, str(p / 'fixture.c'), str(ROOT / 'newsnap/overlays/snap_ui_pace.c'), '-I', str(p),
+                            '-I', str(ROOT / 'newsnap/overlays'), '-o', str(exe)], check=True, capture_output=True)
+            result = subprocess.run([str(exe)], capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_a_draw_only_call_places_its_clips_once_and_a_stepping_call_is_left_alone(self):
+        compiler = self.compiler()
+        with tempfile.TemporaryDirectory() as tmp:
+            p = Path(tmp)
+            (p / 'platform').mkdir()
+            (p / 'cpu.h').write_text('#include <stdint.h>\ntypedef struct {uint64_t x[32],sp,pc,nzcv; __uint128_t v[32]; char rest[512];} Cpu;\n')
+            (p / 'host.h').write_text('#include <stdint.h>\nuint64_t kern_now_ns(void); uint64_t frame_step_cap_ns(void);'
+                                      ' void rt_log(const char *,...);\n')
+            (p / 'gfx.h').write_text('#include <stdint.h>\ntypedef struct { uint64_t frames; } GfxStats;\n')
+            (p / 'platform/platform.h').write_text('#include <stddef.h>\n#include <stdint.h>\nint plat_mem_read(uint64_t,void *,size_t);\n'
+                                                   'int plat_mem_readable(uint64_t,uint64_t);\n')
+            (p / 'fixture.c').write_text(r'''
+#include <string.h>
+#include "cpu.h"
+#include "gfx.h"
+GfxStats gfx_counters;
+static uint64_t now = 1000, cap = 6944444;
+int plat_mem_readable(uint64_t a, uint64_t n) { (void)a; (void)n; return 1; }
+uint64_t kern_now_ns(void) { return now; }
+uint64_t frame_step_cap_ns(void) { return cap; }
+void rt_log(const char *f, ...) { (void)f; }
+int plat_mem_read(uint64_t a, void *out, size_t n) { memcpy(out, (void *)(uintptr_t)a, n); return 1; }
+void snap_ui_pace_enter(Cpu *);
+void snap_ui_pace_draw(Cpu *);
+void snap_ui_pace_placed(Cpu *);
+// One helper call of the handler call whose stack pointer is sp; -1 unless only x16 changed.
+static int call(void (*fn)(Cpu *), unsigned char *object, uint64_t sp) {
+    Cpu c, before;
+    memset(&c, 0x5a, sizeof c);
+    c.x[0] = (uint64_t)(uintptr_t)object, c.sp = sp;
+    before = c;
+    fn(&c);
+    uint64_t x16 = c.x[16];
+    c.x[16] = before.x[16];
+    return memcmp(&c, &before, sizeof c) || x16 > 1 ? -1 : (int)x16;
+}
+int main(void) {
+    unsigned char object[0x100] = {0};
+    object[0xc0] = 1, object[0xc6] = 1;
+    const uint64_t sp = 0x7100001000ull, other = 0x7100000800ull;
+    unsigned stepped = 0, placed = 0;
+    for (unsigned f = 0; f < 1440; f++, now += cap, gfx_counters.frames++) {
+        int step = call(snap_ui_pace_enter, object, sp);
+        if (step < 0) return 1;
+        if (step) {   // a call that steps: the loop's end falls through and the drawing section draws
+            stepped++;
+            if (call(snap_ui_pace_placed, object, sp) != 1 || call(snap_ui_pace_draw, object, sp) != 1) return 2;
+            continue;
+        }
+        // a call that only draws: to the loop once, back from its end, then it draws
+        if (call(snap_ui_pace_draw, object, sp) != 0) return 3;
+        if (call(snap_ui_pace_placed, object, other) != 1) return 4;   // another call's loop is not sent back
+        if (call(snap_ui_pace_placed, object, sp) != 0) return 5;
+        if (call(snap_ui_pace_draw, object, other) != 1) return 6;     // another call draws as written
+        if (call(snap_ui_pace_draw, object, sp) != 1) return 7;
+        if (call(snap_ui_pace_draw, object, sp) != 1 || call(snap_ui_pace_placed, object, sp) != 1) return 8;
+        placed++;
+    }
+    if (stepped < 598 || stepped > 601 || placed != 1440 - stepped) return 9;
+    // a draw-only call the handler would not carry on with runs as written: nothing to place
+    for (unsigned f = 0; f < 6; f++, now += cap, gfx_counters.frames++) {
+        if (call(snap_ui_pace_enter, object, sp)) continue;
+        object[0xc4] = 1;
+        if (call(snap_ui_pace_enter, object, sp) != 1 || call(snap_ui_pace_placed, object, sp) != 1 ||
+            call(snap_ui_pace_draw, object, sp) != 1) return 10;
+        object[0xc4] = 0;
+        break;
+    }
+    // 60 fps: every call steps, no call is sent to the loop
+    cap = 16666667, now += cap, gfx_counters.frames++;
+    for (unsigned f = 0; f < 120; f++, now += cap, gfx_counters.frames++)
+        if (call(snap_ui_pace_enter, object, sp) != 1 || call(snap_ui_pace_placed, object, sp) != 1 ||
+            call(snap_ui_pace_draw, object, sp) != 1) return 11;
+    return 0;
+}
+''')
+            exe = p / 'place.exe'
             subprocess.run([compiler, str(p / 'fixture.c'), str(ROOT / 'newsnap/overlays/snap_ui_pace.c'), '-I', str(p),
                             '-I', str(ROOT / 'newsnap/overlays'), '-o', str(exe)], check=True, capture_output=True)
             result = subprocess.run([str(exe)], capture_output=True, text=True)

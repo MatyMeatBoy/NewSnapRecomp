@@ -15,3 +15,16 @@ site snap_ui_pace main 9263ac a95b7bfd @fn:snap_ui_pace_pad a95b7bfd
 # FPS-02: the interface pointer's frame time (main+0x643cc8 ldr s1,[x19,#0x1c]), 0 while the game is paused;
 # above 60 fps the helper puts the real game-frame time there (snap_ui_pace_pointer).
 site snap_ui_pace main 643cc8 bd401e61 bd401e61 @fn:snap_ui_pace_pointer
+# RETICLE-HZ-01: clips the game places by name (the brackets over a subject, the reticle, the pointer) placed on
+# every frame above 60 fps. A handler call that only draws runs the handler's own loop over the queued positions
+# (main+0x78d644..0x78d850) before its drawing section (snap_ui_pace_draw, snap_ui_pace_placed):
+#   794b4c ldr x22,[sp,#0x188]   start of the drawing section; the load, the helper (x16 = 0 for a draw-only call
+#                                that has not placed yet), cbz x16 -> 78d644
+#   78d850 ldr x24,[x8,#0x860]   first instruction after the loop; the load, the helper (x16 = 0 for that call),
+#                                cbz x16 -> 794b4c
+set snap_ui_positions AC_SNAP_UI_POSITIONS_PATCH 1
+site snap_ui_positions main 794b4c f940c7f6 f940c7f6 @fn:snap_ui_pace_draw b4fc57d0
+site snap_ui_positions main 78d850 f9443118 f9443118 @fn:snap_ui_pace_placed b40397f0
+# Observed only (NEWSNAP_UI_POS_TRACE): a position asked for (main+0x799570) and one applied (main+0x78d808).
+site snap_timer_trace main 799570 d10103ff @fn:snap_ui_pos_ask d10103ff
+site snap_timer_trace main 78d808 91008273 @fn:snap_ui_pos_apply 91008273

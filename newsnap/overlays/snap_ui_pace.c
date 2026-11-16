@@ -56,6 +56,11 @@ static int pace_step(uint64_t now) {
     return snap_ui_pace_decide(&pace_presented, frame, now, frame_step_cap_ns());
 }
 
+// RETICLE-HZ-01: the handler call in progress on this thread, by its stack pointer (the handler's frame is fixed
+// after its prologue): draw_only_sp while it goes from its entry to its drawing section without stepping,
+// placing_sp while that call runs the game's own loop over the positions asked for.
+static _Thread_local uint64_t draw_only_sp, placing_sp;
+
 // At the handler's entry, after it saved its object (x0): x16 (dead here) = 1 to run the handler as
 // written, 0 to branch to its drawing section. The shortcut is only taken for an object in the state
 // the handler itself would carry on from: started (+0xc0), ready (+0xc6) and not held (+0xc4).
@@ -68,6 +73,7 @@ void snap_ui_pace_enter(Cpu *c) {
             step = 1;
     }
     c->x[16] = (uint64_t)step;
+    draw_only_sp = step ? 0 : c->sp;   // RETICLE-HZ-01: a call that only draws may still place its clips
     if (!pace_trace()) return;
     if (!pace.step && step) {   // a frame that does not step, an object that still runs: log each such object once
         static uint64_t seen[64];
@@ -96,6 +102,92 @@ void snap_ui_pace_enter(Cpu *c) {
 // Before the handler raises the per-frame event 22: x16 = 1 to raise it, 0 to leave.
 void snap_ui_pace_event(Cpu *c) {
     c->x[16] = (uint64_t)pace_step(kern_now_ns());
+}
+
+// RETICLE-HZ-01. Game code places interface clips by name (object vtable +0xc0, main+0x799570: the camera's
+// reticle and pointer `cursor_mc`, the brackets over a subject, markers): each call only queues {name, x, y} in the
+// object (+0x810..+0x820). The handler applies the queue inside its logic (main+0x78d644..0x78d850: find the clip,
+// main+0x9cd540 sets x, main+0x9cd660 sets y, then the queue is emptied). The game code that asks runs on every game
+// frame with that frame's camera, but above 60 fps the handler's logic runs on interface steps only, so the clips
+// moved 60 times a second over a scene drawn faster: the brackets trailed the subject and caught up in steps.
+// On the frames that only draw, the handler now runs that one loop of its own before its drawing section: at the
+// start of the drawing section (main+0x794b4c) x16 = 0 sends a draw-only call to the loop (main+0x78d644), and at
+// the loop's end (main+0x78d850) x16 = 0 brings it back. A call that steps takes neither branch. The positions are
+// the game's own, applied by the game's own code one to three frames earlier than before; on a step the queue holds
+// only that frame's requests and ends in the same state as before (the last request for a clip wins either way), so
+// what the interface logic and its scripts read on their steps does not change. At 60 fps and below no call is
+// draw-only and nothing here runs. AC_SNAP_UI_POSITIONS_PATCH=0 removes both sites.
+void snap_ui_pace_draw(Cpu *c) {
+    if (placing_sp && placing_sp == c->sp) {   // back from the loop: draw
+        placing_sp = 0;
+        c->x[16] = 1;
+        return;
+    }
+    if (!draw_only_sp || draw_only_sp != c->sp) {   // a call that stepped (or pacing off): draw as written
+        c->x[16] = 1;
+        return;
+    }
+    draw_only_sp = 0;
+    placing_sp = c->sp;
+    c->x[16] = 0;
+}
+
+void snap_ui_pace_placed(Cpu *c) {
+    c->x[16] = !(placing_sp && placing_sp == c->sp);
+}
+
+// NEWSNAP_UI_POS_TRACE=1: every position asked for (main+0x799570: x0 object, x1 name, s0 x, s1 y) and every one
+// applied (main+0x78d808: x19 the queue entry), with the presented frame, the game frame and whether it steps.
+// NEWSNAP_UI_POS_TRACE=<text> keeps the names containing <text>.
+static const char *pos_trace(void) {
+    static const char *filter;
+    static int on = -1;
+    if (on < 0) {
+        const char *e = getenv("NEWSNAP_UI_POS_TRACE");
+        on = e && *e && strcmp(e, "0");
+        filter = on && strcmp(e, "1") ? e : "";
+    }
+    return on ? filter : NULL;
+}
+
+// A libc++ string of the guest (short: length * 2 in byte 0, text from +1; long: bit 0 set, length +8, text at +0x10).
+static int guest_string(uint64_t at, char *out, size_t size) {
+    uint8_t s[24];
+    out[0] = 0;
+    if (!at || !plat_mem_read(at, s, sizeof s)) return 0;
+    uint64_t length, text = at + 1;
+    if (s[0] & 1) memcpy(&length, s + 8, 8), memcpy(&text, s + 16, 8);
+    else length = s[0] >> 1;
+    if (length >= size) length = size - 1;
+    if (!plat_mem_read(text, out, (size_t)length)) return 0;
+    out[length] = 0;
+    return 1;
+}
+
+static void pos_log(const char *what, uint64_t object, const char *name, float x, float y, uint64_t from) {
+    static unsigned lines;
+    const char *filter = pos_trace();
+    if (!filter || !strstr(name, filter) || __atomic_fetch_add(&lines, 1, __ATOMIC_RELAXED) >= 400000) return;
+    rt_log("snap_ui_pos: %s frame %llu game frame %llu step %d object %llx %s %.3f %.3f from %llx", what,
+           (unsigned long long)__atomic_load_n(&gfx_counters.frames, __ATOMIC_RELAXED), (unsigned long long)pad_tick,
+           pace.step, (unsigned long long)object, name, (double)x, (double)y, (unsigned long long)from);
+}
+
+void snap_ui_pos_ask(Cpu *c) {
+    if (!pos_trace()) return;
+    char name[96];
+    float x, y;
+    uint32_t bx = (uint32_t)c->v[0], by = (uint32_t)c->v[1];
+    memcpy(&x, &bx, 4), memcpy(&y, &by, 4);
+    if (guest_string(c->x[1], name, sizeof name)) pos_log("ask", c->x[0], name, x, y, c->x[30] - 0x7000000000ull);
+}
+
+void snap_ui_pos_apply(Cpu *c) {
+    if (!pos_trace()) return;
+    char name[96];
+    float xy[2];
+    if (guest_string(c->x[19], name, sizeof name) && plat_mem_read(c->x[19] + 0x18, xy, sizeof xy))
+        pos_log(placing_sp ? "place" : "apply", 0, name, xy[0], xy[1], 0);
 }
 
 // INPUT-HZ-01. The game's pad update (main+0x925b60) runs once a game frame. The game reads it through its input
