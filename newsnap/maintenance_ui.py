@@ -61,7 +61,8 @@ class RuntimeMaintenance:
                 if not force and not assess_runtime(self.launcher.project)['needs_rebuild']:
                     self.events.put(('done',{'rebuilt':False}))
                     return
-                kit=ensure_build_kit(self.launcher.project,progress=progress,cancel_event=self.cancel_event)
+                # force: the player's «Verificar / reconstruir juego» reads the kit and the original data whole.
+                kit=ensure_build_kit(self.launcher.project,progress=progress,cancel_event=self.cancel_event,full=force)
                 result=rebuild_runtime(self.launcher.project,kit,cancel_event=self.cancel_event,progress=progress,force=force)
                 self.events.put(('done',result))
             except Exception as error:

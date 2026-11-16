@@ -19,6 +19,7 @@ from .maintenance import _cancel, _json, digest, verify_build_kit
 from .version import VERSION
 from .paths import data_dir
 from .launcher_settings import load_profile
+from .verified_files import VerifiedFiles
 
 MAX_ARCHIVE_BYTES = 2 << 30
 MAX_EXPANDED_BYTES = 6 << 30
@@ -59,27 +60,56 @@ def _inventory(manifest, revision):
     return files
 
 
-def _verify(kit, root, revision, cancel_event):
+def kit_receipts(kit):
+    """Receipts (verified_files) of a kit of the launcher's own cache, kept beside it; None for any other kit."""
+    kit = Path(kit).absolute()
+    try:
+        cache = _cache_root().absolute()
+    except (OSError, RuntimeError):
+        return None
+    if kit.parent != cache or not re.fullmatch(r'[0-9A-Za-z.+-]+-[0-9a-f]{40}', kit.name):
+        return None
+    return VerifiedFiles(cache / f'.verified-{kit.name}.json', limit=MAX_FILES + 16)
+
+
+def _entries(folder, prefix=''):
+    """(relative name, file information) of everything under folder, from the directory listings.
+
+    A link or junction is refused where it is found, as updater._no_links does. That function also walks up from
+    every path to the drive root (three system calls per level, for each of the thousands of files of a kit);
+    here the kit folder and what is above it are checked once by the caller, and what is below it as it is listed.
+    """
+    with os.scandir(folder) as found:
+        entries = sorted(found, key=lambda entry: entry.name)
+    for entry in entries:
+        info = entry.stat(follow_symlinks=False)
+        if stat.S_ISLNK(info.st_mode) or getattr(info, 'st_file_attributes', 0) & 0x400:
+            raise updater.UpdateError(f'Update paths cannot contain links or junctions: {entry.path}')
+        yield prefix + entry.name, info
+        if stat.S_ISDIR(info.st_mode):
+            yield from _entries(entry.path, prefix + entry.name + '/')
+
+
+def _verify(kit, root, revision, cancel_event, receipts=None):
+    """The exact inventory, then maintenance.verify_build_kit. receipts: see verify_build_kit; None reads it all."""
     updater._no_links(kit)
     manifest = _json(kit / 'build-kit.json')
     files = _inventory(manifest, revision)
     observed = set()
     expanded = 0
-    for path in kit.rglob('*'):
+    for name, info in _entries(kit):
         _cancel(cancel_event)
-        updater._no_links(path)
-        name = path.relative_to(kit).as_posix()
         updater._relative(name)
-        if path.is_file():
+        if stat.S_ISREG(info.st_mode):
             observed.add(name)
-            expanded += path.stat().st_size
+            expanded += info.st_size
             if len(observed) > MAX_FILES + 1 or expanded > MAX_EXPANDED_BYTES:
                 raise updater.UpdateError('Cached build kit exceeds its size limit')
-        elif not path.is_dir():
+        elif not stat.S_ISDIR(info.st_mode):
             raise updater.UpdateError('Build kit contains a special file')
     if observed != set(files) | {'build-kit.json'}:
         raise updater.UpdateError('Build kit files differ from the exact inventory')
-    verify_build_kit(kit, root, cancel_event)
+    verify_build_kit(kit, root, cancel_event, receipts)
     return kit
 
 
@@ -267,8 +297,12 @@ def _publish_candidate(candidate, target, root, revision, cancel_event, *, repai
         return target
 
 
-def ensure_build_kit(root, progress=None, cancel_event=None):
+def ensure_build_kit(root, progress=None, cancel_event=None, full=False):
     """Return an exactly verified offline cache, or acquire this installed release.
+
+    A cached kit whose files were hashed before on this PC and are unchanged since is recognised by its
+    receipts (verified_files) instead of being read again; full=True reads and hashes every file. A kit that
+    arrives (download or bundled archive) is always read whole before its first use.
 
     NEWSNAP_BUILD_KIT is an explicit developer override, also fully verified.
     Transport uses the updater's authenticated, redirect-safe GitHub download.
@@ -296,14 +330,20 @@ def ensure_build_kit(root, progress=None, cancel_event=None):
     bundled=None
     if target.exists():
         progress('Verificando las herramientas guardadas…')
+        receipts = kit_receipts(target)
+        if full and receipts is not None:
+            receipts.entries.clear()   # every file is read again and gets a new receipt
+            receipts.changed = True
         try:
-            return _verify(target, root, revision, cancel_event)
+            return _verify(target, root, revision, cancel_event, receipts)
         except CACHE_INTEGRITY_ERRORS as error:
             if isinstance(error,updater.DownloadCancelled):raise
             # Never turn a cache error into an implicit network acquisition.
             # A complete exact offline bundle is required for automatic repair.
             bundled=_bundled_archive(root,revision,cancel_event)
             if bundled is None:raise
+        finally:
+            if receipts is not None:receipts.save()
     if bundled is None:
         bundled = _bundled_archive(root, revision, cancel_event)
     if bundled is None:
@@ -329,9 +369,18 @@ def ensure_build_kit(root, progress=None, cancel_event=None):
             progress('Preparando las herramientas incluidas…')
         candidate = scratch / 'kit'
         _extract(archive, candidate, revision, cancel_event)
-        _verify(candidate, root, revision, cancel_event)
+        # Read whole before its first use. The receipts of that read follow the files into the cache when the
+        # folder is renamed (same file ids), so the rebuild that comes next does not read the kit a third time.
+        receipts = VerifiedFiles(limit=MAX_FILES + 16)
+        _verify(candidate, root, revision, cancel_event, receipts)
         _cancel(cancel_event)
-        return _publish_candidate(candidate,target,root,revision,cancel_event,repair=bundled is not None)
+        published = _publish_candidate(candidate,target,root,revision,cancel_event,repair=bundled is not None)
+        stored = kit_receipts(published)
+        if stored is not None and published == target and not candidate.exists():
+            stored.entries = receipts.moved_folder(candidate, target)
+            stored.changed = True
+            stored.save()
+        return published
     except updater.DownloadCancelled as error:
         # Keep maintenance's public cancellation type without an updater import
         # dependency on maintenance (which also imports build/runtime modules).

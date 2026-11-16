@@ -14,11 +14,17 @@ hash the runtime gives the texture at load time. newsnap/hdshadows.py enlarges t
 the pictures of src are removed. When every archive is done, <GameData>/hdshadows/all-maps is written: the runtime
 then shows HD shadows on the first visit to any level and saves nothing while playing.
 
+What is already built is recognised without reading the game image again. all-maps records the image it was built
+from (image_key): a start with everything built returns at once. state.json records, for that same image, each
+level archive whose shadows are all built (and the archives that hold none), so a build that was stopped goes on
+reading only the archives that are left. Another game image, or a new BUILD, starts the reading again.
+
     python -m newsnap.game_textures --runtime <GameData> [--data <GameData>] [--only LC_001_A] [--limit N]
 
 Everything is made on the player's PC from the player's files; nothing here is distributed.
 """
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -63,20 +69,38 @@ def kind_of(name):
     return 0
 
 
+def level_archive(path):
+    return path.endswith('.drp') and '/LevelComposite/' in path
+
+
+def archive_members(image, offset, size):
+    """[member entry + 'kind'] of the baked shadows of one level archive (reads the index of the archive)."""
+    found = []
+    for item in entries(image, offset, size):
+        kind = kind_of(item['name']) if item['extension_crc'] == TEXTURE else 0
+        if kind and item['decompressed_size'] <= 64 << 20 and item['compressed_size'] <= 64 << 20:
+            found.append(dict(item, kind=kind, archive_offset=offset))
+    return found
+
+
 def shadow_members(image, files):
     """{archive path: [member entry + 'kind']} for the archives that hold baked shadows, in path order."""
     out = {}
     for path, offset, size in files:
-        if not path.endswith('.drp') or '/LevelComposite/' not in path:
+        if not level_archive(path):
             continue
-        found = []
-        for item in entries(image, offset, size):
-            kind = kind_of(item['name']) if item['extension_crc'] == TEXTURE else 0
-            if kind and item['decompressed_size'] <= 64 << 20 and item['compressed_size'] <= 64 << 20:
-                found.append(dict(item, kind=kind, archive_offset=offset))
+        found = archive_members(image, offset, size)
         if found:
             out[path] = found
     return out
+
+
+def image_key(runtime, data=None):
+    """The game image the shadows are built from: the digest of the runtime's index of it (200 KB) and its size."""
+    runtime = Path(runtime)
+    data = Path(data) if data else runtime
+    index = hashlib.sha256((runtime / 'romfs-index.bin').read_bytes()).hexdigest()
+    return f'{index}:{(data / "romfs/romfs.bin").stat().st_size}'
 
 
 def write_request(image, members, path):
@@ -132,14 +156,22 @@ def run_export(runtime, data, request, out, work, cancel=None):
     return results
 
 
-def _state(folder):
+def _state(folder, image=None):
+    """state.json of this BUILD. 'hashes': member checksum -> texture hash ('-': not used). 'archives': archive
+    path -> number of shadow members, for the archives of the game image 'image' that need no more reading."""
+    state = {'build': BUILD, 'hashes': {}}
     try:
         value = json.loads((Path(folder) / STATE).read_text(encoding='utf-8'))
         if isinstance(value, dict) and value.get('build') == BUILD and isinstance(value.get('hashes'), dict):
-            return value
+            state = value
     except (OSError, ValueError):
         pass
-    return {'build': BUILD, 'hashes': {}}
+    archives = state.get('archives')
+    if (image is None or state.get('image') != image or not isinstance(archives, dict)
+            or not all(isinstance(k, str) and type(v) is int and v >= 0 for k, v in archives.items())):
+        state['archives'] = {}
+    state['image'] = image
+    return state
 
 
 def _save_state(folder, state):
@@ -153,10 +185,24 @@ def _built(folder, name):
     return name == '-' or bool(name) and ((folder / f'{name}.dds').is_file() or (folder / f'{name}.skip').is_file())
 
 
-def complete(folder):
-    """True when the HD shadows of every level were built from the game files by this version."""
+def _built_names(folder):
+    """The texture hashes that have an HD file or a skip in folder, from one directory listing."""
     try:
-        return json.loads((Path(folder) / MARKER).read_text(encoding='utf-8')).get('build') == BUILD
+        with os.scandir(folder) as found:
+            return {entry.name.rsplit('.', 1)[0] for entry in found if entry.name.endswith(('.dds', '.skip'))}
+    except OSError:
+        return set()
+
+
+def complete(folder, image=None):
+    """True when the HD shadows of every level were built from the game files by this version.
+
+    image (image_key): also that they were built from that game image. Markers written before the image was
+    recorded have none: they still count without image, and install() reads the levels once to add it.
+    """
+    try:
+        marker = json.loads((Path(folder) / MARKER).read_text(encoding='utf-8'))
+        return marker.get('build') == BUILD and (image is None or marker.get('image') == image)
     except (OSError, ValueError, AttributeError):
         return False
 
@@ -170,26 +216,46 @@ def install(runtime, data=None, report=print, cancel=None, only=None, limit=0, s
     runtime = Path(runtime)
     data = Path(data) if data else runtime
     folder = runtime / 'hdshadows'
+    image_id = image_key(runtime, data)
+    if not only and not limit and complete(folder, image_id):
+        return (0, 0, 0)   # everything is built from this game image: nothing to read
     src = folder / 'src'
     src.mkdir(parents=True, exist_ok=True)
-    state = _state(folder)
-    hashes = state['hashes']
+    state = _state(folder, image_id)
+    hashes, recorded = state['hashes'], state['archives']
+    present = _built_names(folder)
+    built = lambda name: name == '-' or bool(name) and name in present
+    if recorded and not all(built(name) for name in hashes.values()):
+        recorded.clear()   # HD files were removed by hand: every archive is read again
     stopped = lambda: cancel is not None and cancel.is_set()
     totals = [0, 0, 0]
     report('Sombras HD: leyendo los niveles del juego…')
     with open(data / 'romfs/romfs.bin', 'rb') as image, tempfile.TemporaryDirectory(prefix='hdshadows-') as work:
-        archives = shadow_members(image, romfs_files(runtime / 'romfs-index.bin'))
-        if only:
-            archives = {path: items for path, items in archives.items() if only in path}
-        if not archives:
+        levels = [entry for entry in romfs_files(runtime / 'romfs-index.bin') if level_archive(entry[0])]
+        whole, todo, noted = 0, {}, False
+        for path, offset, size in levels:
+            if only and only not in path:
+                continue
+            if path in recorded:   # all built in an earlier run, or no shadows in it: not read again
+                whole += recorded[path]
+                continue
+            items = archive_members(image, offset, size)
+            whole += len(items)
+            left = [m for m in items if not built(hashes.get(f'{m["crc32"]:08x}', ''))]
+            if left:
+                todo[path] = (len(items), left)
+            else:
+                recorded[path] = len(items)
+                noted = True
+        if not whole:
             raise ValueError('no se encontraron los niveles en los archivos del juego')
-        todo = {path: [m for m in items if not _built(folder, hashes.get(f'{m["crc32"]:08x}', ''))]
-                for path, items in archives.items()}
-        whole = sum(len(items) for items in archives.values())
-        start = whole - sum(len(items) for items in todo.values())
+        if noted:
+            _save_state(folder, state)
+        start = whole - sum(len(left) for _, left in todo.values())
         done = 0
-        for path, members in todo.items():
+        for path, (count, members) in todo.items():
             level = Path(path).stem
+            checks = [f'{m["crc32"]:08x}' for m in members]
             while members and not stopped() and (not limit or done < limit):
                 report(f'Sombras HD: {start + done} de {whole} texturas · leyendo el nivel {level}…')
                 batch, size = [], 0
@@ -230,10 +296,14 @@ def install(runtime, data=None, report=print, cancel=None, only=None, limit=0, s
                     if _built(folder, source.stem):
                         source.unlink(missing_ok=True)
                 done += len(batch)
+            if not members and all(_built(folder, hashes.get(check, '')) for check in checks):
+                recorded[path] = count   # every shadow of this archive is built: it is not read again
+                _save_state(folder, state)
         finished = not stopped() and not limit and not only and not totals[2] and \
-            all(_built(folder, hashes.get(f'{m["crc32"]:08x}', '')) for items in archives.values() for m in items)
+            all(path in recorded for path, _, _ in levels)
     if finished:
-        (folder / MARKER).write_text(json.dumps({'build': BUILD, 'textures': whole}), encoding='utf-8')
+        (folder / MARKER).write_text(json.dumps({'build': BUILD, 'textures': whole, 'image': image_id}),
+                                     encoding='utf-8')
         shutil.rmtree(src, ignore_errors=True)
     return tuple(totals)
 
