@@ -29,6 +29,7 @@ acceptance), DONE (moved to the history file).
 
 | ID | P | State | Owner | Summary |
 |---|---|---|---|---|
+| README-SHOWCASE-01 | P2 | REVIEW | Codex · 2026-11-16 | Owner-requested English project overview and comparison graphics, without slide numbering. Reserved: `README.md`, `docs/showcase/`, and this task row. Added linked overview and collapsible comparison; 2 PNG decode/path checks and `git diff --check` pass. Feature wording checked against current README; no performance benchmark implied. Independent review requested. No runtime or owner data changes. |
 | OPTIONS-01 | P1 | DONE | MatyMeatBoy | 0.9.13: launcher and in-game menu show Resolución, Antialiasing, Escalado de rendimiento; A no longer changes values (MENU-05); area downscale above the window (AA-03). Former plan: Options as in other recomps (owner approved): Preset; Resolución; Antialiasing (Off / SMAA / FSR 4 / FSR 3.1 / DLSS Nativo, any resolution); Escalado de rendimiento (Calidad/Equilibrado/Rendimiento, only when wanted); Generación de fotogramas (only with FSR); Filtrado (juego/16×); Pantalla: modo, límite de FPS with VRR, VSync on/off (Vulkan modes only in advanced). Same names in the in-game menu. |
 | AA-01 | P1 | DONE | MatyMeatBoy | 0.9.12: Native AA (FSR 4/3.1, DLSS) on top of internal resolution above 100 %; checked on RX 6900 XT, owner approved the look. |
 | AA-04 | P1 | DONE | MatyMeatBoy | 0.9.14: SMAA 1x Low/Medium/High/Ultra before the HUD (High by default); upscaler off by default; console window gone (CONSOLE-03). [HANDOFF-0.9.14.md](HANDOFF-0.9.14.md). |

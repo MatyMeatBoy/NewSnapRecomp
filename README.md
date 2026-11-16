@@ -22,6 +22,19 @@ which builds on [TotK Recomp](https://github.com/valentderah/totk-pc-recomp).
 **Bring your own game.** You need your own dump of the game, its 2.0.1 update and your console keys. No game data,
 keys or game-derived executables are distributed here; the launcher builds the game on your PC.
 
+## Project showcase
+
+[![Native Windows recompilation of New Pokémon Snap: Vulkan, DLSS/DLAA, FSR, shader preparation, remappable controls, photo export, up to 4K internal resolution and up to 144 Hz.](docs/showcase/overview.png)](docs/showcase/overview.png)
+
+<details>
+<summary>Original game vs NewSnapRecomp</summary>
+
+[![Comparison of the original Nintendo Switch game with NewSnapRecomp's PC features.](docs/showcase/comparison.png)](docs/showcase/comparison.png)
+
+</details>
+
+These are illustrated feature summaries; see the sections below for current platform and feature details.
+
 ## Status
 
 | Area | State | Notes |
