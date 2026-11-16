@@ -447,7 +447,7 @@ class VerifiedReplacementTests(OwnerRuntimeFixture, TestCase):
             candidate=self.candidate();report=m.install_candidate(self.root,candidate)
             candidate.rmdir()
             self.assertTrue(report['transaction_removed'])
-            self.assertEqual({p.name for p in self.data.iterdir()}, {'profile','newsnap.exe','newsnap-game.json','newsnap-shader-identity.json'})
+            self.assertEqual({p.name for p in self.data.iterdir()}, {'profile','newsnap.exe','newsnap-game.json','newsnap-shader-identity.json','newsnap-verified-files.json'})
             self.assertEqual((self.data/'profile/save').read_bytes(),b'preserve save')
 
     def test_cleanup_failure_does_not_report_success_or_restore_committed_generation(self):

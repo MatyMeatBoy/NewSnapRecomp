@@ -320,8 +320,10 @@ def game_command(root, profile):
     return [str(runtime_dir(root) / 'newsnap.exe'), '--profile', str(Path(profile))]
 
 
-def validate_runtime_data(root):
-    """Check the release runtime ABI and executable receipt before writing or starting."""
+def validate_runtime_data(root, *, full=False):
+    """Check the release runtime ABI and executable receipt before writing or starting.
+
+    full=True reads the executable whole even when its receipt (verified_files) says it is unchanged."""
     if not is_release_layout(root):
         return None
     directory = runtime_dir(root)
@@ -344,11 +346,13 @@ def validate_runtime_data(root):
         expected = metadata.get('native_executable_sha256')
         if not isinstance(expected, str) or not re.fullmatch('[0-9a-fA-F]{64}', expected):
             raise ValueError(message)
-        digest = hashlib.sha256()
-        with (directory / 'newsnap.exe').open('rb') as stream:
-            for chunk in iter(lambda: stream.read(1 << 20), b''):
-                digest.update(chunk)
-        if digest.hexdigest() != expected.lower():
+        # Called from the window (saving options, the controller test, the update page): an executable hashed
+        # before and unchanged since is recognised by its receipt instead of being read each time.
+        from .verified_files import STORE, VerifiedFiles
+        receipts = VerifiedFiles(directory / STORE)
+        actual = receipts.digest(directory / 'newsnap.exe', full=full)
+        receipts.save()
+        if actual != expected.lower():
             raise ValueError(message)
         return metadata
     except (OSError, ValueError, TypeError) as error:
