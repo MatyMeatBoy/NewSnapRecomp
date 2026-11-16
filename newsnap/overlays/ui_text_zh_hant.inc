@@ -147,6 +147,8 @@ static const char *const text_zh_hant[UI_TEXT_COUNT] = {
                           "放大（「產生 HD 陰影」；開啟啟動器時會自動開始）；完成後即可看到。"
                           "即時陰影也會使用最大的貼圖（關閉時則跟隨內部解析度）。"
                           "重新啟動後套用。",
+    [UI_SNAP_UIMOTION] = "流暢的選單與介面（實驗性）",
+    [UI_SNAP_UIMOTION_DESC] = "超過 60 FPS 時，選單與介面元素的移動會在每個顯示的影格繪製，而不是每秒 60 步。遊戲邏輯不變。若選單看起來重疊或閃爍，請關閉。重新啟動後生效。",
     [UI_SNAP_TAB] = "強化",
     [UI_SNAP_ENH] = "NewSnap 的強化功能（不會改變遊戲邏輯）",
     [UI_SNAP_ASPECT] = "長寬比",

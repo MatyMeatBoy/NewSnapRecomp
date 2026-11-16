@@ -150,6 +150,10 @@ static const char *const text_it[UI_TEXT_COUNT] = {
                           "livelli («Genera ombre HD»; parte da solo all'apertura del launcher); si vedono al termine. Anche "
                           "le ombre in tempo reale passano alla loro mappa più grande (disattivato, seguono la risoluzione "
                           "interna). Si applica dopo il riavvio.",
+    [UI_SNAP_UIMOTION] = "Menu e interfaccia fluidi (sperimentale)",
+    [UI_SNAP_UIMOTION_DESC] = "Oltre i 60 FPS il movimento dei menu e dell'interfaccia viene disegnato a ogni fotogramma invece "
+                              "che in 60 passi al secondo. La logica del gioco non cambia. Disattivalo se un menu appare doppio "
+                              "o sfarfalla. Si applica dopo il riavvio.",
     [UI_SNAP_TAB] = "Migliorie",
     [UI_SNAP_ENH] = "Migliorie di NewSnap (non cambiano la logica del gioco)",
     [UI_SNAP_ASPECT] = "Proporzioni",
