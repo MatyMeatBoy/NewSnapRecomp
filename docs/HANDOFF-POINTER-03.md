@@ -1,4 +1,13 @@
-# Handoff POINTER-03: the menu pointer's orange ring blinks above 60 FPS
+# Handoff POINTER-03: menu pointer hover above 60 FPS
+
+**Update, 0.9.22 (2026-11-16).** The owner clarified the reference behavior: yellow outside a selectable option,
+orange over one at 60 FPS; above 60 FPS that selection state alternated. The shared pointer comparison now samples
+hover only on interface updates while movement and rendering continue every frame. The owner reports the tested
+144 FPS candidate no longer appears to blink on RX 6900 XT. Cause, regression, review and submenu evidence:
+[menu-pointer-color.md](bugs/menu-pointer-color.md). The earlier investigation below is historical; its inference
+that this was only a seven-second active ring is superseded by the owner's corrected reproduction.
+
+## Historical investigation (before the corrected reproduction)
 
 Owner's report (0.9.21, 2026-11-16): in the camp menu and in photo selection («Elige qué fotos quieres mostrarle al
 profesor») the ring of the pointer blinks very fast at 144 FPS. Everything else in the menus is fine. The owner wants

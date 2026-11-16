@@ -54,7 +54,7 @@ def edits():
          'void snap_ui_pace_enter(Cpu *c);\nvoid snap_ui_pace_event(Cpu *c);\nvoid snap_ui_pace_pad(Cpu *c);\nvoid snap_ui_pace_pointer(Cpu *c);\n'
          'void snap_ui_pace_draw(Cpu *c);\nvoid snap_ui_pace_placed(Cpu *c);\nvoid snap_ui_pos_ask(Cpu *c);\nvoid snap_ui_pos_apply(Cpu *c);\n'
          'void snap_ui_pos_clip_named(Cpu *c);\nvoid snap_ui_pos_clip_path(Cpu *c);\nvoid snap_ui_size_ask(Cpu *c);\n'
-         'void snap_ui_scale_ask(Cpu *c);\nvoid snap_ui_rotation_ask(Cpu *c);\nvoid snap_ui_motion_hand(Cpu *c);\n'
+         'void snap_ui_scale_ask(Cpu *c);\nvoid snap_ui_rotation_ask(Cpu *c);\nvoid snap_ui_motion_hand(Cpu *c);\nvoid snap_ui_pointer_hover(Cpu *c);\n'
          'typedef void (*GuestFn)(Cpu *);'),
     ], 'runtime/cfg.c': [
         # MENU-FPS-01: ui_motion = 0|1 in the settings file (AC_UI_MOTION), the switch of the snap_ui_motion patch set
