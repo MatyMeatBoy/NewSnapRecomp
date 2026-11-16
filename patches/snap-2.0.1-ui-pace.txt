@@ -45,10 +45,3 @@ site snap_timer_trace main 78d7ac bd401a60 @fn:snap_ui_pos_clip_path bd401a60
 site snap_timer_trace main 799950 d10183ff @fn:snap_ui_size_ask d10183ff
 site snap_timer_trace main 799b20 d10183ff @fn:snap_ui_scale_ask d10183ff
 site snap_timer_trace main 7995f0 fc1c0fe8 @fn:snap_ui_rotation_ask fc1c0fe8
-# POINTER-03: the menu pointer (main+0x643a70) runs on every game frame and, at its end, calls each button's
-# update with whether the pointer is over it (main+0x6441ec blr x9, vtable +0x10). That update plays the button's
-# hover animation (the ring that turns and changes colour) one step per call, so above 60 fps it ran 2.4 times as
-# fast at 144 fps. The call is made on interface steps only (snap_ui_pace_buttons, x16 = 1 call / 0 skip):
-#   6441e8 mov x4,x23   kept; the helper; cbz x16 -> 6441f0 (past the blr)
-set snap_ui_buttons AC_SNAP_UI_BUTTONS_PATCH 1
-site snap_ui_buttons main 6441e8 aa1703e4 aa1703e4 @fn:snap_ui_pace_buttons b4000050

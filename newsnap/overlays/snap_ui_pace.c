@@ -26,6 +26,7 @@
 #include "gfx.h"
 #include "platform/platform.h"
 #include "snap_ui_pace.h"
+#include "layout.h"
 
 extern GfxStats gfx_counters;   // nvn_api.h; frames: presented frames
 
@@ -64,6 +65,15 @@ static _Thread_local uint64_t draw_only_sp, placing_sp;
 // At the handler's entry, after it saved its object (x0): x16 (dead here) = 1 to run the handler as
 // written, 0 to branch to its drawing section. The shortcut is only taken for an object in the state
 // the handler itself would carry on from: started (+0xc0), ready (+0xc6) and not held (+0xc4).
+static int button_pacing(void) {   // AC_SNAP_UI_BUTTONS=0 turns POINTER-03 off
+    static int on = -1;
+    if (on < 0) {
+        const char *e = getenv("AC_SNAP_UI_BUTTONS");
+        on = !(e && !strcmp(e, "0"));
+    }
+    return on;
+}
+
 void snap_ui_pace_enter(Cpu *c) {
     uint64_t now = kern_now_ns();
     int step = pace_step(now);
@@ -71,6 +81,12 @@ void snap_ui_pace_enter(Cpu *c) {
         uint8_t flags[8];
         if (!c->x[0] || !plat_mem_read(c->x[0] + 0xc0, flags, sizeof flags) || !flags[0] || !flags[6] || flags[4])
             step = 1;
+        // POINTER-03: the menu pointer (main+0x643a70) calls this handler once more for each of its buttons, from
+        // main+0x6441ec, every game frame. The buttons never reach the started state (+0xc0 is 0), so the test above
+        // ran them on every frame and their hover animation (the ring that turns and changes colour) went 2.4 times
+        // as fast at 144 fps. Called from there on a frame that does not step, they are drawn only, as the rest of
+        // the interface (skipping the call would not draw them at all).
+        if (step && c->x[0] && c->x[30] == MOD_MAIN_BASE + 0x6441f0 && button_pacing()) step = 0;
     }
     c->x[16] = (uint64_t)step;
     draw_only_sp = step ? 0 : c->sp;   // RETICLE-HZ-01: a call that only draws may still place its clips
@@ -527,8 +543,3 @@ void snap_ui_pace_pointer(Cpu *c) {
     c->v[1] = bits;
 }
 
-// POINTER-03: before the menu pointer calls a button's update (main+0x6441ec): x16 = 1 on an interface step, 0 on
-// a frame that only draws above 60 fps, so the buttons' hover animations keep the game's 60 steps a second.
-void snap_ui_pace_buttons(Cpu *c) {
-    c->x[16] = (uint64_t)pace_step(kern_now_ns());
-}
