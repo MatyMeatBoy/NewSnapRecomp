@@ -29,7 +29,7 @@ keys or game-derived executables are distributed here; the launcher builds the g
 | Tutorial, expeditions, photos, scoring, saves | Works | Played on an AMD RX 6900 XT and an NVIDIA RTX 4060 |
 | Frame rate | Works | 30 / 60 / 90 / 120 / 144 FPS and a VRR mode; the interface, dialogue, input and pointer keep 60 FPS timing |
 | Resolution | Works | Internal resolution 50–300 % or by display, HUD and photos intact; ultrawide (experimental) |
-| Upscalers | Works | AMD FSR 3.1, FSR 4 (RX 6000/7000 through AMD's INT8 model) and NVIDIA DLSS; FSR frame generation |
+| Upscalers | Works | AMD FSR 3.1, FSR 4 (RX 6000/7000 through AMD's INT8 model) and NVIDIA DLSS; FSR and DLSS frame generation |
 | AMD RDNA 1/2 | Works | Photo, shader and GPU fault fixes specific to these GPUs |
 
 ## Features
@@ -37,7 +37,8 @@ keys or game-derived executables are distributed here; the launcher builds the g
 ### Picture
 - Internal resolution from 50 % to 300 %, or matched to your display; real-time shadows follow it.
 - AMD FSR 3.1 / FSR 4 and NVIDIA DLSS upscaling or native anti-aliasing (DLAA / Native AA), Automatic by default.
-- AMD FSR frame generation, with the interface kept out of the interpolation.
+- AMD FSR frame generation and NVIDIA DLSS frame generation (RTX 40 and 50), with the interface kept out of the
+  interpolation.
 - Ultrawide view (experimental): wider 3D view, interface in the middle, photos taken with the usual 16:9 view.
 
 ### Frame rate and display

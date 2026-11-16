@@ -469,8 +469,9 @@ class Launcher:
         elif self.variables['tex_pack_save'].get() == '1':
             self.variables['tex_pack_save'].set('0')   # nothing left saving textures for a step that is hidden
         self._heading(content, 'Fluidez')
-        self._choice(content, 'Generación de fotogramas · FSR', 'frame_gen', {'Desactivada': 'off', 'AMD FSR · 1 fotograma generado': 'fsr'},
-                     help_text='Inserta un fotograma generado entre cada dos reales: con el juego a 60 fps se muestran unos 120. Necesita FSR 3.1 o FSR 4. Solo genera si el monitor puede mostrarlo (unos 110 Hz o más a 60 fps); en un monitor más lento se pausa sola y el juego sigue a su ritmo, con cualquier modo de presentación. Añade un fotograma de latencia. El HUD se separa de la escena para que no deje estela. Experimental.')
+        self._choice(content, 'Generación de fotogramas', 'frame_gen', {'Desactivada': 'off', 'AMD FSR · 1 fotograma generado': 'fsr',
+                                                                     'NVIDIA DLSS · 1 fotograma generado (RTX 40/50)': 'dlss'},
+                     help_text='Inserta un fotograma generado entre cada dos reales: con el juego a 60 fps se muestran unos 120. La de AMD FSR necesita el escalador FSR 3.1 o FSR 4 y funciona en cualquier GPU; la de NVIDIA DLSS necesita el escalador DLSS y una RTX serie 40 o 50. Solo genera si el monitor puede mostrarlo (unos 110 Hz o más a 60 fps); en un monitor más lento se pausa sola y el juego sigue a su ritmo. Añade un fotograma de latencia. El HUD se separa de la escena para que no deje estela. Experimental.')
 
     def _aim_options(self, content):
         self._heading(content, 'Giroscopio')

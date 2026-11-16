@@ -58,7 +58,7 @@ apply independently of this repository's MIT license. The public precompiled
 native FSR shader header derives from AMD's MIT-licensed FidelityFX SDK 1.1.4;
 its license accompanies the build kit/runtime.
 
-The optional NVIDIA DLSS Super Resolution 310.9.16 binary is pinned to NVIDIA's
+The optional NVIDIA DLSS Super Resolution and Frame Generation 310.9.16 binaries are pinned to NVIDIA's
 `9981c6350dc58c0ce21f024fd65e31e851c31689` distribution. It is proprietary under
 the NVIDIA RTX SDKs license, retained as `licenses/NVIDIA-DLSS.txt` together with
 its version/hash receipt. NVIDIA and DLSS are NVIDIA Corporation trademarks.
