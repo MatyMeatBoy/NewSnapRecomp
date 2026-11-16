@@ -38,6 +38,15 @@ CONTROLLER_SPRITE_HEADER = bytes.fromhex(
 # No project-code or redistribution licence is implied by these narrow pins.
 PROMOTIONAL_JPEG_HEADER = bytes.fromhex('ffd8ffe000104a46494600010100000100010000')
 PROMOTIONAL_ASSETS = {
+    # Owner-requested illustrated README summaries (2026-11-16), generated with
+    # ImageGen and visually reviewed; provenance in docs/showcase/README.md.
+    # These are not official artwork or raw gameplay captures. Exact bytes only.
+    'docs/showcase/overview.png': (
+        2186463, bytes.fromhex('89504e470d0a1a0a0000000d4948445200000688000003ad08020000003de4705e'),
+        'f8a5435d492cc4bd5c777c49042923402516dccb204b28ccd9dc1f5b44c981e8'),
+    'docs/showcase/comparison.png': (
+        2212379, bytes.fromhex('89504e470d0a1a0a0000000d4948445200000688000003ad08020000003de4705e'),
+        '2a13e418cecedd5ac3fdbfceb90564b73350fbd8b458773f14aa89aa622ab557'),
     'assets/launcher/lental-hero.jpg': (
         21580, PROMOTIONAL_JPEG_HEADER,
         '4758d49e5aa462310c050147d2a9d96bb0b09a377389bec0163767a0a7978f81'),

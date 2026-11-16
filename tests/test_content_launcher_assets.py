@@ -1,4 +1,4 @@
-"""Only the owner's three reviewed official promotional images may enter the index."""
+"""Only exact reviewed promotional images may enter the index."""
 from pathlib import Path
 import unittest
 from unittest.mock import patch
@@ -7,11 +7,12 @@ from tools.check_content import violations
 
 ROOT=Path(__file__).resolve().parents[1]
 ASSETS=('assets/launcher/lental-hero.jpg','assets/launcher/lental-explore.jpg',
-        'assets/launcher/snap-logo.png')
+        'assets/launcher/snap-logo.png',
+        'docs/showcase/overview.png', 'docs/showcase/comparison.png')
 
 
 class LauncherAssetContentTests(unittest.TestCase):
-    def test_exact_three_official_images_are_allowed(self):
+    def test_exact_reviewed_images_are_allowed(self):
         for name in ASSETS:
             with self.subTest(path=name):
                 self.assertEqual(violations(name,(ROOT/name).read_bytes(),'100644'),[])
