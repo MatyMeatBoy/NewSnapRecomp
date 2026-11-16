@@ -60,7 +60,8 @@ static int pace_step(uint64_t now) {
 // RETICLE-HZ-01: the handler call in progress on this thread, by its stack pointer (the handler's frame is fixed
 // after its prologue): draw_only_sp while it goes from its entry to its drawing section without stepping,
 // placing_sp while that call runs the game's own loop over the positions asked for.
-static _Thread_local uint64_t draw_only_sp, placing_sp, hold_advance_sp;
+static _Thread_local uint64_t draw_only_sp, placing_sp;
+static _Thread_local int replaying_buttons;
 
 // At the handler's entry, after it saved its object (x0): x16 (dead here) = 1 to run the handler as
 // written, 0 to branch to its drawing section. The shortcut is only taken for an object in the state
@@ -76,21 +77,15 @@ static int button_pacing(void) {   // AC_SNAP_UI_BUTTONS=0 turns POINTER-03 off
 
 void snap_ui_pace_enter(Cpu *c) {
     uint64_t now = kern_now_ns();
-    int step = pace_step(now), frame_step = step;
+    int step = pace_step(now);
     if (!step) {
         uint8_t flags[8];
         if (!c->x[0] || !plat_mem_read(c->x[0] + 0xc0, flags, sizeof flags) || !flags[0] || !flags[6] || flags[4])
             step = 1;
 
     }
+    if (replaying_buttons) step = 0;   // POINTER-03: a button drawn again between two steps
     c->x[16] = (uint64_t)step;
-    // POINTER-03: the menu pointer (main+0x643a70) calls this handler once more for each of its buttons, from
-    // main+0x6441ec, on every game frame. The buttons never reach the started state (+0xc0 is 0), so they run as
-    // written on every frame, and their hover animation (the ring that lights up and changes colour) advanced one
-    // timeline frame per call: 2.4 times as fast at 144 fps. Their logic and drawing still run on every frame (drawn
-    // only, they showed the wrong state); on a frame that does not step only the advance of their movies is left
-    // out (snap_ui_pace_advance), so the animation keeps the game's 60 frames a second.
-    hold_advance_sp = !frame_step && c->x[30] == MOD_MAIN_BASE + 0x6441f0 && button_pacing() ? c->sp : 0;
     draw_only_sp = step ? 0 : c->sp;   // RETICLE-HZ-01: a call that only draws may still place its clips
     if (!pace_trace()) return;
     if (!pace.step && step) {   // a frame that does not step, an object that still runs: log each such object once
@@ -545,20 +540,35 @@ void snap_ui_pace_pointer(Cpu *c) {
     c->v[1] = bits;
 }
 
-// POINTER-03: before the handler advances its movies one timeline frame (main+0x7838fc, main+0x790e00, bl 9d0de0):
-// x16 = 0 to leave the advance out (a pointer button on a frame that does not step), 1 to advance as written.
-void snap_ui_pace_advance(Cpu *c) {
-    c->x[16] = !(hold_advance_sp && hold_advance_sp == c->sp);
+// POINTER-03: the menu pointer on interface steps only, its buttons drawn on every frame.
+#define PTR_BUTTONS 32
+static struct { uint64_t x[5]; uint8_t block[0x100]; } ptr_calls[PTR_BUTTONS];
+static int ptr_ncalls, ptr_recording;
+
+// At the pointer's early exit (main+0x643ac0, x21 its object): x16 = 0 to leave, 1 to run.
+void snap_ui_pace_ptrgate(Cpu *c) {
+    if (!c->x[21]) { c->x[16] = 0; return; }
+    if (!button_pacing() || pace_step(kern_now_ns())) {
+        ptr_ncalls = 0, ptr_recording = 1;   // a step: the pointer runs and notes its button calls afresh
+        c->x[16] = 1;
+        return;
+    }
+    // between two steps: the buttons the last step called, drawn again (the handler's drawing section only)
+    ptr_recording = 0;
+    replaying_buttons = 1;
+    for (int i = 0; i < ptr_ncalls; i++)
+        rt_call(c, MOD_MAIN_BASE + 0x7835d0, 6, ptr_calls[i].x[0], ptr_calls[i].x[1], ptr_calls[i].x[2],
+                ptr_calls[i].x[3], ptr_calls[i].x[4], (uint64_t)(uintptr_t)ptr_calls[i].block);
+    replaying_buttons = 0;
+    c->x[16] = 0;
 }
 
-// POINTER-03: the menu pointer (main+0x643a70) reads, on every game frame, a word the menu leaves for it in the
-// pointer object (+0x110, OR'ed with the pad's held buttons) and clears it (main+0x643ad0..0x643ad4). The menu
-// writes it on its 60 Hz steps, so above 60 fps the pointer saw it on the frame after a step and 0 on the next ones:
-// its "over a selectable option" state came and went, the orange ring blinked. After the clear: on a step x20 (the
-// word read) is kept, on a frame between steps the kept word is OR'ed in, as each frame at 60 fps would read it.
-void snap_ui_pace_ptrbits(Cpu *c) {
-    static uint32_t latched;
-    if (!button_pacing()) return;
-    if (pace_step(kern_now_ns())) latched = (uint32_t)c->x[20];
-    else c->x[20] = (uint32_t)c->x[20] | latched;
+// Before each button call (main+0x6441e8, after mov x4,x23): x0 the button, w1..x4 its arguments, x5 a block on the
+// pointer's stack, kept by value.
+void snap_ui_pace_ptrbutton(Cpu *c) {
+    if (!ptr_recording || ptr_ncalls >= PTR_BUTTONS) return;
+    for (int k = 0; k < 5; k++) ptr_calls[ptr_ncalls].x[k] = c->x[k];
+    if (!plat_mem_read(c->x[5], ptr_calls[ptr_ncalls].block, sizeof ptr_calls[ptr_ncalls].block))
+        memset(ptr_calls[ptr_ncalls].block, 0, sizeof ptr_calls[ptr_ncalls].block);
+    ptr_ncalls++;
 }
