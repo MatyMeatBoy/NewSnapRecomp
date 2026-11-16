@@ -64,6 +64,11 @@ PROMOTIONAL_ASSETS = {
     'docs/images/aa-fsr4-native.jpg': (   # owner-requested anti-aliasing comparison (2026-11-15), same capture rules
         146770, bytes.fromhex('ffd8ffe000104a46494600010100000100010000'),
         '514c71168b8a52c404c82b9d2b3063d177e54f90977d75b760f68b635c1e7d5b'),
+    # Owner-requested README picture of the 0.9.20 launcher (2026-11-15): a capture of the launcher's own window
+    # (Mejoras page, artwork drawn by the launcher), no game picture, saves, photos, keys or local paths.
+    'docs/images/launcher-0920.jpg': (
+        148969, bytes.fromhex('ffd8ffe000104a46494600010100000100010000'),
+        '1f31b80cbab8e8380cb6f5312c7cb044ac7f1dce12222f3d5614e81b09debdf4'),
 }
 
 # The launcher's typeface: Nunito, SIL Open Font License 1.1 (licenses/Nunito-OFL.txt), the unmodified variable
