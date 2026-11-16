@@ -5,7 +5,7 @@ Read this before taking work. History and the previous Spanish board:
 
 ## Current state (2026-11-14, after 0.9.0 stable): read first
 
-- **Handoff (2026-11-15, after 0.9.11): [HANDOFF-0.9.12.md](HANDOFF-0.9.12.md).**
+- **Handoff (2026-11-15, after 0.9.15): [HANDOFF-0.9.15.md](HANDOFF-0.9.15.md).** Earlier: [0.9.14](HANDOFF-0.9.14.md), [0.9.12](HANDOFF-0.9.12.md).
 - **0.9.7 (2026-11-15)** closes the handoff [HANDOFF-0.9.7.md](HANDOFF-0.9.7.md): dialogue and pointer above 60 fps, HD scenery shadows, launcher redesign. Notes: [releases/0.9.7.md](releases/0.9.7.md).
 
 - `main` = 0.9.4 (stable line 0.9; UI-HZ-01 done properly, replacing the broken 0.9.3 change; MENU-03) (shader cache kept across updates with the same `SHADER_EPOCH` and translator; launcher presets with «Recomendado», «Mejoras» tab, in-game Screen/Enhancements rows, window auto, internal resolution by display, TEXPACK-01 runtime; 0.8.9 experimental ultrawide, ULTRAWIDE-01; 0.8.8 FSR frame generation with a HUD-less image, FG-02; 0.8.7 HD photo thumbnails and shadow «auto», SS-03; 0.8.6 FPS «display»; 0.8.5 NSP/NSZ/XCI/XCZ import): AMD RDNA 1/2 fixes (FOTO-01, CRISTAL-01), gyro (GYRO-01/02), windowed
@@ -33,12 +33,12 @@ acceptance), DONE (moved to the history file).
 | AA-01 | P1 | DONE | MatyMeatBoy | 0.9.12: Native AA (FSR 4/3.1, DLSS) on top of internal resolution above 100 %; checked on RX 6900 XT, owner approved the look. |
 | AA-04 | P1 | DONE | MatyMeatBoy | 0.9.14: SMAA 1x Low/Medium/High/Ultra before the HUD (High by default); upscaler off by default; console window gone (CONSOLE-03). [HANDOFF-0.9.14.md](HANDOFF-0.9.14.md). |
 | MENU-FPS-01 | P2 | OPEN | — | Experimental: menus drawn at 120/144 fps with their logic at the original speed, like the pointers. See handoff. |
-| HD-SHADOW-02 | P1 | OPEN | — | Standing task when the queue is empty. Owner's definition: we keep a curated list of texture hashes that carry painted shadows (colour textures, not light maps; stair/frame jaggies are edge aliasing, fixed by AA-01); the launcher extracts them from the player's own `.drp` archives at build time, enhances them and installs the mod preconfigured. Never ship enhanced textures. First step: a `.drp` reader (encrypted, Oodle). [HANDOFF-0.9.14.md](HANDOFF-0.9.14.md): light maps readable offline, exporter written, wiring and GPU check left. |
-| MENU-LANG-01 | P2 | OPEN | — | In-game menu in French, German, Italian, Japanese, Korean and Traditional Chinese (Spanish done in 0.9.11). |
+| HD-SHADOW-02 | P1 | REVIEW | MatyMeatBoy | 0.9.15: with the mode on the launcher builds the HD shadows of every level from the player's own `.drp` archives, no play-first step: the light maps (`^0^Lightmap`, BC6H signed) and the sun shadows painted per mesh (`^Shadow`, BC3, alpha); the two name rules are the curated list. Offline export identical to the GPU decode on 201 light maps (RTX 4060). Never ships enhanced textures. Left: the look and video memory on the RX 6900 XT. [HANDOFF-0.9.15.md](HANDOFF-0.9.15.md). |
+| MENU-LANG-01 | P2 | REVIEW | MatyMeatBoy | 0.9.15: in-game menu in French, German, Italian, Japanese, Korean and Traditional Chinese (Spanish in 0.9.11). Tables checked id for id against the Spanish one; not reviewed by native speakers. |
 | POINTER-02 | P1 | REVIEW | MatyMeatBoy | 0.9.11: real, averaged frame time on every pointer screen. If it still steps at 144 fps: position drawn only on interface steps (`cursor_mc`, see handoff). |
 | README-01 | P2 | OPEN | — | Screenshots of the enhancements and the launcher for the README. |
 | FPS-03 | P2 | OPEN | — | Throwable items above 60 fps: needs a save with fluffruit. |
-| RTX-01 | P2 | OPEN | — | HD photo thumbnails on RTX; DLSS frame generation (RTX 40/50). Needs an NVIDIA GPU. |
+| RTX-01 | P2 | OPEN | — | HD photo thumbnails on RTX; DLSS frame generation (RTX 40/50). Needs an NVIDIA GPU: the RTX tester PC (RTX 4060) can do it. |
 
 ## Ideas after 0.8.6
 

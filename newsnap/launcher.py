@@ -264,19 +264,35 @@ class Launcher:
         for key in ('render_scale', 'aniso', 'upscaling', 'anti_aliasing'):
             self.variables[key].trace_add('write', self._quality_preset_changed)
 
-    def _auto_hd_shadows(self):
-        """Modo Sombras HD: after the game, the light maps it saved are enlarged by themselves (hdshadows_ui)."""
+    def _hd_shadows_pending(self):
+        """The button of the HD shadows mode when the mode is on and some level is not built yet, else None."""
         if self.variables.get('hd_shadows') is None or self.variables['hd_shadows'].get() != '1':
-            return False
+            return None
         button = getattr(self, 'hd_shadows_button', None)
-        if button is None or not button.waiting():
+        return button if button is not None and not button.running and button.waiting() else None
+
+    def _auto_hd_shadows(self):
+        """Modo Sombras HD: after the game, the build of every level's HD shadows goes on by itself (hdshadows_ui)."""
+        button = self._hd_shadows_pending()
+        if button is None or getattr(self, 'hd_shadows_stopped', False):
             return False
-        if getattr(self, 'hidden_for_game', False) or getattr(self, 'autoplay', False):
+        leaving = getattr(self, 'autoplay', False) or getattr(self, 'hidden_for_game', False)
+        if leaving:
             self.root.deiconify()
             self.tabs.select(self.mods_tab)
-        button.start(after=lambda: self.root.after(1500, self.close)
-                     if getattr(self, 'autoplay', False) or getattr(self, 'hidden_for_game', False) else None)
-        return True
+        return button.start(after=(lambda: self.root.after(1500, self.close)) if leaving else None)
+
+    def _build_hd_shadows(self):
+        """Modo Sombras HD on with levels left to build (the option was just saved, the launcher just opened, an
+        update came): the build starts by itself, once per launcher session unless the player stops it."""
+        button = self._hd_shadows_pending()
+        if button is None or self.busy or getattr(self, 'hd_shadows_started', False):
+            return
+        try:
+            settings.validate_runtime_data(self.project)
+        except (OSError, ValueError):
+            return
+        self.hd_shadows_started = button.start()
 
     def _vrr_mode(self, frame):
         """«Modo VRR»: VSync (FIFO) and the frame limit just under the monitor's refresh («VRR», 138 at 144 Hz), the
@@ -425,11 +441,12 @@ class Launcher:
         self._heading(content, 'Sombras')
         self._help(content, 'La resolución de las sombras en tiempo real sigue sola a la resolución interna (2× a 1080p, 3× a 125–150 %, 4× desde 200 %).')
         self._choice(content, 'Modo Sombras HD', 'hd_shadows', {'Desactivado · sombras originales': '0', 'Activado (experimental)': '1'},
-                     help_text='Las sombras de plantas, rocas, casas y escenario están pintadas en los mapas de luz de cada nivel, de baja resolución '
-                               '(por eso se ven pixeladas). Activado: el juego guarda cada mapa de luz la primera vez que lo carga y, al cerrar el '
-                               'juego, el launcher los amplía solo en este PC (la herramienta se descarga una vez), conservando la luz y el '
-                               'color del juego. La próxima vez que entres a ese nivel salen en HD. Incluye también las sombras en tiempo '
-                               'real al máximo (4×). «Generar sombras HD» lo hace a mano.')
+                     help_text='Las sombras de plantas, rocas, casas, escaleras y escenario están pintadas en texturas de cada nivel, de baja '
+                               'resolución (por eso se ven pixeladas). Activado: el launcher las lee de tu propio juego y las amplía en este PC '
+                               'para todos los niveles, sin tener que jugarlos antes, conservando la luz y el color del juego. Se hace una '
+                               'vez al guardar los ajustes: tarda unos 35 minutos, ocupa unos 6 GB junto al juego y la herramienta de '
+                               'escalado se descarga una vez. Puedes detenerlo y continúa después. Incluye también las sombras en tiempo '
+                               'real al máximo (4×). «Generar sombras HD» lo inicia o lo detiene a mano.')
         from .hdshadows_ui import HdShadowsButton
         self.hd_shadows_button = HdShadowsButton(self, content)
         self._heading(content, 'Texturas HD')
@@ -582,6 +599,7 @@ class Launcher:
             self.baseline = dict(current)
             self._set_option_values(current)
             self.status.set('Ajustes guardados para el próximo inicio')
+            self.root.after(200, self._build_hd_shadows)
             return True
         except (OSError, ValueError) as error:
             messagebox.showerror('No se pudieron guardar los ajustes', str(error), parent=self.root)
@@ -649,6 +667,9 @@ class Launcher:
 
     def _set_busy(self, busy):
         self.busy = busy
+        shadows = getattr(self, 'hd_shadows_button', None)
+        if busy and shadows is not None and shadows.running:
+            shadows.stop()   # the game or an update needs the runtime and the GPU; it goes on after the game
         for widget in [self.play_button, self.profile_button, *self.save_buttons]:
             widget.configure(state='disabled' if busy else 'normal')
         if hasattr(self,'home'):self.home.set_busy(busy)
@@ -936,6 +957,12 @@ class Launcher:
         if self.busy:
             messagebox.showinfo('Operación en curso', 'Espera a que termine la preparación o actualización, o cierra la ventana del juego antes de cerrar el launcher.', parent=self.root)
             return
+        shadows = getattr(self, 'hd_shadows_button', None)
+        if shadows is not None and shadows.running:   # the build stops cleanly and goes on at the next start
+            shadows.stop()
+            self.status.set('Deteniendo la generación de sombras HD…')
+            self.root.after(300, self.close)
+            return
         self.root.destroy()
 
 
@@ -948,6 +975,8 @@ def main():
             launcher.autoplay = True
             root.iconify()
             root.after(800, launcher.launch)
+        else:
+            root.after(2500, launcher._build_hd_shadows)   # Modo Sombras HD on with levels left (after an update)
     except ImportError:
         messagebox.showerror('Falta Pillow', 'Instala las dependencias con python -m pip install -r requirements.txt.', parent=root)
         root.destroy()
