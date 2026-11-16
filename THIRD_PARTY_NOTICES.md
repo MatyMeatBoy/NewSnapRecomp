@@ -36,6 +36,13 @@ The launcher and original icon generator use [Pillow](https://python-pillow.gith
 distributed under the HPND license. Pillow's package retains its license and
 dependency notices. Icon artwork in `assets/icons` is original to this project.
 
+The launcher's typeface is [Nunito](https://github.com/googlefonts/nunito) (Copyright 2014 The Nunito Project
+Authors), under the SIL Open Font License 1.1. `assets/fonts/Nunito[wght].ttf` is the unmodified variable font
+from Google Fonts' repository (`google/fonts`, `ofl/nunito`, commit `8b0a1d0f5983c89bc2b93f1b5fb55f9e252744b5`);
+the complete licence is `licenses/Nunito-OFL.txt` and its provenance is in `assets/fonts/README.md`. The launcher
+loads it for its own process only. The launcher's textures, shadows and interface icons are drawn by its own code
+(`newsnap/artwork.py`) and are original to this project.
+
 Windows launcher releases bundle CPython, Tcl/Tk and their runtime dependencies.
 Their notices are preserved under `licenses/runtime` in that release.
 The launcher uses the [PyInstaller](https://pyinstaller.org/) bootloader under

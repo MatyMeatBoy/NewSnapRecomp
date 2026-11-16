@@ -74,6 +74,10 @@ class UpdatePanel:
         self.install = ttk.Button(parent, text='Descargar e instalar / reparar',
                                   command=self.download, state='disabled')
         self.install.pack(anchor='w')
+        from .progress_bar import page_bar
+        self.bar = page_bar(parent, width=420, height=12)   # moves while GitHub is consulted or a version downloads
+        if self.bar is not None:
+            self.bar.pack(anchor='w', pady=(12, 0))
         access = ttk.Frame(parent)
         access.pack(anchor='w', pady=(18, 8))
         ttk.Button(access, text='Acceso a repositorio privado…', command=self.configure_access).pack(side='left')
@@ -115,6 +119,18 @@ class UpdatePanel:
         else:
             self.status.configure(text='Credencial de Windows retirada. Las variables de entorno o la sesión de GitHub CLI siguen siendo independientes.')
 
+    def _activity(self, running):
+        """The consultation and the download report no byte counts: the bar shows activity, then rests empty."""
+        bar = getattr(self, 'bar', None)
+        if bar is None:
+            return
+        bar.stop()
+        if running:
+            bar.configure(mode='indeterminate', value=0)
+            bar.start()
+        else:
+            bar.configure(mode='determinate', value=0)
+
     def check_stable(self):
         """Startup only: never select a release, install, or own launcher busy state."""
         if getattr(self, 'checking_stable', False):
@@ -141,6 +157,7 @@ class UpdatePanel:
         self.install.configure(state='disabled')
         self._selector_state('disabled')
         self.status.configure(text='Consultando versiones publicadas en GitHub…')
+        self._activity(True)
 
         def work():
             try:
@@ -208,6 +225,7 @@ class UpdatePanel:
         self.installing = True
         self.launcher._set_busy(True)
         self.status.configure(text=f'Descargando y verificando {release.tag_name}…')
+        self._activity(True)
 
         def work():
             try:
@@ -241,6 +259,7 @@ class UpdatePanel:
                             notify(value)
                     continue
                 self.working = False
+                self._activity(False)
                 self.check.configure(state='normal')
                 if kind == 'catalog':
                     self._show_catalog(value)

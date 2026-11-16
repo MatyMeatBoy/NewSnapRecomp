@@ -52,9 +52,11 @@ class Tooltip:
             margin = 8
             limit_w = max(1, screen_w - 2 * margin)
             limit_h = max(1, screen_h - 2 * margin)
-            label = tk.Label(popup, text=self.text, justify='left', anchor='nw',
-                             background='#ffffe0', foreground='#202020',
-                             relief='solid', borderwidth=1, padx=7, pady=5,
+            from . import fonts
+            label = tk.Label(popup, text=self.text, justify='left', anchor='nw', font=fonts.ui(10),
+                             background='#fffdf6', foreground='#203c34',
+                             highlightthickness=1, highlightbackground='#b9bfae',
+                             relief='flat', borderwidth=0, padx=10, pady=7,
                              wraplength=min(self.wraplength, max(1, limit_w - 16)),
                              takefocus=False)
             label.pack(fill='both', expand=True)

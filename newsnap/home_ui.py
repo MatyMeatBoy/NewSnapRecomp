@@ -5,7 +5,7 @@ import threading
 import tkinter as tk
 from tkinter import filedialog,ttk
 
-from . import home_state,launcher_settings as settings
+from . import fonts,home_state,launcher_settings as settings
 from .paths import data_dir,runtime_dir,select_data_dir
 from .version import VERSION
 
@@ -19,33 +19,33 @@ class HomePanel:
         self.notice_slot=ttk.Frame(parent);self.notice_slot.pack(fill='x')
         content=ttk.Frame(parent);content.pack(fill='both',expand=True)
         from .hero_ui import SnapCover
-        self.cover=SnapCover(content,launcher);self.cover.pack(side='left',anchor='n',padx=(0,22))
+        self.cover=SnapCover(content,launcher);self.cover.pack(side='left',anchor='n',padx=(0,24))
         body=ttk.Frame(content);body.pack(side='left',fill='both',expand=True)
-        ttk.Label(body,text='Tu próxima expedición',style='Title.TLabel').pack(anchor='w',pady=(0,5))
-        self.version=ttk.Label(body,text='',style='Muted.TLabel',wraplength=530);self.version.pack(anchor='w',pady=(0,6))
+        ttk.Label(body,text='Tu próxima expedición',style='Title.TLabel').pack(anchor='w',pady=(0,2))
+        self.version=ttk.Label(body,text='',style='Caption.TLabel',wraplength=530);self.version.pack(anchor='w',pady=(0,8))
         self.chips=ttk.Frame(body);self.chips.pack(anchor='w',pady=(0,8))
-        card=ttk.LabelFrame(body,text='Datos del juego',padding=10);card.pack(fill='x',pady=(0,6))
-        self.data_state=ttk.Label(card,text='Sin datos cargados',font=('Segoe UI',13,'bold'))
+        card=ttk.LabelFrame(body,text='Datos del juego');card.pack(fill='x',pady=(0,4))
+        self.data_state=ttk.Label(card,text='Sin datos cargados',style='Heading.TLabel')
         self.data_state.pack(anchor='w')
-        self.location=ttk.Label(card,text='',wraplength=510,style='Muted.TLabel',font=('Segoe UI',9));self.location.pack(anchor='w',pady=(4,6))
+        self.location=ttk.Label(card,text='',wraplength=400,style='Caption.TLabel');self.location.pack(anchor='w',pady=(2,8))
         from .tooltip import Tooltip
         self.location_tooltip=Tooltip(self.location,'',wraplength=600)
         actions=ttk.Frame(card);actions.pack(anchor='w')
         self.load_button=ttk.Button(actions,text='Cargar GameData…',command=self.choose_data)
-        self.load_button.pack(side='left')
+        self.load_button.grid(row=0,column=0,sticky='w',padx=(0,8),pady=(0,4))
         self.import_button=ttk.Button(actions,text='Importar NSP/XCI/NSZ…',command=self.import_dump)
-        self.import_button.pack(side='left',padx=(8,0))
+        self.import_button.grid(row=0,column=1,sticky='w',pady=(0,4))
         self.verify_button=ttk.Button(actions,text='Verificar datos',command=self.verify)
-        self.verify_button.pack(side='left',padx=8)
+        self.verify_button.grid(row=1,column=0,sticky='w',padx=(0,8))
         self.cancel_button=ttk.Button(actions,text='Cancelar',command=self.cancel.set,state='disabled')
-        self.cancel_button.pack(side='left')
+        self.cancel_button.grid(row=1,column=1,sticky='w')
         launcher.prepare=tk.BooleanVar(value=True)
         prepare = ttk.Checkbutton(body,text='Precompilar shaders disponibles',variable=launcher.prepare)
-        prepare.pack(anchor='w',pady=(6,4))
+        prepare.pack(anchor='w',pady=(4,2))
         from .tooltip import Tooltip
         Tooltip(prepare, 'Prepara los shaders y pipelines registrados para esta GPU antes de jugar. Si es el primer inicio y aún no hay registros, el juego arranca y los compila durante la expedición. Un cambio de GPU/controlador/runtime puede requerir preparar de nuevo la caché.')
         from .progress_ui import PreparationPanel
-        self.progress=PreparationPanel(body);self.progress.pack(fill='x',pady=(6,0))
+        self.progress=PreparationPanel(body);self.progress.pack(fill='x',pady=(2,0))
         launcher.play_button=ttk.Button(footer,text='Iniciar expedición  →',style='Accent.TButton',command=launcher.launch)
         launcher.play_button.pack(side='right')
         self.update_notice=ttk.Button(self.notice_slot,text='',command=lambda:launcher.tabs.select(launcher.update_tab))
