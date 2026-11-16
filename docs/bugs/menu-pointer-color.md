@@ -24,10 +24,14 @@ Reference checked before the correction: the pinned Astral input implementation 
 - `python -m unittest tests.test_ui_pace tests.test_ui_motion -q`, NEWSNAP_CC = bundled clang: 8 tests pass.
 - Full candidate compilation, selftest and owner-module loader: passed, zero failures.
 - RTX 4060 Laptop, same 45-second route, resolution 1280x720, 144 FPS cap, copies of the supplied advanced save: before, 44 off-step false leaves in 172 samples; after, zero in 367 samples, with four genuine step transitions retained. The number/timing of samples differs; this is functional evidence, not a pacing benchmark. Sparse screenshots identify menu/course screens; they do not establish pixel-perfect colour stability on every present.
-- RX 6900 XT visual/interactive acceptance remains pending. Other pointer screens were not exhaustively played. Keep in REVIEW; independent review and owner acceptance are required before DONE.
+- Owner, RX 6900 XT (2026-11-16), tested the supplied 144 FPS BAT: reports it no longer appears to blink and authorizes release. This is the observed pointer case, not exhaustive acceptance of every screen.
+- Independent code review: no blocking issues. The strengthened native fixture also drives the real pad-frame decision, changes the presented counter between handler and hover calls within one game frame, and covers forced full-handler flags while event22 remains globally paced.
+- Shared-submenu run, RTX 4060 Laptop: camp -> exploration map -> camp -> laboratory -> camp at 144 FPS, 75 seconds. Screenshot-identified screens and trace summary: `build/pointer-color-submenus144/`. 7,442 samples, zero off-step false leaves, seven true step transitions retained. The hook belongs to the shared pointer routine. Not an exhaustive visual audit of all submenus.
 
 Private evidence: `build/pointer-color-owner144-before/`, `build/pointer-color-owner144-after/`, `build/pointer-color-diag/` in the shared repository. No game files, saves or generated executables are committed.
 
 ## Owner test
 
 `build/pointer-color-test-144/PROBAR-PUNTERO-144.bat` launches the candidate at a 144 FPS cap in a foreground window with input enabled, Original/off upscaling and interface motion on. It uses its own profile containing an unmodified copy of the supplied save; it never writes to the supplied save or installed profile. It does not change the monitor refresh rate. Hover selectable options, hold still, move away and return; expect orange while selectable, yellow outside. Log: `prueba-144.log` beside the BAT.
+
+- Additional 85-second RTX run at 144 FPS reaches laboratory -> Fotodex categories -> Pokemon grid, then My Space with Album/Research Titles/Statistics/Adventure Record. Screenshots identify each screen. 7471 hover samples, zero off-step false leaves, 10 true step transitions retained. Private evidence: `build/pointer-color-fotodex144/`. Photo evaluation and every individual album/detail screen were not exhaustively traversed.

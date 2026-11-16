@@ -148,15 +148,26 @@ int plat_mem_read(uint64_t a,void *out,size_t n){memcpy(out,(void *)(uintptr_t)a
 int plat_mem_readable(uint64_t a,uint64_t n){return 1;}
 void snap_ui_pace_enter(Cpu *);
 void snap_ui_pointer_hover(Cpu *);
+void snap_ui_pace_pad(Cpu *);
+void snap_ui_pace_event(Cpu *);
 int main(void){
  unsigned char object[0x100]={0}; object[0xc0]=object[0xc6]=1;
+ unsigned char pad[0x100]={0};
  unsigned rates[]={60,90,120,144};
+ for(unsigned mode=0;mode<2;mode++)
  for(unsigned r=0;r<4;r++){
   cap=1000000000ull/rates[r];
   unsigned old=0,transitions=0,skipped=0;
   for(unsigned f=0;f<rates[r]*4;f++,now+=cap,gfx_counters.frames++){
    Cpu c,before; memset(&c,0x5a,sizeof c); c.x[0]=(uint64_t)(uintptr_t)object;
-   snap_ui_pace_enter(&c); int step=c.x[16];
+   c.x[19]=(uint64_t)(uintptr_t)pad;
+   if(mode) snap_ui_pace_pad(&c);
+   snap_ui_pace_event(&c); int step=c.x[16];
+   // Forced full handlers still consume the globally paced event22 results.
+   object[0xc0]=f%4!=0; object[0xc6]=f%4!=1; object[0xc4]=f%4==2;
+   snap_ui_pace_enter(&c);
+   // A present can complete between calls in one game frame: pad decision wins.
+   if(mode) gfx_counters.frames++;
    // Captured failure: adapters report a hit on updates and zero on intervening frames.
    unsigned desired=f<rates[r]*2,raw=step?desired:0;
    c.x[8]=raw; c.x[9]=old; before=c;
