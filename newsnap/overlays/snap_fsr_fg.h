@@ -10,7 +10,18 @@
 
 // AC_FRAME_GEN=fsr (frame_gen in newsnap.ini; default off). Needs the FSR temporal path
 // (FSR 3.1 or FSR 4, upscaling or Native AA): its depth, motion vectors and jitter feed it.
+// AC_FRAME_GEN=dlss (FG-DLSS): NVIDIA DLSS frame generation (snap_dlssg.h), with DLSS as the
+// upscaler or as Native AA, on RTX 40 and 50 series. Same present path; the depth and motion
+// vectors of each frame are kept in a small ring until the present thread generates.
 int snap_fg_enabled(void);
+int snap_fg_mode(void);   // 0 off, 1 FSR, 2 DLSS
+
+// FG-DLSS: in the replay's command buffer, right after the DLSS Super Resolution evaluation
+// (vk_dlaa.c): the frame's depth (level and layer of depth) and motion vectors, both w x h and in
+// GENERAL layout, are copied for the generation of this frame; ow x oh: the presented picture.
+void snap_fg_prepare_dlss(VkCommandBuffer cb, VkImage depth, VkFormat depth_format, uint32_t level, uint32_t layer,
+                          VkImage motion, uint32_t w, uint32_t h, uint32_t ow, uint32_t oh, float jitter_x,
+                          float jitter_y, int reset);
 
 // In the FSR upscale's command buffer, after its dispatch (snap_fsr_runtime.inc): the
 // frame generation prepare for this real frame (render-size depth, motion vectors,

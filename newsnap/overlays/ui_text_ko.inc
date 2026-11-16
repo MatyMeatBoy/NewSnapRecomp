@@ -128,7 +128,7 @@ static const char *const text_ko[UI_TEXT_COUNT] = {
                         "보간에서 제외됩니다. 게임이 모니터 주사율의 절반보다 빠르게 실행되는 동안에는 자동으로 "
                         "일시 정지됩니다. 성능 정보에 실제 FPS와 생성된 FPS가 표시됩니다. "
                         "재시작 후 적용됩니다.",
-    [UI_SNAP_FG_NEEDS] = "스케일러로 AMD FSR 3.1 또는 FSR 4가 필요합니다",
+    [UI_SNAP_FG_NEEDS] = "스케일러로 AMD FSR 3.1 또는 FSR 4, NVIDIA DLSS가 필요합니다",
     [UI_SNAP_HDPH] = "HD 사진 썸네일",
     [UI_SNAP_HDPH_DESC] = "사진을 찍은 뒤의 미리 보기와 폴더 및 선택 화면의 사진에 게임의 360 x 240 썸네일 대신 "
                           "1080 x 720 사진을 사용합니다. 저장된 사진과 점수는 "

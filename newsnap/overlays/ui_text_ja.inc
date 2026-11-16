@@ -132,7 +132,7 @@ static const char *const text_ja[UI_TEXT_COUNT] = {
                         "対象外です。ゲームがモニターのリフレッシュレートの半分より速く動いている間は自動で"
                         "一時停止します。パフォーマンス表示には実 FPS と生成 FPS が表示されます。再起動後に"
                         "反映されます。",
-    [UI_SNAP_FG_NEEDS] = "アップスケーラーに AMD FSR 3.1 または FSR 4 が必要です",
+    [UI_SNAP_FG_NEEDS] = "アップスケーラーに AMD FSR 3.1 または FSR 4、NVIDIA DLSS が必要です",
     [UI_SNAP_HDPH] = "写真サムネイルの HD 化",
     [UI_SNAP_HDPH_DESC] = "撮影後のプレビューと、フォルダーや選択画面の写真に、ゲームの 360 x 240 のサムネイルの"
                           "代わりに 1080 x 720 の写真を使います。保存される写真と評価は変わりません。",

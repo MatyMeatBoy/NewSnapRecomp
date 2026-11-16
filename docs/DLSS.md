@@ -1,4 +1,4 @@
-# Optional NVIDIA DLSS Super Resolution
+# Optional NVIDIA DLSS: Super Resolution and Frame Generation
 
 The native 0.4 integration can use NVIDIA DLSS Super Resolution, including DLAA
 at native resolution. This is a temporal scene upscaler, not frame generation or
@@ -61,6 +61,30 @@ installed driver and must not be copied from an unrelated SDK or driver.
 Only the release SR DLL is fetched: no development/watermarked library,
 `nvngx_dlssg.dll`, `nvngx_dlssd.dll`, Streamline middleware, or vendor headers
 are required by this project's existing independently declared NGX ABI.
+
+## Frame generation (0.9.20, RTX 40 and 50 series)
+
+`frame_gen = dlss` (`AC_FRAME_GEN=dlss`; launcher «Generación de fotogramas», in-game menu) shows one generated frame
+between two real ones with NVIDIA DLSS Frame Generation. It needs DLSS as the upscaler (any mode, Native AA included)
+because it uses the same depth and motion vectors.
+
+- Raw NGX, feature 11, `nvngx_dlssg.dll` 310.9.16 from the same pinned commit of the official NVIDIA DLSS repository
+  (`lib/Windows_x86_64/rel/nvngx_dlssg.dll`, 7 506 544 bytes, SHA-256
+  `8d59d49b36410dd6b62fef2503a5871d347415bd85d943fa0848563a95dd50c7`, Authenticode valid, NVIDIA Corporation), fetched
+  and checked by `tools/fetch_dlss.py` with the Super Resolution DLL. NVIDIA's "DLSS-FG Programming Guide" in that
+  repository describes this use: the feature writes the interpolated frame into an image of the application and
+  "does not handle timing or presentation". No Streamline, no swapchain interposer.
+- `newsnap/overlays/snap_dlssg.inc` (inside `vk_dlaa.c`, which owns the NGX core) creates and evaluates the feature;
+  `newsnap/overlays/snap_fsr_fg.c` keeps each frame's depth, motion vectors and HUD-less picture in a ring of three
+  and has the present thread generate and show the frame, the same path as FSR frame generation (pause when the
+  monitor cannot show the generated frames, HUD kept out of the interpolation).
+- NGX is not thread-safe: Super Resolution (replay thread) and frame generation (present thread) share one lock.
+- Parameters: `nvsdk_ngx_defs_dlssg.h` / `nvsdk_ngx_helpers_dlssg_vk.h` of the same SDK. Matrices are passed as the
+  transposes of the runtime's (NGX takes row vectors); depth is inverted; motion vectors are in render pixels.
+- Availability is the driver's answer (`FrameGeneration.Available`); the log says why when it is not available.
+- `NEWSNAP_FG_SHOTS=<folder>` (diagnostics) saves a generated frame with the real frames before and after it.
+
+Checked on an RTX 4060 Laptop GPU (driver 616.92). Not checked: RTX 50 multi-frame generation (one frame is used).
 
 ## Scene contract and presets
 

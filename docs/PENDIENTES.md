@@ -39,7 +39,7 @@ acceptance), DONE (moved to the history file).
 | POINTER-02 | P1 | REVIEW | MatyMeatBoy | 0.9.11: real, averaged frame time on every pointer screen. If it still steps at 144 fps: position drawn only on interface steps (`cursor_mc`, see handoff). |
 | README-01 | P2 | OPEN | — | Screenshots of the enhancements and the launcher for the README. |
 | FPS-03 | P2 | OPEN | — | Throwable items above 60 fps: needs a save with fluffruit. |
-| RTX-01 | P2 | OPEN | — | HD photo thumbnails on RTX; DLSS frame generation (RTX 40/50). Needs an NVIDIA GPU: the RTX tester PC (RTX 4060) can do it. |
+| RTX-01 | P2 | IN PROGRESS | MatyMeatBoy | HD photo thumbnails on RTX: verified by the owner (2026-11-15; the RTX 4060 log shows the 1080x720 picture in use). Left: DLSS frame generation (RTX 40/50), being added on the RTX 4060. |
 
 ## Ideas after 0.8.6
 

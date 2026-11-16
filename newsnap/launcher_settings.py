@@ -31,7 +31,7 @@ SUPERSAMPLE_SCALES = ('125', '133', '150', '175', '200', '250', '300', 'display'
 
 CHOICES = {'vk_present': ('mailbox', 'fifo', 'immediate'),
            'operation_mode': ('docked', 'handheld'), 'render_scale': ('game', '50', '60', '70', '80', '90', '100') + SUPERSAMPLE_SCALES,
-           'upscaler': ('fsr', 'bilinear'), 'aniso': ('game', '2', '4', '8', '16', 'auto'), 'shadow_scale': ('1', '2', '4', 'auto'), 'frame_gen': ('off', 'fsr'), 'hd_photos': ('1', '0'), 'hd_shadows': ('0', '1'), 'tex_pack': ('1', '0'), 'tex_pack_save': ('0', '1'),
+           'upscaler': ('fsr', 'bilinear'), 'aniso': ('game', '2', '4', '8', '16', 'auto'), 'shadow_scale': ('1', '2', '4', 'auto'), 'frame_gen': ('off', 'fsr', 'dlss'), 'hd_photos': ('1', '0'), 'hd_shadows': ('0', '1'), 'tex_pack': ('1', '0'), 'tex_pack_save': ('0', '1'),
            'aspect': ('fit', 'stretch', 'ultrawide'), 'color_preset': ('default', 'vivid', 'clarity', 'custom')}
 RANGES = {'volume': (0, 100, True), 'mouse_sens': (0, 10, False), 'sharpness': (0, 100, True),
           'color_brightness': (-30, 30, True), 'color_contrast': (70, 150, True),
@@ -153,10 +153,14 @@ def validate_video_combination(values, complete=True):
 
     upscaling = values.get('upscaling', 'off')
     frame_gen = values.get('frame_gen', 'off') == 'fsr'
+    dlss_gen = values.get('frame_gen', 'off') == 'dlss'   # FG-DLSS
     # 'display' is the default and adapts by itself: no host scale while an upscaler runs or in handheld (MENU-02).
     explicit = values.get('render_scale') in SUPERSAMPLE_SCALES and values.get('render_scale') != 'display'
     if have('frame_gen', 'upscaling') and frame_gen and upscaling not in ('fsr3', 'fsr4', 'auto'):
-        raise ValueError('La generación de fotogramas necesita el antialiasing AMD FSR 4, FSR 3.1 o Automático.')
+        raise ValueError('La generación de fotogramas FSR necesita el escalador AMD FSR 4, FSR 3.1 o Automático.')
+    if have('frame_gen', 'upscaling') and dlss_gen and upscaling != 'dlss':
+        raise ValueError('La generación de fotogramas DLSS necesita NVIDIA DLSS como escalador (también vale «Desactivado '
+                         '(resolución completa)» en el escalado de rendimiento) y una GPU RTX serie 40 o 50.')
     # MENU-03: Automatic steps aside by itself above 100 % (the runtime reads it as Original); a chosen
     # upscaler does not, so that combination is still refused.
     native = values.get('upscaling_quality') == 'native'   # AA-01: Native AA works above 100 %
