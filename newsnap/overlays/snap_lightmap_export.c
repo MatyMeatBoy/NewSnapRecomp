@@ -1,13 +1,17 @@
-// HD-SHADOW-02: the light maps of every level, read from the player's own game files when the launcher builds the
-// HD shadows mode, without playing first. newsnap/game_textures.py asks for the ^Lightmap.nutexb members of the
-// level archives (kind 1 in snap_decode.c's requests); after the game's own Oodle decoder, each one comes here:
+// HD-SHADOW-02: the baked shadows of every level, read from the player's own game files when the launcher builds the
+// HD shadows mode, without playing first. newsnap/game_textures.py asks for the members of the level archives
+// (kinds 1 and 2 in snap_decode.c's requests); after the game's own Oodle decoder, each one comes here:
 //
-//   1. The .nutexb footer gives the size, format and data size. Only BC6H unsigned maps (format 0xd8) are light.
-//   2. Its storage bytes are hashed the way the runtime hashes the texture when the game uploads it
-//      (snap_texpack.c: the same bytes, size and NVN format 79), so the file name matches at load time.
-//   3. The block-linear storage (Tegra GOBs, block height from the height as the Switch tools pick it) is read
-//      into rows of 4x4 blocks, and the BC6H blocks are decoded on the CPU (all 14 modes, D3D11 BC6H rules).
-//   4. <out>/<hash>.dds is written as RGBA16F, the file hdshadows.py enlarges, as the runtime's own dump does.
+//   kind 1, <shape>^<n>^0^Lightmap.nutexb: the light of a mesh, BC6H signed (.nutexb format 0xd8, NVN 0x4F), one
+//           level, 64 to 512 texels. Written as <out>/<hash>.dds, RGBA16F, the file hdshadows.py enlarges, as the
+//           runtime's own dump does.
+//   kind 2, <shape>^<n>^Shadow.nutexb: the sun shadows painted on a mesh, BC3 sRGB (format 0xa5, NVN 72) with the
+//           shadow in alpha, 64 to 2048 texels. Written as <out>/<hash>.png, RGBA8.
+//
+// For both, the .nutexb footer gives the size, format and data size; the storage bytes are hashed the way the
+// runtime hashes the texture when the game uploads it (snap_texpack.c: the same bytes, size and NVN format), so the
+// file name matches at load time; the block-linear storage is read with the runtime's own layout code (nvn_tex.c,
+// what the upload uses) and the blocks are decoded on the CPU (BC6H: all 14 modes, D3D11 rules).
 //
 // Nothing here is game data: the pictures are made on the player's PC from the player's files.
 #include <stdint.h>
@@ -15,11 +19,14 @@
 #include <stdlib.h>
 #include <string.h>
 #include "host.h"
+#include "nvn_tex.h"
+#include "tex.h"
+#include "vk.h"
 
 uint64_t snap_texpack_hash(const void *p, uint64_t n, uint32_t w, uint32_t h, int nvn_format);   // snap_texpack.c
 void snap_texpack_write_rgba16f(const char *path, const void *px, uint32_t w, uint32_t h);
 
-// ---- BC6H (unsigned) ---------------------------------------------------------------------------------------------
+// ---- BC6H -------------------------------------------------------------------------------------------------------
 // Each mode's fields in stream order: "<endpoint><channel>.<first bit>-<last bit>" reads bits first..last, one per
 // stream bit (first > last for the reversed fields of modes 13 and 14). Endpoints: 0 = base, 1 = its pair, 2 and 3 =
 // the second region's. Channels r, g, b.
@@ -63,17 +70,27 @@ typedef struct { const uint8_t *b; int pos; } Bits;
 static int bit(Bits *s) { int v = s->b[s->pos >> 3] >> (s->pos & 7) & 1; s->pos++; return v; }
 static int bits(Bits *s, int n) { int v = 0; for (int i = 0; i < n; i++) v |= bit(s) << i; return v; }
 
-static int unquantize(int x, int n) {
-    if (n >= 15) return x;
-    if (x == 0) return 0;
-    if (x == (1 << n) - 1) return 0xFFFF;
-    return ((x << 16) + 0x8000) >> n;
+static int unquantize(int x, int n, int sgn) {
+    if (!sgn) {
+        if (n >= 15) return x;
+        if (x == 0) return 0;
+        if (x == (1 << n) - 1) return 0xFFFF;
+        return ((x << 16) + 0x8000) >> n;
+    }
+    if (n >= 16) return x;
+    int neg = x < 0, u;
+    if (neg) x = -x;
+    if (x == 0) u = 0;
+    else if (x >= (1 << (n - 1)) - 1) u = 0x7FFF;
+    else u = ((x << 15) + 0x4000) >> (n - 1);
+    return neg ? -u : u;
 }
 
 static int sext(int v, int n) { return v & 1 << (n - 1) ? v - (1 << n) : v; }
 
-// One 16-byte block to 16 RGB half floats (rgba: 16 x 4 halves, alpha 1.0). Returns the mode (1..14), 0 if reserved.
-int snap_bc6h_block(const uint8_t blk[16], uint16_t out[64]) {
+// One 16-byte block to 16 RGB half floats (rgba: 16 x 4 halves, alpha 1.0); sgn: BC6H_SF16. Returns the mode (1..14),
+// 0 if reserved.
+int snap_bc6h_block(const uint8_t blk[16], uint16_t out[64], int sgn) {
     Bits s = {blk, 0};
     int m = bits(&s, 2), mode;
     if (m < 2) mode = m;
@@ -107,11 +124,15 @@ int snap_bc6h_block(const uint8_t blk[16], uint16_t out[64]) {
     }
     int regions = md->partitioned ? 2 : 1, shape = md->partitioned ? bits(&s, 5) : 0;
     int nb = md->bits, mask = (1 << nb) - 1;
-    if (md->transformed)
-        for (int k = 1; k < 2 * regions; k++)
-            for (int c = 0; c < 3; c++) e[k][c] = (e[0][c] + sext(e[k][c], md->delta[c])) & mask;
+    if (sgn)
+        for (int c = 0; c < 3; c++) e[0][c] = sext(e[0][c], nb);
+    for (int k = 1; k < 2 * regions; k++)
+        for (int c = 0; c < 3; c++) {
+            if (md->transformed) e[k][c] = (e[0][c] + sext(e[k][c], md->delta[c])) & mask;
+            if (sgn) e[k][c] = sext(e[k][c], nb);
+        }
     for (int k = 0; k < 2 * regions; k++)
-        for (int c = 0; c < 3; c++) e[k][c] = unquantize(e[k][c], nb);
+        for (int c = 0; c < 3; c++) e[k][c] = unquantize(e[k][c], nb, sgn);
     int ib = md->partitioned ? 3 : 4;
     for (int i = 0; i < 16; i++) {
         int region = md->partitioned ? PARTITIONS[shape] >> i & 1 : 0;
@@ -120,62 +141,94 @@ int snap_bc6h_block(const uint8_t blk[16], uint16_t out[64]) {
         int w = md->partitioned ? W3[idx] : W4[idx];
         for (int c = 0; c < 3; c++) {
             int v = (e[2 * region][c] * (64 - w) + e[2 * region + 1][c] * w + 32) >> 6;
-            out[4 * i + c] = (uint16_t)((v * 31) >> 6);
+            if (!sgn) out[4 * i + c] = (uint16_t)((v * 31) >> 6);
+            else out[4 * i + c] = v < 0 ? (uint16_t)(0x8000 | ((-v * 31) >> 5)) : (uint16_t)((v * 31) >> 5);
         }
         out[4 * i + 3] = 0x3C00;
     }
     return mode + 1;
 }
 
-// ---- block-linear storage ------------------------------------------------------------------------------------------
-// Byte offset of (x bytes, y rows) in a Tegra block-linear surface of row_bytes per row and block height bh GOBs.
-static size_t bl_offset(uint32_t x, uint32_t y, uint32_t row_bytes, uint32_t bh) {
-    uint32_t gobs_x = (row_bytes + 63) / 64;
-    size_t block = (size_t)(y / (8 * bh)) * gobs_x + x / 64;
-    size_t off = block * 512 * bh + (y % (8 * bh) / 8) * 512;
-    return off + (x % 64 / 32) * 256 + (y % 8 / 2) * 64 + (x % 32 / 16) * 32 + (y % 2) * 16 + x % 16;
+// ---- BC3 ------------------------------------------------------------------------------------------------------------
+static void bc3_block(const uint8_t blk[16], uint8_t out[64]) {
+    int a[8] = {blk[0], blk[1]};
+    if (a[0] > a[1]) for (int k = 1; k < 7; k++) a[k + 1] = ((7 - k) * a[0] + k * a[1] + 3) / 7;
+    else {
+        for (int k = 1; k < 5; k++) a[k + 1] = ((5 - k) * a[0] + k * a[1] + 2) / 5;
+        a[6] = 0, a[7] = 255;
+    }
+    uint64_t ai = 0;
+    for (int k = 0; k < 6; k++) ai |= (uint64_t)blk[2 + k] << (8 * k);
+    uint32_t c0 = blk[8] | blk[9] << 8, c1 = blk[10] | blk[11] << 8, ci;
+    memcpy(&ci, blk + 12, 4);
+    int pal[4][3];
+    for (int k = 0; k < 2; k++) {
+        uint32_t c = k ? c1 : c0;
+        int r = c >> 11 & 31, g = c >> 5 & 63, b = c & 31;
+        pal[k][0] = r << 3 | r >> 2, pal[k][1] = g << 2 | g >> 4, pal[k][2] = b << 3 | b >> 2;
+    }
+    for (int c = 0; c < 3; c++) {   // BC3's colour part always has four colours
+        pal[2][c] = (2 * pal[0][c] + pal[1][c] + 1) / 3;
+        pal[3][c] = (pal[0][c] + 2 * pal[1][c] + 1) / 3;
+    }
+    for (int i = 0; i < 16; i++) {
+        const int *p = pal[ci >> (2 * i) & 3];
+        out[4 * i] = (uint8_t)p[0], out[4 * i + 1] = (uint8_t)p[1], out[4 * i + 2] = (uint8_t)p[2];
+        out[4 * i + 3] = (uint8_t)a[ai >> (3 * i) & 7];
+    }
 }
 
-static uint32_t block_height(uint32_t rows) {   // GOBs per block: the Switch default for a level of this many rows
-    uint32_t bh = 16;
-    while (bh > 1 && rows <= (bh / 2) * 8) bh /= 2;
-    return bh;
-}
-
-// One decoded .nutexb member (kind 1). Returns 1 when a light map was written or was there already, 0 when the
-// member is not a light map this mode uses, -1 on a malformed file.
-int snap_lightmap_export(const uint8_t *raw, size_t size, const char *dir, uint64_t *hash_out, int *modes) {
+// ---- one decoded .nutexb member --------------------------------------------------------------------------------------
+// kind 1 (light map) or 2 (painted shadows). Returns 1 when the picture was written or was there already, 0 when the
+// member is not a texture this mode uses, -1 on a malformed file. *hash_out: the runtime's hash of the texture.
+int snap_lightmap_export(const uint8_t *raw, size_t size, int kind, const char *dir, uint64_t *hash_out) {
     if (size < 0xB0) return -1;
     const uint8_t *ft = raw + size - 0xB0;
     if (memcmp(ft + 0x40, " XNT", 4) || memcmp(ft + 0xA8, " XET", 4)) return -1;
     uint32_t w, h, depth, mips, layers, data;
     memcpy(&w, ft + 0x84, 4), memcpy(&h, ft + 0x88, 4), memcpy(&depth, ft + 0x8C, 4);
     memcpy(&mips, ft + 0x98, 4), memcpy(&layers, ft + 0xA0, 4), memcpy(&data, ft + 0xA4, 4);
-    if (ft[0x90] != 0xD8 || mips != 1 || layers != 1 || depth != 1 || w < 64 || h < 64 || w > 2048 || h > 2048 ||
-        w % 4 || h % 4)
+    int light = kind == 1, nvn = light ? 0x4F : 72;   // NVN BC6H_SFLOAT / RGBA_DXT5_SRGB, as the game names them
+    if (ft[0x90] != (light ? 0xD8 : 0xA5) || mips != 1 || layers != 1 || depth != 1 || w < 64 || h < 64 || w > 2048 ||
+        h > 2048 || w % 4 || h % 4)
         return 0;
+    nvn_texdesc d = {.target = 1, .format = nvn, .width = w, .height = h, .depth = 1, .levels = 1};
+    nvn_texlayout L;
+    nvn_tex_layout(&d, &L);
     uint32_t bw = w / 4, bh = h / 4, row_bytes = bw * 16;
-    if (data > size - 0xB0 || data < (size_t)row_bytes * bh) return -1;
-    uint64_t hash = snap_texpack_hash(raw, data, w, h, 79);   // NVN BC6H_UFLOAT, as the game names it
+    if (!L.size || L.size > data || data > size - 0xB0) return -1;
+    uint64_t hash = snap_texpack_hash(raw, L.size, w, h, nvn);
     if (hash_out) *hash_out = hash;
     char path[2048];
-    if (snprintf(path, sizeof path, "%s/%016llx.dds", dir, (unsigned long long)hash) >= (int)sizeof path) return -1;
+    if (snprintf(path, sizeof path, "%s/%016llx.%s", dir, (unsigned long long)hash, light ? "dds" : "png") >=
+        (int)sizeof path)
+        return -1;
     FILE *f = fopen(path, "rb");
     if (f) { fclose(f); return 1; }
-    uint16_t *px = malloc((size_t)w * h * 8);
-    if (!px) return -1;
-    uint32_t gob_h = block_height(bh);
+    uint8_t *blocks = malloc((size_t)row_bytes * bh), *px = malloc((size_t)w * h * (light ? 8 : 4));
+    if (!blocks || !px || nvn_deswizzle(&d, 0, 0, raw, blocks, row_bytes)) { free(blocks), free(px); return -1; }
     for (uint32_t by = 0; by < bh; by++)
         for (uint32_t bx = 0; bx < bw; bx++) {
-            size_t off = bl_offset(bx * 16, by, row_bytes, gob_h);
-            if (off + 16 > data) { free(px); return -1; }
-            uint16_t texels[64];
-            int mode = snap_bc6h_block(raw + off, texels);
-            if (modes) modes[mode]++;
-            for (int i = 0; i < 16; i++)
-                memcpy(px + ((size_t)(by * 4 + i / 4) * w + bx * 4 + i % 4) * 4, texels + 4 * i, 8);
+            const uint8_t *blk = blocks + ((size_t)by * bw + bx) * 16;
+            if (light) {
+                uint16_t texels[64];
+                snap_bc6h_block(blk, texels, 1);
+                for (int i = 0; i < 16; i++)
+                    memcpy(px + ((size_t)(by * 4 + i / 4) * w + bx * 4 + i % 4) * 8, texels + 4 * i, 8);
+            } else {
+                uint8_t texels[64];
+                bc3_block(blk, texels);
+                for (int i = 0; i < 16; i++)
+                    memcpy(px + ((size_t)(by * 4 + i / 4) * w + bx * 4 + i % 4) * 4, texels + 4 * i, 4);
+            }
         }
-    snap_texpack_write_rgba16f(path, px, w, h);
-    free(px);
+    if (light) snap_texpack_write_rgba16f(path, px, w, h);
+    else {
+        char tmp[2060];
+        snprintf(tmp, sizeof tmp, "%s.part", path);
+        rt_write_png(tmp, px, w, h);
+        if (rename(tmp, path)) remove(tmp);
+    }
+    free(blocks), free(px);
     return 1;
 }

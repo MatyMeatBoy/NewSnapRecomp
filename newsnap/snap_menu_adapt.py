@@ -39,9 +39,10 @@ TEXTS = {
                             'game. Takes effect after a restart.',
     'UI_SNAP_TEXPACK_NONE': 'no pack in the texpack folder',
     'UI_SNAP_HDSH': 'HD shadows mode (experimental)',
-    'UI_SNAP_HDSH_DESC': 'The shadows of plants, rocks and scenery are painted into the light maps of each level. On: each '
-                         'light map is saved the first time it loads, and Generate HD shadows in the launcher enlarges '
-                         'them on this PC; the HD ones are used the next time the level loads. Takes effect after a restart.',
+    'UI_SNAP_HDSH_DESC': 'The shadows of plants, rocks, stairs and scenery are painted into textures of each level. On: '
+                         'the launcher reads them from your own game and enlarges them on this PC for every level '
+                         '(Generate HD shadows; it starts by itself when the launcher opens); they show once built. '
+                         'Takes effect after a restart.',
     'UI_SNAP_TAB_SYS': 'System',
     'UI_SNAP_SYS_CONT': 'Back to the game',
     'UI_SNAP_SYS_CONT_DESC': 'Closes this menu and goes on playing.',
@@ -178,6 +179,19 @@ def edits():
             ('SWKBD_ONLY(text_es, "Introducir texto", "Introduce un nombre", "Caballo", "Aceptar", "Cancelar",\n'
              '           "Mando: A = Aceptar, B = Cancelar");\n',
              '#include "ui_text_es.inc"\n'),
+            # MENU-LANG-01: the same for the game's other languages (overlays/ui_text_<language>.inc)
+            ('SWKBD_ONLY(text_ja, "文字入力", "名前を入力してください", "ウマ", "OK", "キャンセル", "コントローラー: A = OK、B = キャンセル");\n',
+             '#include "ui_text_ja.inc"\n'),
+            ('SWKBD_ONLY(text_fr, "Saisie de texte", "Entrez un nom", "Cheval", "OK", "Annuler", "Manette : A = OK, B = Annuler");\n',
+             '#include "ui_text_fr.inc"\n'),
+            ('SWKBD_ONLY(text_de, "Texteingabe", "Gib einen Namen ein", "Pferd", "OK", "Abbrechen", "Controller: A = OK, B = Abbrechen");\n',
+             '#include "ui_text_de.inc"\n'),
+            ('SWKBD_ONLY(text_it, "Inserimento testo", "Inserisci un nome", "Cavallo", "OK", "Annulla", "Controller: A = OK, B = Annulla");\n',
+             '#include "ui_text_it.inc"\n'),
+            ('SWKBD_ONLY(text_zh_hant, "文字輸入", "請輸入名字", "馬兒", "確定", "取消", "手把：A 確定，B 取消");\n',
+             '#include "ui_text_zh_hant.inc"\n'),
+            ('SWKBD_ONLY(text_ko, "문자 입력", "이름을 입력하세요", "말", "확인", "취소", "컨트롤러: A 확인, B 취소");\n',
+             '#include "ui_text_ko.inc"\n'),
         ],
         'runtime/ui/menu.cpp': [
             ('    opt_choice_list("AC_WINDOW_SIZE", UI_MENU_WINDOW_SIZE, pv, pn, n, UI_MENU_WINDOW_SIZE_DESC);',

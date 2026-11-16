@@ -29,6 +29,16 @@ class Bc6hEncoder(unittest.TestCase):
         self.assertTrue(np.allclose(H.decode_bc6h(blob, 4, 4)[0, 0], 5.0, rtol=0.02))
 
 
+class LargeMaps(unittest.TestCase):
+    def test_encoder_works_in_pieces_with_the_same_result(self):
+        rng = np.random.default_rng(7)
+        img = rng.random((4, 4 * 8200, 3), dtype=np.float32) * 4   # more blocks than one piece holds
+        blob = H.encode_bc6h(img)
+        self.assertEqual(len(blob), 8200 * 16)
+        self.assertEqual(blob[-16 * 8:], H.encode_bc6h(np.ascontiguousarray(img[:, -32:])))
+        self.assertEqual(blob[:16 * 8], H.encode_bc6h(np.ascontiguousarray(img[:, :32])))
+
+
 class LightMaps(unittest.TestCase):
     def test_fill_reaches_empty_texels_and_keeps_islands(self):
         rgb = np.zeros((8, 8, 3), np.float32)

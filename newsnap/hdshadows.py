@@ -23,12 +23,13 @@ The light maps are game-derived pictures: they stay on the player's PC and are n
 """
 import argparse
 from pathlib import Path
+import shutil
 import struct
 import subprocess
 import tempfile
 
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageFilter
 
 from .upstream import ROOT
 
@@ -124,9 +125,15 @@ def _unquantize(q):
 def encode_bc6h(rgb):
     """rgb: float32 (H, W, 3), H and W multiples of 4, values >= 0. Returns the BC6H_UF16 blocks as bytes."""
     h, w, _ = rgb.shape
-    half = np.clip(rgb, 0, 65504).astype(np.float16).view(np.uint16).astype(np.float64)
-    x = half * 64.0 / 31.0                                  # the interpolation domain (finish: unq * 31 >> 6)
-    blocks = x.reshape(h // 4, 4, w // 4, 4, 3).transpose(0, 2, 1, 3, 4).reshape(-1, 16, 3)
+    half = np.clip(rgb, 0, 65504).astype(np.float16).view(np.uint16)
+    blocks = half.reshape(h // 4, 4, w // 4, 4, 3).transpose(0, 2, 1, 3, 4).reshape(-1, 16, 3)
+    # in pieces: the search below holds 16 candidates per texel, hundreds of MiB at once for a large map
+    return b''.join(_encode_bc6h_blocks(blocks[at:at + 8192]) for at in range(0, len(blocks), 8192))
+
+
+def _encode_bc6h_blocks(half):
+    """half: uint16 half floats (N, 16, 3). Returns the N blocks as bytes."""
+    blocks = half.astype(np.float64) * 64.0 / 31.0          # the interpolation domain (finish: unq * 31 >> 6)
     mean = blocks.mean(axis=1, keepdims=True)
     centred = blocks - mean
     cov = np.einsum('nki,nkj->nij', centred, centred)
@@ -230,8 +237,21 @@ def _blur(rgb, sigma):
     return sum(k[i] * out[:, i:i + rgb.shape[1]] for i in range(2 * r + 1)).astype(np.float32)
 
 
-def enlarge(rgb, scale, work, model='realesr-animevideov3'):
-    h, w, _ = rgb.shape
+MODEL = 'realesr-animevideov3'   # clean edges without invented texture
+MASK_EDGE = 4096                 # the largest HD shadow mask (the game's own reach 2048)
+LIGHT_EDGE = 2048                # the largest HD light map: the game's few 2048-texel ones are left as they are
+
+
+def upscale(folder_in, folder_out, scale, model=MODEL):
+    """Real-ESRGAN over every PNG of folder_in, one process for all of them; the results keep their names."""
+    Path(folder_out).mkdir(parents=True, exist_ok=True)
+    subprocess.run([str(ESRGAN), '-i', str(folder_in), '-o', str(folder_out), '-n', model, '-s', str(scale),
+                    '-f', 'png'], check=True, capture_output=True, cwd=ESRGAN.parent,
+                   creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))   # no console window
+
+
+def light_prepare(rgb, picture):
+    """A light map as the 8-bit picture the upscaler takes; returns what light_finish needs."""
     mask = rgb.max(axis=2) > 1e-6
     filled = fill_empty(rgb, mask)
     # a true log scale between the darkest and brightest light of this map: the 8 bits the upscaler takes are spread
@@ -240,12 +260,14 @@ def enlarge(rgb, scale, work, model='realesr-animevideov3'):
     low = float(logv[mask].min()) if mask.any() else float(logv.min())
     top = max(float(logv.max()) - low, 1e-6)
     pic = np.clip(np.rint((logv - low) / top * 255.0), 0, 255).astype(np.uint8)
-    src, dst = work / 'in.png', work / 'out.png'
-    Image.fromarray(pic, 'RGB').save(src)
-    subprocess.run([str(ESRGAN), '-i', str(src), '-o', str(dst), '-n', model, '-s', str(scale)],
-                   check=True, capture_output=True, cwd=ESRGAN.parent,
-                   creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))   # no console window per picture
-    big = np.asarray(Image.open(dst).convert('RGB'), dtype=np.float32)
+    Image.fromarray(pic, 'RGB').save(picture)
+    return mask, filled, low, top
+
+
+def light_finish(prepared, picture, scale):
+    mask, filled, low, top = prepared
+    h, w = mask.shape
+    big = np.asarray(Image.open(picture).convert('RGB'), dtype=np.float32)
     size = (w * scale, h * scale)
     if big.shape[:2] != (size[1], size[0]):
         big = np.asarray(Image.fromarray(big.astype(np.uint8)).resize(size, Image.LANCZOS), dtype=np.float32)
@@ -257,6 +279,17 @@ def enlarge(rgb, scale, work, model='realesr-animevideov3'):
     # texels that were empty (0) stay empty: the fill only keeps black out of the islands' borders while enlarging
     keep = np.asarray(Image.fromarray(mask.astype(np.uint8) * 255).resize(size, Image.NEAREST)) > 0
     return np.where(keep[..., None], out, 0).astype(np.float32)
+
+
+def enlarge(rgb, scale, work, model=MODEL):
+    """One light map (float32 H, W, 3) enlarged scale times."""
+    work = Path(work)
+    for name in ('in', 'out'):
+        shutil.rmtree(work / name, ignore_errors=True)
+    (work / 'in').mkdir(parents=True)
+    prepared = light_prepare(rgb, work / 'in/map.png')
+    upscale(work / 'in', work / 'out', scale, model)
+    return light_finish(prepared, work / 'out/map.png', scale)
 
 
 def mip_levels(rgb):
@@ -273,50 +306,210 @@ def is_signed(rgb):
     return float((rgb < 0).mean()) > 0.001
 
 
+def write_light(dst, big):
+    blobs = []
+    for level in mip_levels(big):
+        h, w = level.shape[0] // 4 * 4, level.shape[1] // 4 * 4
+        blobs.append((w, h, encode_bc6h(np.ascontiguousarray(level[:h, :w]))))
+    write_dds_bc6h(dst, blobs)
+
+
 def build(src, dst, scale, work):
     rgb = read_dds_rgba16f(src)
     if is_signed(rgb):
         Path(str(dst)[:-4] + '.skip').write_bytes(b'')
         return None
     big = enlarge(rgb, scale, work)
-    blobs = []
-    for level in mip_levels(big):
-        h, w = level.shape[0] // 4 * 4, level.shape[1] // 4 * 4
-        blobs.append((w, h, encode_bc6h(np.ascontiguousarray(level[:h, :w]))))
-    write_dds_bc6h(dst, blobs)
+    write_light(dst, big)
     return rgb.shape[1], rgb.shape[0], big.shape[1], big.shape[0]
 
 
+# ---- painted shadows (HD-SHADOW-02): BC3 textures with the shadow in alpha and no colour ---------------------------
+
+def mask_prepare(src, picture, scale):
+    """The alpha of a painted shadow texture as the picture the upscaler takes; None when there is nothing to do:
+    a texture with colour is not a shadow mask, one flat value has no edges, and the size limit is reached."""
+    with Image.open(src) as im:
+        rgba = np.asarray(im.convert('RGBA'))
+    alpha = rgba[..., 3]
+    if rgba[..., :3].any() or alpha.min() == alpha.max() or max(alpha.shape) * scale > MASK_EDGE:
+        return None
+    Image.fromarray(alpha, 'L').convert('RGB').save(picture)
+    return alpha
+
+
+def _bc4_blocks(a):
+    """BC4 blocks (the alpha half of BC3) for a (N, 16) float array, 8-value mode: (N,) uint64."""
+    a0 = a.max(1).astype(np.int64)
+    a1 = a.min(1).astype(np.int64)
+    flat = a0 == a1
+    a1 = np.where(flat, np.maximum(a0 - 1, 0), a1)
+    a0 = np.where(flat & (a0 == 0), 1, a0)
+    pal = np.stack([a0, a1] + [((7 - k) * a0 + k * a1) / 7 for k in range(1, 7)], axis=1).astype(np.float32)
+    idx = np.abs(a[:, :, None] - pal[:, None, :]).argmin(2).astype(np.uint64)
+    bits = np.zeros(len(a), dtype=np.uint64)
+    for i in range(16):
+        bits |= idx[:, i] << np.uint64(3 * i)
+    return a0.astype(np.uint64) | (a1.astype(np.uint64) << np.uint64(8)) | (bits << np.uint64(16))
+
+
+def encode_mask(alpha):
+    """alpha uint8 (H, W), H and W multiples of 4: BC3 blocks with black colour, as bytes."""
+    h, w = alpha.shape
+    blocks = alpha.reshape(h // 4, 4, w // 4, 4).transpose(0, 2, 1, 3).reshape(-1, 16).astype(np.float32)
+    out = np.zeros((len(blocks), 2), dtype='<u8')   # the colour half stays zero: black, as the game's
+    for at in range(0, len(blocks), 1 << 16):
+        out[at:at + (1 << 16), 0] = _bc4_blocks(blocks[at:at + (1 << 16)])
+    return out.tobytes()
+
+
+def decode_mask(blob, w, h):
+    """Alpha of BC3 blocks in the 8-value mode (what encode_mask writes), for the tests: uint8 (H, W)."""
+    words = np.frombuffer(blob, dtype='<u8').reshape(-1, 2)[:, 0].astype(np.uint64)
+    a0, a1 = (words & np.uint64(255)).astype(np.float32), ((words >> np.uint64(8)) & np.uint64(255)).astype(np.float32)
+    pal = np.stack([a0, a1] + [((7 - k) * a0 + k * a1) / 7 for k in range(1, 7)], axis=1)
+    idx = np.stack([((words >> np.uint64(16 + 3 * i)) & np.uint64(7)).astype(np.int64) for i in range(16)], axis=1)
+    px = np.take_along_axis(pal, idx, axis=1)
+    return np.rint(px.reshape(h // 4, w // 4, 4, 4).transpose(0, 2, 1, 3).reshape(h, w)).astype(np.uint8)
+
+
+def write_dds_mask(path, levels):
+    """levels: [(w, h, bytes)] BC3 sRGB, level 0 first."""
+    w, h = levels[0][0], levels[0][1]
+    flags = 0x1 | 0x2 | 0x4 | 0x1000 | 0x20000 | 0x80000
+    header = struct.pack('<4sIIIIIII44x', b'DDS ', 124, flags, h, w, len(levels[0][2]), 0, len(levels))
+    pixel = struct.pack('<II4sIIIII', 32, 0x4, b'DX10', 0, 0, 0, 0, 0)
+    caps = struct.pack('<IIIII', 0x1000 | 0x400000 | 0x8, 0, 0, 0, 0)
+    dx10 = struct.pack('<IIIII', 78, 3, 0, 1, 0)   # DXGI_FORMAT_BC3_UNORM_SRGB, TEXTURE2D
+    tmp = Path(str(path) + '.part')
+    with open(tmp, 'wb') as f:
+        f.write(header + pixel + caps + dx10)
+        for _w, _h, blob in levels:
+            f.write(blob)
+    tmp.replace(path)
+
+
+def mask_finish(alpha, picture, dst, scale):
+    h, w = alpha.shape
+    size = (w * scale, h * scale)
+    with Image.open(picture) as im:
+        big = im.convert('L')
+    if big.size != size:
+        big = big.resize(size, Image.LANCZOS)
+    # the amount of shadow stays the game's: where the original is fully lit or fully dark over a neighbourhood, so
+    # is the result (the upscaler only redraws the edges)
+    low = Image.fromarray(alpha, 'L')
+    floor = np.asarray(low.filter(ImageFilter.MinFilter(3)).resize(size, Image.NEAREST))
+    roof = np.asarray(low.filter(ImageFilter.MaxFilter(3)).resize(size, Image.NEAREST))
+    sharp = np.clip(np.asarray(big), floor, roof).astype(np.float32)
+    # soft shadows (foliage, blurred edges) stay soft: where the half tones of the original spread over an area
+    # instead of following one edge, the plain enlargement is used, so the upscaler does not turn them into blobs
+    half = ((alpha > 24) & (alpha < 231)).astype(np.uint8) * 255
+    spread = np.asarray(Image.fromarray(half, 'L').filter(ImageFilter.BoxBlur(2)).resize(size, Image.BILINEAR),
+                        dtype=np.float32) / 255.0
+    soft = np.clip((spread - 0.3) / 0.3, 0.0, 1.0)
+    plain = np.asarray(low.resize(size, Image.BICUBIC), dtype=np.float32)
+    level = Image.fromarray(np.clip(np.rint(sharp * (1 - soft) + plain * soft), 0, 255).astype(np.uint8), 'L')
+    levels = []
+    while True:
+        lw, lh = level.size[0] // 4 * 4, level.size[1] // 4 * 4
+        if lw < 4 or lh < 4:
+            break
+        levels.append((lw, lh, encode_mask(np.asarray(level.crop((0, 0, lw, lh)), dtype=np.uint8))))
+        if min(lw, lh) <= 4:
+            break
+        level = level.resize((max(4, level.size[0] // 2), max(4, level.size[1] // 2)), Image.BOX)
+    write_dds_mask(dst, levels)
+
+
+# ---- the folder ----------------------------------------------------------------------------------------------------
+
 def pending(folder):
+    """The pictures of folder/src with no HD file yet: light maps (.dds) and painted shadows (.png)."""
     out = []
-    for src in sorted((Path(folder) / 'src').glob('*.dds')):
-        if len(src.stem) == 16 and not (Path(folder) / src.name).exists() and not (Path(folder) / (src.stem + '.skip')).exists():
+    folder = Path(folder)
+    for src in sorted(list((folder / 'src').glob('*.dds')) + list((folder / 'src').glob('*.png'))):
+        if len(src.stem) == 16 and not (folder / f'{src.stem}.dds').exists() and not (folder / f'{src.stem}.skip').exists():
             out.append(src)
     return out
 
 
-def generate(folder, scale=2, limit=0, report=print, cancel=None):
-    """Enlarge every light map of folder/src that has no HD file yet. Returns (made, left as they are, failed)."""
+BATCH = 48   # pictures per run of the upscaler: one process start for all of them
+
+
+def _workers():
+    import os
+    return max(1, min(8, (os.cpu_count() or 2) // 2))   # numpy and Pillow release the interpreter lock in their loops
+
+
+def generate(folder, scale=2, limit=0, report=print, cancel=None, sources=None, progress=None):
+    """Enlarge every picture of folder/src that has no HD file yet (or the given sources). Returns
+    (made, left as they are, failed)."""
+    from concurrent.futures import ThreadPoolExecutor
     folder = Path(folder)
-    todo = pending(folder)
+    todo = pending(folder) if sources is None else [Path(p) for p in sources]
     if limit:
         todo = todo[:limit]
     made = kept = failed = 0
-    with tempfile.TemporaryDirectory(prefix='hdshadows-') as tmp:
-        for n, src in enumerate(todo, 1):
+    if progress is None:
+        progress = lambda n, total: report(f'Sombras HD: {n}/{total} texturas')
+
+    def prepare(src, picture):
+        """What the finish step needs, None for a picture left as it is, or the error."""
+        try:
+            if src.suffix == '.dds':
+                rgb = read_dds_rgba16f(src)
+                if is_signed(rgb) or max(rgb.shape[:2]) * scale > LIGHT_EDGE:
+                    return None
+                return light_prepare(rgb, picture)
+            return mask_prepare(src, picture, scale)
+        except (OSError, ValueError, MemoryError) as error:
+            return error
+
+    def finish(src, prepared, picture):
+        try:
+            if src.suffix == '.dds':
+                write_light(folder / f'{src.stem}.dds', light_finish(prepared, picture, scale))
+            else:
+                mask_finish(prepared, picture, folder / f'{src.stem}.dds', scale)
+        except (OSError, ValueError, MemoryError) as error:
+            return error
+        return None
+
+    with tempfile.TemporaryDirectory(prefix='hdshadows-') as tmp, ThreadPoolExecutor(_workers()) as pool:
+        tmp = Path(tmp)
+        for at in range(0, len(todo), BATCH):
             if cancel is not None and cancel.is_set():
                 break
-            try:
-                done = build(src, folder / src.name, scale, Path(tmp))
-            except (OSError, ValueError, subprocess.CalledProcessError) as error:
-                failed += 1
-                report(f'[{n}/{len(todo)}] {src.stem}: sin procesar ({error})')
-                continue
-            if done is None:
-                kept += 1
-            else:
-                made += 1
-            report(f'Sombras HD: {n}/{len(todo)} mapas de luz')
+            for name in ('in', 'out'):
+                shutil.rmtree(tmp / name, ignore_errors=True)
+            (tmp / 'in').mkdir()
+            batch = todo[at:at + BATCH]
+            ready = []
+            for src, prepared in zip(batch, pool.map(lambda src: prepare(src, tmp / 'in' / f'{src.stem}.png'), batch)):
+                if isinstance(prepared, Exception):
+                    failed += 1
+                    report(f'{src.stem}: sin procesar ({prepared})')
+                elif prepared is None:
+                    (folder / f'{src.stem}.skip').write_bytes(b'')
+                    kept += 1
+                else:
+                    ready.append((src, prepared))
+            if ready:
+                try:
+                    upscale(tmp / 'in', tmp / 'out', scale)
+                except (OSError, subprocess.CalledProcessError) as error:
+                    failed += len(ready)
+                    report(f'Sombras HD: la herramienta de escalado falló ({error})')
+                    ready = []
+            errors = pool.map(lambda item: finish(item[0], item[1], tmp / 'out' / f'{item[0].stem}.png'), ready)
+            for (src, _prepared), error in zip(ready, errors):
+                if error is None:
+                    made += 1
+                else:
+                    failed += 1
+                    report(f'{src.stem}: sin procesar ({error})')
+            progress(min(at + BATCH, len(todo)), len(todo))
     return made, kept, failed
 
 

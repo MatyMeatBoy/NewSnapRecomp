@@ -16,6 +16,9 @@
 // option on, each new light map is written once, as float (RGBA16F DDS), to hdshadows/src/<hash>.dds; the launcher's
 // tools/hdshadows.py enlarges them (Real-ESRGAN on a log encoding, light kept, no seams at the UV islands) into
 // hdshadows/<hash>.dds (BC6H with mips), which replace them by hash the next time they load.
+// HD-SHADOW-02: the launcher now makes those files for every level from the player's game files (game_textures.py),
+// with the sun shadows painted per mesh (<shape>^Shadow, BC3 sRGB) in the same folder; hdshadows/all-maps says so,
+// and then nothing is saved while playing.
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -34,7 +37,7 @@ static uint64_t *index_;   // sorted hashes of the pack's files
 static int nindex = -1;
 static char pack_dir[1024], dump_dir[1024];
 static uint64_t *light_index;   // HD-SHADOW-01: hdshadows/<hash>.dds
-static int nlight, light_on;
+static int nlight, light_on, light_save;
 static char light_dir[1024], light_src[1100];
 
 uint32_t snap_texpack_gen(void) { return __atomic_load_n(&gen, __ATOMIC_RELAXED); }
@@ -108,7 +111,13 @@ static void setup(void) {
         plat_fs_list(light_dir, list_cb, &l);
         if (l.n) qsort(l.list, (size_t)l.n, sizeof *l.list, cmp_u64);
         light_index = l.list, nlight = l.n;
-        rt_log("texpack: HD shadows on, %d HD light maps in %s", nlight, light_dir);
+        char all[1100];
+        snprintf(all, sizeof all, "%s/all-maps", light_dir);
+        FILE *f = fopen(all, "rb");   // HD-SHADOW-02: the launcher built every level's maps; nothing to save here
+        if (f) fclose(f);
+        light_save = !f;
+        rt_log("texpack: HD shadows on, %d HD shadow textures in %s%s", nlight, light_dir,
+               light_save ? ", new light maps are saved" : "");
     }
     const char *on = cfg_get("AC_TEX_PACK");
     if (on && !strcmp(on, "0")) return;
@@ -372,8 +381,8 @@ static void attach(const VkTexImage *img, uint64_t h, int have, const char *dir,
     if (!full) hd[nhd++] = t, __atomic_add_fetch(&gen, 1, __ATOMIC_RELAXED);
     plat_mutex_unlock(&lock);
     if (full) { vk_defer_image(t.img, t.mem); return; }
-    static int n[2];
-    int k = dir == light_dir;
+    static int n[3];
+    int k = dir != light_dir ? 0 : img->format == VK_FORMAT_BC3_SRGB_BLOCK ? 2 : 1;
     if (n[k]++ < 3 || n[k] % 200 == 0) rt_log("texpack: %d %s in use (last %016llx, %ux%u -> %ux%u)", n[k], what,
                                               (unsigned long long)h, img->width, img->height, t.w, t.h);
 }
@@ -404,7 +413,7 @@ void snap_texpack_uploaded(const VkTexImage *img, const void *mem, uint64_t size
         uint64_t h = hash_bytes(mem, size, seed);
         int have = in_light(h);
         attach(img, h, have, light_dir, "HD light maps");
-        if (!have) dump_to(img, h, light_src, 1);
+        if (!have && light_save) dump_to(img, h, light_src, 1);
         return;
     }
     {   // NEWSNAP_TEX_WHITE=<vk format>[,<vk format>] (diagnostics): those textures drawn plain white, to find which
@@ -455,8 +464,12 @@ void snap_texpack_uploaded(const VkTexImage *img, const void *mem, uint64_t size
         dump(img, hash_bytes(mem, size, seed));
         return;
     }
-    if (!eligible(img) || (!dump_dir[0] && nindex <= 0 && !nhd)) return;
+    if (!eligible(img) || (!dump_dir[0] && nindex <= 0 && !nhd && !nlight)) return;
     uint64_t h = hash_bytes(mem, size, seed);
+    if (in_light(h)) {   // HD-SHADOW-02: the painted shadows of a mesh
+        attach(img, h, 1, light_dir, "HD painted shadows");
+        return;
+    }
     if (dump_dir[0]) dump(img, h);
     attach(img, h, in_pack(h), pack_dir, "HD textures");
 }

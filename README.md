@@ -47,8 +47,9 @@ keys or game-derived executables are distributed here; the launcher builds the g
 
 ### NewSnap enhancements (each one can be switched off)
 - **HD photo thumbnails:** previews and photo screens show the 1080×720 photo instead of the 360×240 thumbnail.
-- **HD shadows mode** (experimental): real-time shadows at their largest map and the level's light maps enlarged
-  on your PC.
+- **HD shadows mode** (experimental): real-time shadows at their largest map, and the shadows painted into every
+  level (light maps and the sun shadows of each mesh) read from your own game and enlarged on your PC, without
+  playing the levels first.
 - **HD texture packs:** textures saved while you play and enlarged on your PC, compressed to BC1/BC3.
 
 ### Launcher
