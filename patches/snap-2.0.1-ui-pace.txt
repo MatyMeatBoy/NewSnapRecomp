@@ -48,9 +48,13 @@ site snap_timer_trace main 7995f0 fc1c0fe8 @fn:snap_ui_rotation_ask fc1c0fe8
 # POINTER-03: above 60 fps the menu pointer (main+0x643a70, camp menu, photo selection) runs on interface steps
 # only, as at 60 fps. Run on every game frame against a menu that decides 60 times a second, its "active" state
 # (the orange ring) came and went: the ring blinked. It also draws the menu's buttons (it calls the interface
-# handler for each, from main+0x6441ec), so between two steps those calls are made again, drawing only.
+# handler for each, from main+0x6441ec), so between two steps those calls are made again with the last step's arguments, without advancing their movies.
 #   643ac0 cbz x21,6455e8   the pointer's own early exit; the helper (x16 = 0 leave / 1 run), cbz x16 -> 6455e8
 #   6441e8 mov x4,x23       kept; the helper notes each button call's arguments on a step
 set snap_ui_buttons AC_SNAP_UI_BUTTONS_PATCH 1
 site snap_ui_buttons main 643ac0 b400d955 @fn:snap_ui_pace_ptrgate b400d950
 site snap_ui_buttons main 6441e8 aa1703e4 aa1703e4 @fn:snap_ui_pace_ptrbutton
+#   7838f8 ldr x0,[x20,#0x10]   kept; the helper (x16 = 0 for a button called again); cbz x16 -> 783900 (past bl 9d0de0)
+#   790dfc ldr x0,[x21,#0x10]   kept; the helper; cbz x16 -> 790e04 (past bl 9d0de0)
+site snap_ui_buttons main 7838f8 f9400a80 f9400a80 @fn:snap_ui_pace_advance b4000050
+site snap_ui_buttons main 790dfc f9400aa0 f9400aa0 @fn:snap_ui_pace_advance b4000050

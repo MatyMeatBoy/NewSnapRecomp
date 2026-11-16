@@ -84,9 +84,9 @@ void snap_ui_pace_enter(Cpu *c) {
             step = 1;
 
     }
-    if (replaying_buttons) step = 0;   // POINTER-03: a button drawn again between two steps
+    if (replaying_buttons) step = 1;   // POINTER-03: a button called again between two steps runs as written
     c->x[16] = (uint64_t)step;
-    draw_only_sp = step ? 0 : c->sp;   // RETICLE-HZ-01: a call that only draws may still place its clips
+    draw_only_sp = step || replaying_buttons ? 0 : c->sp;   // a redrawn button has no positions of its own   // RETICLE-HZ-01: a call that only draws may still place its clips
     if (!pace_trace()) return;
     if (!pace.step && step) {   // a frame that does not step, an object that still runs: log each such object once
         static uint64_t seen[64];
@@ -553,7 +553,8 @@ void snap_ui_pace_ptrgate(Cpu *c) {
         c->x[16] = 1;
         return;
     }
-    // between two steps: the buttons the last step called, drawn again (the handler's drawing section only)
+    // between two steps: the buttons the last step called, called again with the same arguments (their movies
+    // do not advance then: snap_ui_pace_advance), so they are drawn on every frame with the state of the last step
     ptr_recording = 0;
     replaying_buttons = 1;
     for (int i = 0; i < ptr_ncalls; i++)
@@ -571,4 +572,10 @@ void snap_ui_pace_ptrbutton(Cpu *c) {
     if (!plat_mem_read(c->x[5], ptr_calls[ptr_ncalls].block, sizeof ptr_calls[ptr_ncalls].block))
         memset(ptr_calls[ptr_ncalls].block, 0, sizeof ptr_calls[ptr_ncalls].block);
     ptr_ncalls++;
+}
+
+// POINTER-03: before the handler advances its movies one timeline frame (main+0x7838fc, main+0x790e00, bl 9d0de0):
+// x16 = 0 to leave the advance out (a button called again between two steps), 1 to advance as written.
+void snap_ui_pace_advance(Cpu *c) {
+    c->x[16] = !replaying_buttons;
 }
