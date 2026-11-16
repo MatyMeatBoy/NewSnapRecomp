@@ -468,6 +468,12 @@ class Launcher:
             TexturePackButton(self, content)
         elif self.variables['tex_pack_save'].get() == '1':
             self.variables['tex_pack_save'].set('0')   # nothing left saving textures for a step that is hidden
+        self._heading(content, 'Interfaz')
+        self._choice(content, 'Menús e interfaz fluidos (experimental)', 'ui_motion', {'Activado': '1', 'Desactivado · 60 Hz': '0'},
+                     help_text='Por encima de 60 FPS, el movimiento de los menús, submenús y elementos de la interfaz se dibuja en cada fotograma '
+                               'mostrado en vez de avanzar a 60 pasos por segundo; el recuadro sobre los Pokémon, la retícula y el puntero ya '
+                               'siguen cada fotograma. La lógica del juego no cambia y a 60 FPS no hace nada. Es experimental: si ves un menú '
+                               'duplicado, parpadeo o un elemento fuera de sitio, desactívalo aquí.')
         self._heading(content, 'Discord')
         from . import discord_presence
         self.discord_on = tk.BooleanVar(value=discord_presence.enabled(self.project))

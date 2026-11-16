@@ -338,7 +338,7 @@ void snap_ui_rotation_ask(Cpu *c) { transform_ask(c, "rotation"); }
 // before its shapes or text (vtable +0x38: shapes main+0x9b5be0, text main+0x9b60c0 and main+0x9b78a0; the two
 // container classes hand nothing). At those three calls x1, the matrix handed over, is replaced by the matrix on
 // the way from the last interface step's to this one's when the clip is in motion. Above 60 fps only, while the
-// interface is paced; AC_SNAP_UI_MOTION_PATCH=0 removes the three sites. NEWSNAP_UI_MOTION_TRACE=1 logs the counts.
+// interface is paced; ui_motion = 0 (AC_UI_MOTION=0) removes the three sites. NEWSNAP_UI_PACE_TRACE=1 logs the counts.
 #include "snap_ui_motion.h"
 static SnapUiMotion motion;
 static int motion_lock;

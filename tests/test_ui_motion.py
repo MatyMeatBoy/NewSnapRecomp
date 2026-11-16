@@ -10,10 +10,13 @@ from newsnap.upstream import ROOT
 
 
 class UiMotionTests(unittest.TestCase):
-    def test_patch_set_is_off_by_default_and_only_replaces_the_matrix_handed_over(self):
+    def test_patch_set_has_a_settings_switch_and_only_replaces_the_matrix_handed_over(self):
         text = (ROOT / 'patches/snap-2.0.1-ui-pace.txt').read_text(encoding='utf-8')
         lines = [line.split() for line in text.splitlines() if line and not line.startswith('#')]
-        self.assertIn(['set', 'snap_ui_motion', 'AC_SNAP_UI_MOTION_PATCH', '0'], lines)
+        self.assertIn(['set', 'snap_ui_motion', 'AC_UI_MOTION', '1'], lines)
+        # the switch has a row in the settings table, so the settings file and the menus can turn it off
+        from newsnap.ui_pace_adapt import edits
+        self.assertIn('{"UI_MOTION", "1", "0|1", RESTART},', ''.join(new for _old, new in edits()['runtime/cfg.c']))
         # each site: the original instruction that sets x1, then the helper
         self.assertEqual([line for line in lines if line[:2] == ['site', 'snap_ui_motion']], [
             ['site', 'snap_ui_motion', 'main', '9b5c70', 'aa1503e1', 'aa1503e1', '@fn:snap_ui_motion_hand'],

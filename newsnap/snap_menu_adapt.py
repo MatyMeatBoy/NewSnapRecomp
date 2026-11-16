@@ -11,7 +11,7 @@ IDS = ('UI_SNAP_RES', 'UI_SNAP_RES_DESC', 'UI_SNAP_RES_UPSCALER', 'UI_SNAP_FG', 
        'UI_SNAP_TEXPACK_DESC', 'UI_SNAP_TEXPACK_NONE', 'UI_SNAP_ASPECT', 'UI_SNAP_ASPECT_DESC', 'UI_SNAP_TAB',
        'UI_SNAP_ENH', 'UI_SNAP_HDSH', 'UI_SNAP_HDSH_DESC', 'UI_SNAP_TAB_SYS', 'UI_SNAP_SYS_CONT', 'UI_SNAP_SYS_CONT_DESC',
        'UI_SNAP_SYS_RESTART', 'UI_SNAP_SYS_RESTART_DESC', 'UI_SNAP_SYS_QUIT', 'UI_SNAP_SYS_QUIT_DESC',
-       'UI_SNAP_SMAA_LOW', 'UI_SNAP_SMAA_MEDIUM', 'UI_SNAP_SMAA_HIGH')
+       'UI_SNAP_SMAA_LOW', 'UI_SNAP_SMAA_MEDIUM', 'UI_SNAP_SMAA_HIGH', 'UI_SNAP_UIMOTION', 'UI_SNAP_UIMOTION_DESC')
 
 TEXTS = {
     'UI_SNAP_RES': 'Game internal resolution',
@@ -22,6 +22,10 @@ TEXTS = {
     'UI_SNAP_SMAA_LOW': 'Low',
     'UI_SNAP_SMAA_MEDIUM': 'Medium',
     'UI_SNAP_SMAA_HIGH': 'High',
+    'UI_SNAP_UIMOTION': 'Smooth menus and interface (experimental)',
+    'UI_SNAP_UIMOTION_DESC': 'Above 60 FPS the motion of menus and interface elements is drawn on every displayed frame '
+                             'instead of 60 steps a second. The game logic does not change. Turn it off if a menu looks doubled '
+                             'or flickers. Takes effect after a restart.',
     'UI_SNAP_FG': 'Frame generation',
     'UI_SNAP_FG_DESC': 'AMD FSR or NVIDIA DLSS (RTX 40 and 50) frame generation: one generated frame between two real ones. The interface is kept out of '
                        'the interpolation. It pauses itself while the game runs faster than about half the monitor\'s '
@@ -84,6 +88,7 @@ static void snap_row_internal_res(void) {
 static void snap_rows_enhancements(void) {
     opt_toggle("AC_HD_PHOTOS", UI_SNAP_HDPH, UI_SNAP_HDPH_DESC);
     opt_toggle("AC_HD_SHADOWS", UI_SNAP_HDSH, UI_SNAP_HDSH_DESC);
+    opt_toggle("AC_UI_MOTION", UI_SNAP_UIMOTION, UI_SNAP_UIMOTION_DESC);   // MENU-FPS-01
     {
         static char note[64];
         int n = snap_texpack_files();

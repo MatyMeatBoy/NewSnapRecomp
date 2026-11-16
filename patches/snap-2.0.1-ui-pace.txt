@@ -25,13 +25,13 @@ site snap_ui_pace main 643cc8 bd401e61 bd401e61 @fn:snap_ui_pace_pointer
 set snap_ui_positions AC_SNAP_UI_POSITIONS_PATCH 1
 site snap_ui_positions main 794b4c f940c7f6 f940c7f6 @fn:snap_ui_pace_draw b4fc57d0
 site snap_ui_positions main 78d850 f9443118 f9443118 @fn:snap_ui_pace_placed b40397f0
-# MENU-FPS-01 (experimental, off unless AC_SNAP_UI_MOTION_PATCH=1): interface motion drawn between two interface
+# MENU-FPS-01 (experimental; ui_motion = 0 in the settings file or AC_UI_MOTION=0 turns it off): interface motion drawn between two interface
 # steps. Where a clip hands its matrix on screen (x1 = clip + 0x88) to the renderer before drawing, the helper may
 # put in x1 the matrix on the way from the last step's to this one's (snap_ui_motion_hand, snap_ui_motion.h):
 #   9b5c70 mov x1,x21          shapes (display main+0x9b5be0), once per part
 #   9b60fc add x1,x0,#0x88     text (display main+0x9b60c0)
 #   9b78f0 add x1,x20,#0x88    text (display main+0x9b78a0)
-set snap_ui_motion AC_SNAP_UI_MOTION_PATCH 0
+set snap_ui_motion AC_UI_MOTION 1
 site snap_ui_motion main 9b5c70 aa1503e1 aa1503e1 @fn:snap_ui_motion_hand
 site snap_ui_motion main 9b60fc 91022001 91022001 @fn:snap_ui_motion_hand
 site snap_ui_motion main 9b78f0 91022281 91022281 @fn:snap_ui_motion_hand

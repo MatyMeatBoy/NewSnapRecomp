@@ -56,6 +56,11 @@ def edits():
          'void snap_ui_pos_clip_named(Cpu *c);\nvoid snap_ui_pos_clip_path(Cpu *c);\nvoid snap_ui_size_ask(Cpu *c);\n'
          'void snap_ui_scale_ask(Cpu *c);\nvoid snap_ui_rotation_ask(Cpu *c);\nvoid snap_ui_motion_hand(Cpu *c);\n'
          'typedef void (*GuestFn)(Cpu *);'),
+    ], 'runtime/cfg.c': [
+        # MENU-FPS-01: ui_motion = 0|1 in the settings file (AC_UI_MOTION), the switch of the snap_ui_motion patch set
+        ('"HD_SHADOWS", "TEX_PACK", "TEX_PACK_SAVE",', '"HD_SHADOWS", "TEX_PACK", "TEX_PACK_SAVE", "UI_MOTION",'),
+        ('{"TEX_PACK_SAVE", "display"},', '{"TEX_PACK_SAVE", "display"}, {"UI_MOTION", "display"},'),
+        ('{"TEX_PACK_SAVE", "0", "0|1", RESTART},', '{"TEX_PACK_SAVE", "0", "0|1", RESTART}, {"UI_MOTION", "1", "0|1", RESTART},'),
     ], 'runtime/boot.c': [
         ('// AC_SHOTS=lo-hi:step [AC_SHOTS_DIR=dir]: every step-th present',
          DEFERRED_SHOTS + '// AC_SHOTS=lo-hi:step [AC_SHOTS_DIR=dir]: every step-th present'),
