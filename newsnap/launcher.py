@@ -468,6 +468,14 @@ class Launcher:
             TexturePackButton(self, content)
         elif self.variables['tex_pack_save'].get() == '1':
             self.variables['tex_pack_save'].set('0')   # nothing left saving textures for a step that is hidden
+        self._heading(content, 'Discord')
+        from . import discord_presence
+        self.discord_on = tk.BooleanVar(value=discord_presence.enabled(self.project))
+        ttk.Checkbutton(content, text='Mostrar en Discord que estoy jugando (Rich Presence)', variable=self.discord_on,
+                        command=lambda: discord_presence.set_enabled(self.project, self.discord_on.get())).pack(anchor='w', pady=(2, 2))
+        self._help(content, 'Mientras el juego está abierto, tu perfil de Discord muestra «New Pokémon Snap» y el tiempo de la sesión. '
+                            'Solo se envía ese texto al Discord de este PC; nada de tu perfil del juego, tus fotos ni tus carpetas. '
+                            'Si Discord no está abierto no ocurre nada.')
         self._heading(content, 'Fluidez')
         self._choice(content, 'Generación de fotogramas', 'frame_gen', {'Desactivada': 'off', 'AMD FSR · 1 fotograma generado': 'fsr',
                                                                      'NVIDIA DLSS · 1 fotograma generado (RTX 40/50)': 'dlss'},
@@ -919,6 +927,13 @@ class Launcher:
             pass
         self.root.after(100, self._poll)
 
+    def _discord(self):
+        if getattr(self, 'discord', None) is None:
+            from .discord_presence import Presence
+            from .upstream import ROOT as root
+            self.discord = Presence(getattr(self, 'project', root))
+        return self.discord
+
     def _handle(self, event):
         """One event from the worker threads, on the Tk thread."""
         kind = event[0]
@@ -930,6 +945,7 @@ class Launcher:
             # the game is up: the launcher steps out of the way; it keeps the session's log in the background,
             # comes back if the game fails, and closes when the game ends
             self.home.progress.finish('Juego iniciado')
+            self._discord().start()   # Discord Rich Presence while the game is open (discord_presence.py)
             if not getattr(self, 'hidden_for_game', False):
                 self.hidden_for_game = True
                 self.root.withdraw()
@@ -949,6 +965,7 @@ class Launcher:
         elif kind == 'display_file':
             self.display.observe(*event[1:])
         elif kind == 'finished':
+            self._discord().stop()
             self._set_busy(False)
             self.reload_options()
             self.status.set('Listo para explorar' if event[1] is None else 'La expedición se detuvo')
