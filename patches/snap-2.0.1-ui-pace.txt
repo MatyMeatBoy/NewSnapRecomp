@@ -54,3 +54,7 @@ site snap_timer_trace main 7995f0 fc1c0fe8 @fn:snap_ui_rotation_ask fc1c0fe8
 set snap_ui_buttons AC_SNAP_UI_BUTTONS_PATCH 1
 site snap_ui_buttons main 7838f8 f9400a80 f9400a80 @fn:snap_ui_pace_advance b4000050
 site snap_ui_buttons main 790dfc f9400aa0 f9400aa0 @fn:snap_ui_pace_advance b4000050
+# POINTER-03: the word the menu leaves for the pointer (+0x110), read and cleared on every game frame
+# (main+0x643ad0 ldr w20 / 0x643ad4 str wzr): between two steps the last step's word is OR'ed into w20
+# (snap_ui_pace_ptrbits), so the pointer's state matches what it sees at 60 fps.
+site snap_ui_buttons main 643ad4 b90112bf b90112bf @fn:snap_ui_pace_ptrbits

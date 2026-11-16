@@ -550,3 +550,15 @@ void snap_ui_pace_pointer(Cpu *c) {
 void snap_ui_pace_advance(Cpu *c) {
     c->x[16] = !(hold_advance_sp && hold_advance_sp == c->sp);
 }
+
+// POINTER-03: the menu pointer (main+0x643a70) reads, on every game frame, a word the menu leaves for it in the
+// pointer object (+0x110, OR'ed with the pad's held buttons) and clears it (main+0x643ad0..0x643ad4). The menu
+// writes it on its 60 Hz steps, so above 60 fps the pointer saw it on the frame after a step and 0 on the next ones:
+// its "over a selectable option" state came and went, the orange ring blinked. After the clear: on a step x20 (the
+// word read) is kept, on a frame between steps the kept word is OR'ed in, as each frame at 60 fps would read it.
+void snap_ui_pace_ptrbits(Cpu *c) {
+    static uint32_t latched;
+    if (!button_pacing()) return;
+    if (pace_step(kern_now_ns())) latched = (uint32_t)c->x[20];
+    else c->x[20] = (uint32_t)c->x[20] | latched;
+}
