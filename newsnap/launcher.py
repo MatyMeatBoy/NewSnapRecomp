@@ -899,7 +899,12 @@ class Launcher:
         elif kind == 'progress':
             self.home.progress.report(event[1])
         elif kind == 'game_started':
+            # the game is up: the launcher steps out of the way; it keeps the session's log in the background,
+            # comes back if the game fails, and closes when the game ends
             self.home.progress.finish('Juego iniciado')
+            if not getattr(self, 'hidden_for_game', False):
+                self.hidden_for_game = True
+                self.root.withdraw()
         elif kind == 'preparation_fallback':
             self.status.set(event[1])
             if hasattr(self.home,'show_preparation_note'):
@@ -908,12 +913,6 @@ class Launcher:
             self.diagnostics_running = False
             self.diagnostics_button.configure(state='normal')
             self.status.set('Diagnóstico exportado: '+event[1] if event[1] else 'No se pudo exportar el diagnóstico: '+event[2])
-        elif kind == 'game_started':
-            # the game is up: the launcher steps out of the way; it keeps the session's log in the background,
-            # comes back if the game fails, and closes when the game ends
-            if not getattr(self, 'hidden_for_game', False):
-                self.hidden_for_game = True
-                self.root.withdraw()
         elif kind == 'settings_saved':
             self.baseline=dict(event[1]);self._set_option_values(event[1])
         elif kind == 'maintenance_needed':
