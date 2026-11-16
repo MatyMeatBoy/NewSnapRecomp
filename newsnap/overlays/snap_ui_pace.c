@@ -26,7 +26,6 @@
 #include "gfx.h"
 #include "platform/platform.h"
 #include "snap_ui_pace.h"
-#include "layout.h"
 
 extern GfxStats gfx_counters;   // nvn_api.h; frames: presented frames
 
@@ -61,20 +60,10 @@ static int pace_step(uint64_t now) {
 // after its prologue): draw_only_sp while it goes from its entry to its drawing section without stepping,
 // placing_sp while that call runs the game's own loop over the positions asked for.
 static _Thread_local uint64_t draw_only_sp, placing_sp;
-static _Thread_local int replaying_buttons;
 
 // At the handler's entry, after it saved its object (x0): x16 (dead here) = 1 to run the handler as
 // written, 0 to branch to its drawing section. The shortcut is only taken for an object in the state
 // the handler itself would carry on from: started (+0xc0), ready (+0xc6) and not held (+0xc4).
-static int button_pacing(void) {   // AC_SNAP_UI_BUTTONS=0 turns POINTER-03 off
-    static int on = -1;
-    if (on < 0) {
-        const char *e = getenv("AC_SNAP_UI_BUTTONS");
-        on = !(e && !strcmp(e, "0"));
-    }
-    return on;
-}
-
 void snap_ui_pace_enter(Cpu *c) {
     uint64_t now = kern_now_ns();
     int step = pace_step(now);
@@ -82,11 +71,9 @@ void snap_ui_pace_enter(Cpu *c) {
         uint8_t flags[8];
         if (!c->x[0] || !plat_mem_read(c->x[0] + 0xc0, flags, sizeof flags) || !flags[0] || !flags[6] || flags[4])
             step = 1;
-
     }
-    if (replaying_buttons) step = 1;   // POINTER-03: a button called again between two steps runs as written
     c->x[16] = (uint64_t)step;
-    draw_only_sp = step || replaying_buttons ? 0 : c->sp;   // a redrawn button has no positions of its own   // RETICLE-HZ-01: a call that only draws may still place its clips
+    draw_only_sp = step ? 0 : c->sp;   // RETICLE-HZ-01: a call that only draws may still place its clips
     if (!pace_trace()) return;
     if (!pace.step && step) {   // a frame that does not step, an object that still runs: log each such object once
         static uint64_t seen[64];
@@ -538,44 +525,4 @@ void snap_ui_pace_pointer(Cpu *c) {
     t = (float)((double)dt / 1e9);
     memcpy(&bits, &t, 4);
     c->v[1] = bits;
-}
-
-// POINTER-03: the menu pointer on interface steps only, its buttons drawn on every frame.
-#define PTR_BUTTONS 32
-static struct { uint64_t x[5]; uint8_t block[0x100]; } ptr_calls[PTR_BUTTONS];
-static int ptr_ncalls, ptr_recording;
-
-// At the pointer's early exit (main+0x643ac0, x21 its object): x16 = 0 to leave, 1 to run.
-void snap_ui_pace_ptrgate(Cpu *c) {
-    if (!c->x[21]) { c->x[16] = 0; return; }
-    if (!button_pacing() || pace_step(kern_now_ns())) {
-        ptr_ncalls = 0, ptr_recording = 1;   // a step: the pointer runs and notes its button calls afresh
-        c->x[16] = 1;
-        return;
-    }
-    // between two steps: the buttons the last step called, called again with the same arguments (their movies
-    // do not advance then: snap_ui_pace_advance), so they are drawn on every frame with the state of the last step
-    ptr_recording = 0;
-    replaying_buttons = 1;
-    for (int i = 0; i < ptr_ncalls; i++)
-        rt_call(c, MOD_MAIN_BASE + 0x7835d0, 6, ptr_calls[i].x[0], ptr_calls[i].x[1], ptr_calls[i].x[2],
-                ptr_calls[i].x[3], ptr_calls[i].x[4], (uint64_t)(uintptr_t)ptr_calls[i].block);
-    replaying_buttons = 0;
-    c->x[16] = 0;
-}
-
-// Before each button call (main+0x6441e8, after mov x4,x23): x0 the button, w1..x4 its arguments, x5 a block on the
-// pointer's stack, kept by value.
-void snap_ui_pace_ptrbutton(Cpu *c) {
-    if (!ptr_recording || ptr_ncalls >= PTR_BUTTONS) return;
-    for (int k = 0; k < 5; k++) ptr_calls[ptr_ncalls].x[k] = c->x[k];
-    if (!plat_mem_read(c->x[5], ptr_calls[ptr_ncalls].block, sizeof ptr_calls[ptr_ncalls].block))
-        memset(ptr_calls[ptr_ncalls].block, 0, sizeof ptr_calls[ptr_ncalls].block);
-    ptr_ncalls++;
-}
-
-// POINTER-03: before the handler advances its movies one timeline frame (main+0x7838fc, main+0x790e00, bl 9d0de0):
-// x16 = 0 to leave the advance out (a button called again between two steps), 1 to advance as written.
-void snap_ui_pace_advance(Cpu *c) {
-    c->x[16] = !replaying_buttons;
 }
