@@ -2,6 +2,8 @@
 level from the player's game files (newsnap/game_textures.py, newsnap/hdshadows.py), in a background thread. Its own
 progress bar beside the button fills from left to right with the real part done (textures made of the total), with
 the same text in the status bar. It can be stopped and goes on later from where it was."""
+
+from .launcher_language import tr
 import re
 import threading
 import tkinter as tk
@@ -67,10 +69,10 @@ class HdShadowsButton:
         folder = self.folder()
         made = sum(1 for p in folder.glob('*.dds') if len(p.stem) == 16) if folder.is_dir() else 0
         if complete(folder):
-            return f'Listo: las sombras de todos los niveles están en HD ({made} texturas).'
+            return ''.join((tr('Listo: las sombras de todos los niveles están en HD ('), f'{made}', tr(' texturas).'),))
         if made:
-            return f'{made} texturas en HD · faltan niveles: pulsa el botón para continuar.'
-        return 'Sin generar. Se hace una vez, con tu propio juego: unos 35 minutos y 6 GB.'
+            return ''.join((f'{made}', tr(' texturas en HD · faltan niveles: pulsa el botón para continuar.'),))
+        return tr('Sin generar. Se hace una vez, con tu propio juego: unos 35 minutos y 6 GB.')
 
     def waiting(self):
         """True while the HD shadows of some level are not built."""
@@ -102,10 +104,10 @@ class HdShadowsButton:
             more = generate(self.folder(), report=report, cancel=self.cancel, **extra)
             made, failed = made + more[0], failed + more[2]
         if self.cancel.is_set():
-            report('Sombras HD: detenido. Lo generado se conserva; continúa al volver a pulsar el botón.')
+            report(tr('Sombras HD: detenido. Lo generado se conserva; continúa al volver a pulsar el botón.'))
         else:
-            report(f'Sombras HD: {made} texturas generadas' + (f', {failed} sin procesar' if failed else '')
-                   + '. Se ven desde la próxima vez que abras el juego.')
+            report(f'Sombras HD: {made} texturas generadas' + (''.join((tr(', '), f'{failed}', tr(' sin procesar'),)) if failed else '')
+                   + tr('. Se ven desde la próxima vez que abras el juego.'))
 
     # --- progress, on the Tk thread ---
     def show_message(self, text):
@@ -157,7 +159,7 @@ class HdShadowsButton:
             try:
                 self._work(report, progress)
             except Exception as error:   # shown to the player; the game is not affected
-                report(f'{self.label} sin completar: {error}')
+                report(''.join((f'{self.label}', tr(' sin completar: '), f'{error}',)))
             finally:
                 root.after(0, self._done)
 
@@ -185,7 +187,7 @@ class TexturePackButton(HdShadowsButton):
         from .texpack_gen import pending
         folder = self.folder()
         if not (folder / 'src').is_dir():
-            return 'Aún no hay texturas guardadas: activa «Guardar texturas para el pack» y juega.'
+            return tr('Aún no hay texturas guardadas: activa «Guardar texturas para el pack» y juega.')
         made = sum(1 for p in folder.glob('*.dds') if len(p.stem) == 16)
         return f'{made} texturas en HD · {len(pending(folder))} por generar'
 
@@ -198,5 +200,5 @@ class TexturePackButton(HdShadowsButton):
         from .texpack_gen import generate
         ensure_esrgan(report)
         made, failed = generate(self.folder(), report=report, cancel=self.cancel)
-        report(f'Pack de texturas HD: {made} texturas generadas'
-               + (f', {failed} sin procesar' if failed else '') + '. Se usan al volver a cargarlas.')
+        report(''.join((tr('Pack de texturas HD: '), f'{made}', tr(' texturas generadas'),))
+               + (''.join((tr(', '), f'{failed}', tr(' sin procesar'),)) if failed else '') + tr('. Se usan al volver a cargarlas.'))

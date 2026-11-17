@@ -1,5 +1,5 @@
 """Identity of the current development candidate; published artifacts stay immutable."""
-VERSION = '0.9.22'
+VERSION = '0.9.23'
 RUNTIME_API = 3
 RUNTIME_CAPABILITIES = ('launcher-restart75', 'native-render-levels',
                         'docked-supersampling', 'controller-db', 'guest-jumps',

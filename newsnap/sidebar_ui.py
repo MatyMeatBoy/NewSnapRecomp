@@ -3,6 +3,8 @@ hover, pressed and selected states), the version and the main action pill, in pl
 stay in the launcher's Notebook, whose tab row is hidden, so every `launcher.tabs.select(...)` keeps working and the
 column follows it. Everything is drawn on one canvas over a background made by code (artwork.py): shapes come from
 theme.py's antialiased images, the icons from artwork.icon()."""
+
+from .launcher_language import tr
 import tkinter as tk
 import tkinter.font as tkfont
 
@@ -20,11 +22,11 @@ ACTION_ICONS = {'play': 'play', 'verify': 'check', 'load': 'play'}
 
 class Sidebar(tk.Canvas):
     def __init__(self, parent, notebook, pages, *, version, play, icon_path=None):
-        super().__init__(parent, bg=GREEN, width=WIDTH, highlightthickness=0, borderwidth=0)
+        super().__init__(parent, bg=GREEN, width=WIDTH, highlightthickness=0, borderwidth=0, takefocus=True)
         from PIL import Image, ImageTk
         self.Image, self.ImageTk = Image, ImageTk
         self.notebook, self.items, self.play_command, self.busy = notebook, [], play, False
-        self.action = {'label': 'Jugar', 'kind': 'play', 'enabled': True}
+        self.action = {'label': tr('Jugar'), 'kind': 'play', 'enabled': True}
         self._hover = self._pressed = None
         self._bg_photo, self._bg_height = None, None
         mk = self._mk = lambda picture: ImageTk.PhotoImage(picture, master=self)
@@ -57,18 +59,23 @@ class Sidebar(tk.Canvas):
         self._brand = mk(brand if brand is not None else artwork.icon('camera', 40, AMBER))
         self.create_image(18, 22, image=self._brand, anchor='nw')
         self.create_text(70, 43, text='NewSnap', anchor='w', fill=CREAM, font=fonts.display(19))
-        self.create_text(20, 76, text='NEW POKÉMON SNAP\nPORT NATIVO', anchor='nw', fill=AMBER, font=fonts.ui(8, 'bold'),
+        self.create_text(20, 76, text=tr('NEW POKÉMON SNAP\nPORT NATIVO'), anchor='nw', fill=AMBER, font=fonts.ui(8, 'bold'),
                          justify='left')
         self.icons = {}
         for index, page in enumerate(pages):
             frame, title = page[0], page[1]
-            name = page[2] if len(page) > 2 else ICONS.get(title, 'home')
+            name = page[2] if len(page) > 2 else {tr(label): icon for label, icon in ICONS.items()}.get(title, 'home')
             self.items.append(self._item(index, frame, title, name))
         self._play_bg = self.create_image(18, 0, anchor='nw', image=self.play_images[('play', 'normal')])
         self._play_icon = self.create_image(0, 0, anchor='center', image=self.action_icons[('play', 'normal')])
         self._play_font = tkfont.Font(root=self, font=fonts.display(15))
-        self._play_text = self.create_text(0, 0, anchor='w', text='Jugar', fill=GREEN, font=self._play_font)
-        self._version = self.create_text(20, 0, anchor='w', text=f'Versión {version}', fill=MUTED, font=fonts.ui(9))
+        self._play_text = self.create_text(0, 0, anchor='w', text=tr('Jugar'), fill=GREEN, font=self._play_font)
+        self._focus_ring = self.create_rectangle(0, 0, 0, 0, outline=CREAM, width=2, state='hidden')
+        self.bind('<Return>', lambda event: self.invoke_play())
+        self.bind('<space>', lambda event: self.invoke_play())
+        self.bind('<FocusIn>', lambda event: self._paint_play())
+        self.bind('<FocusOut>', lambda event: self._paint_play())
+        self._version = self.create_text(20, 0, anchor='w', text=''.join((tr('Versión '), f'{version}',)), fill=MUTED, font=fonts.ui(9))
         self.bind('<Configure>', lambda event: self._layout(event.height), add='+')
         self.bind('<Motion>', self._motion)
         self.bind('<Leave>', lambda event: self._set(None, self._pressed))
@@ -96,6 +103,7 @@ class Sidebar(tk.Canvas):
             self.itemconfigure(self._bg, image=self._bg_photo)
         self._play_y = height - 40 - PLAY_H
         self.coords(self._play_bg, 18, self._play_y)
+        self.coords(self._focus_ring, 16, self._play_y-2, WIDTH-16, self._play_y+PLAY_H-2)
         self.coords(self._version, 22, height - 20)
         self._paint_play()
 
@@ -163,6 +171,7 @@ class Sidebar(tk.Canvas):
         return not self.busy and self.action['enabled']
 
     def _paint_play(self):
+        self.itemconfigure(self._focus_ring, state='normal' if self.focus_get() == self else 'hidden')
         kind = 'verify' if self.action['kind'] == 'verify' else 'play'
         enabled = self._play_enabled()
         if not enabled:

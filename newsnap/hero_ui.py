@@ -3,6 +3,8 @@
 The prints show the owner-approved promotional images in assets/launcher when they are present (they are shown as
 they are, only scaled). The frames, shadows, tape and — when those images are not there — the landscape inside the
 print are drawn here by code (original artwork). Built once at start; no work during gameplay."""
+
+from .launcher_language import tr
 from tkinter import Canvas, ttk
 
 from . import artwork, fonts
@@ -84,5 +86,3 @@ class SnapCover(ttk.Frame):
         value = launcher.ImageTk.PhotoImage(scene.convert('RGB'), master=launcher.root)
         self.images.append(value)
         canvas.create_image(0, 0, image=value, anchor='nw')
-        ttk.Label(self, text='LENTAL · CUADERNO DE CAMPO', font=fonts.ui(9, 'bold'), foreground=MUTED).pack(anchor='w', pady=(8, 2))
-        ttk.Label(self, text='Encuadra tu próxima aventura.', style='Caption.TLabel', wraplength=240).pack(anchor='w')
