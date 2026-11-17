@@ -46,22 +46,23 @@ def render_scale_choices(display_height=None, current=None):
     """{label: value} for the launcher's «Resolución interna» list. Without a known display every step is shown with
     its drawn height. With one, the step whose height matches the display is marked and steps above twice its height
     are left out; the current value always stays in the list."""
+    from .launcher_language import tr
     known = isinstance(display_height, int) and 240 <= display_height <= 8640
     match = None
     if known and display_height > GAME_HEIGHT:
         match = min(ABOVE, key=lambda n: abs(_height(n) - display_height))
     choices = {}
     for n in BELOW:
-        choices[f'{n} % · {_height(n)}p' + (' · más ligero' if n == 50 else '')] = str(n)
-    choices[f'100 % · {GAME_HEIGHT}p · la del juego' + (' · tu pantalla' if known and display_height == GAME_HEIGHT else '')] = 'game'
+        choices[f'{n} % · {_height(n)}p' + (tr(' · más ligero') if n == 50 else '')] = str(n)
+    choices[f'100 % · {GAME_HEIGHT}p' + tr(' · la del juego') + (tr(' · tu pantalla') if known and display_height == GAME_HEIGHT else '')] = 'game'
     for n in ABOVE:
         if known and _height(n) > 2 * display_height and str(n) != current:
             continue
         label = f'{n} % · {_height(n)}p'
         if n == match:
-            label += ' · tu pantalla'
+            label += tr(' · tu pantalla')
         elif n == max(ABOVE):
-            label += ' · más nítido'
+            label += tr(' · más nítido')
         choices[label] = str(n)
-    choices['Según la pantalla' + (f' · {display_height}p' if known else '')] = 'display'
+    choices[tr('Según la pantalla') + (f' · {display_height}p' if known else '')] = 'display'
     return choices

@@ -4,6 +4,7 @@ Keep the returned Tooltip when explicit cleanup is useful; owner destruction
 also closes it. ``attach`` replaces a previous tooltip attached by this module.
 All calls, like other Tk operations, belong on the Tk thread.
 """
+from .launcher_language import tr
 import tkinter as tk
 
 

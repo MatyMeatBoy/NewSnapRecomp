@@ -30,7 +30,7 @@ _HOSTS = {'api.github.com', 'github.com', 'objects.githubusercontent.com',
 _PROTECTED = {'gamedata', 'newsnapgamedata', 'profile', 'settings', 'logs',
               'saves', 'savegames', 'config', 'configs'}
 _FORBIDDEN_SUFFIXES = {'.nsp', '.nsz', '.xci', '.nca', '.keys', '.nso', '.npdm', '.drp', '.nushdb', '.bin', '.sav', '.srm', '.log'}
-_PROTECTED_NAMES = {'newsnap.exe', 'main', 'sdk', 'settings.json', 'config.json', 'launcher-settings.json'}
+_PROTECTED_NAMES = {'newsnap.exe', 'main', 'sdk', 'settings.json', 'config.json', 'launcher-settings.json', 'launcher-language.json'}
 _ASSET_PREFIX = 'https://github.com/MatyMeatBoy/NewSnapRecomp/releases/download/'
 # Folders earlier releases shipped beside the launcher and no release ships any more, with the only kinds of
 # file they held. 0.7 to 0.9.4 shipped the RX 6900 XT test batch files in pruebas-amd.

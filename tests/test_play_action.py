@@ -11,14 +11,14 @@ from newsnap.play_action import play_action
 class PlayActionTests(TestCase):
     def test_label_follows_the_state_of_the_game_data(self):
         cases = (
-            ({'loaded': False, 'verified': False}, {}, ('Jugar', 'load', 'play', True)),
+            ({'loaded': False, 'verified': False}, {}, ('Cargar juego…', 'load', 'play', True)),
             ({'loaded': True, 'verified': False}, {}, ('Verificar', 'verify', 'verify', True)),
             ({'loaded': True, 'verified': True}, {}, ('Jugar', 'play', 'play', True)),
             ({'loaded': True, 'verified': False}, {'busy': True, 'verifying': True}, ('Verificando…', 'verify', 'verify', False)),
             ({'loaded': True, 'verified': False}, {'busy': True}, ('Verificar', 'verify', 'verify', False)),   # a rebuild runs
             ({'loaded': True, 'verified': True}, {'busy': True}, ('Jugar', 'play', 'play', False)),            # the game runs
-            ({'loaded': False, 'verified': True}, {}, ('Jugar', 'load', 'play', True)),                        # no data: never «verified»
-            ({}, {}, ('Jugar', 'load', 'play', True)),
+            ({'loaded': False, 'verified': True}, {}, ('Cargar juego…', 'load', 'play', True)),                        # no data: never «verified»
+            ({}, {}, ('Cargar juego…', 'load', 'play', True)),
         )
         for state, options, expected in cases:
             with self.subTest(state=state, options=options):
@@ -29,21 +29,33 @@ class PlayActionTests(TestCase):
         launcher = SimpleNamespace(busy=busy, play_button=Mock(), sidebar=Mock())
         return SimpleNamespace(launcher=launcher, last_state=state, checking=checking)
 
-    def test_home_button_and_sidebar_show_the_same_action(self):
+    def test_sidebar_is_the_only_primary_action(self):
         panel = self.panel({'loaded': True, 'verified': False})
         HomePanel.sync_action(panel)
-        panel.launcher.play_button.configure.assert_called_once_with(text='Verificar', style='Verify.TButton', state='normal')
+        panel.launcher.play_button.configure.assert_not_called()
         panel.launcher.sidebar.set_action.assert_called_once_with('Verificar', 'verify', True)
 
         panel = self.panel({'loaded': True, 'verified': False}, busy=True, checking=True)
         HomePanel.sync_action(panel)
-        panel.launcher.play_button.configure.assert_called_once_with(text='Verificando…', style='Verify.TButton', state='disabled')
+        panel.launcher.play_button.configure.assert_not_called()
         panel.launcher.sidebar.set_action.assert_called_once_with('Verificando…', 'verify', False)
 
         panel = self.panel({'loaded': True, 'verified': True})      # the verification ended well: «Jugar» by itself
         HomePanel.sync_action(panel)
-        panel.launcher.play_button.configure.assert_called_once_with(text='Jugar  →', style='Accent.TButton', state='normal')
+        panel.launcher.play_button.configure.assert_not_called()
         panel.launcher.sidebar.set_action.assert_called_once_with('Jugar', 'play', True)
+
+    def test_missing_runtime_exposes_build_before_play(self):
+        state={'loaded':True,'verified':True,'needs_build':True}
+        self.assertEqual(play_action(state)['action'], 'build')
+        self.assertEqual(play_action(state)['label'], 'Construir juego')
+        self.assertFalse(play_action(state,busy=True)['enabled'])
+        home=SimpleNamespace(refresh=Mock(return_value=state),verify=Mock())
+        maintenance=SimpleNamespace(start=Mock())
+        app=SimpleNamespace(busy=False,home=home,updates=SimpleNamespace(maintenance=maintenance),launch=Mock())
+        Launcher.primary_action(app)
+        maintenance.start.assert_called_once_with(resume_game=False)
+        app.launch.assert_not_called()
 
     def test_pressing_verify_verifies_without_starting_the_game(self):
         home = SimpleNamespace(refresh=Mock(return_value={'loaded': True, 'verified': False}), verify=Mock())

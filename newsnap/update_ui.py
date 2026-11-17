@@ -1,4 +1,6 @@
 """Manual release catalog and quiet notifications for newer stable releases."""
+
+from .launcher_language import tr
 from pathlib import Path
 import os
 import queue
@@ -20,17 +22,16 @@ def runtime_update_status(root):
     try:
         metadata = settings.validate_runtime_data(root)
     except (OSError, ValueError) as error:
-        return False, f'Runtime privado pendiente de comprobar: {error}'
+        return False, ''.join((tr('Runtime privado pendiente de comprobar: '), f'{error}',))
     if metadata is None:
-        return False, 'Copia de desarrollo: la compatibilidad del runtime se comprueba al preparar la entrega.'
-    version = metadata.get('runtime_version', 'sin versión')
+        return False, tr('Copia de desarrollo: la compatibilidad del runtime se comprueba al preparar la entrega.')
+    version = metadata.get('runtime_version', tr('sin versión'))
     capabilities = metadata.get('capabilities', [])
     if (metadata.get('runtime_api') != RUNTIME_API or not isinstance(capabilities, list)
             or not all(isinstance(capability, str) for capability in capabilities)
             or not set(RUNTIME_CAPABILITIES).issubset(capabilities)):
-        return False, (f'Runtime privado {version}: necesitas recompilarlo para incluir todas las mejoras '
-                       'de este launcher. Tus archivos importados y partidas se conservan.')
-    return True, f'Runtime privado {version}: interfaz y capacidades compatibles; archivo verificado.'
+        return False, (''.join((tr('Runtime privado '), f'{version}', tr(': necesitas recompilarlo para incluir todas las mejoras de este launcher. Tus archivos importados y partidas se conservan.'),)))
+    return True, ''.join((tr('Runtime privado '), f'{version}', tr(': interfaz y capacidades compatibles; archivo verificado.'),))
 
 
 class UpdatePanel:
@@ -43,35 +44,31 @@ class UpdatePanel:
         self.checking_stable = False
         self.notified_tag = None
         self.installing = False
-        ttk.Label(parent, text='Actualizaciones', style='Title.TLabel').pack(anchor='w')
+        ttk.Label(parent, text=tr('Actualizaciones'), style='Title.TLabel').pack(anchor='w')
         try:
             version = (launcher.project / 'VERSION').read_text(encoding='ascii').strip()
         except OSError:
             version = VERSION
-        ttk.Label(parent, text=f'Launcher instalado: {version}').pack(anchor='w', pady=(16, 8))
-        self.status = ttk.Label(parent, text='Consulta las versiones publicadas en GitHub.', wraplength=760)
+        ttk.Label(parent, text=''.join((tr('Launcher instalado: '), f'{version}',))).pack(anchor='w', pady=(16, 8))
+        self.status = ttk.Label(parent, text=tr('Consulta las versiones publicadas en GitHub.'), wraplength=760)
         self.status.pack(anchor='w', pady=8)
-        ttk.Label(parent, text='Conserva tus datos del juego, perfiles y ajustes. También permite reinstalar '
-                  'la misma versión para reparar los archivos del launcher. '
-                  'La consulta manual incluye versiones alpha y prerelease.',
+        ttk.Label(parent, text=tr('Conserva tus datos del juego, perfiles y ajustes. También permite reinstalar la misma versión para reparar los archivos del launcher. La consulta manual incluye versiones alpha y prerelease.'),
                   wraplength=760, style='Muted.TLabel').pack(anchor='w', pady=8)
-        ttk.Label(parent, text='Al iniciar una expedición, el launcher comprueba si el juego necesita '
-                  'reconstruirse localmente con tus datos y las herramientas verificadas. '
-                  'Después prepara los shaders para tu GPU y controlador si hace falta.',
+        ttk.Label(parent, text=tr('Al iniciar una expedición, el launcher comprueba si el juego necesita reconstruirse localmente con tus datos y las herramientas verificadas. Después prepara los shaders para tu GPU y controlador si hace falta.'),
                   wraplength=760, style='Muted.TLabel').pack(anchor='w', pady=8)
-        self.runtime_status = ttk.Label(parent, text='Comprobando el runtime privado…', wraplength=760)
+        self.runtime_status = ttk.Label(parent, text=tr('Comprobando el runtime privado…'), wraplength=760)
         self.runtime_status.pack(anchor='w', pady=8)
         from .maintenance_ui import RuntimeMaintenance
         self.maintenance = RuntimeMaintenance(launcher, parent, self.runtime_status)
         def inspect_runtime():
             self.events.put(('runtime', runtime_update_status(launcher.project)[1]))
         threading.Thread(target=inspect_runtime, daemon=True).start()
-        self.check = ttk.Button(parent, text='Consultar versiones publicadas', command=self.check_catalog)
+        self.check = ttk.Button(parent, text=tr('Consultar versiones publicadas'), command=self.check_catalog)
         self.check.pack(anchor='w', pady=(15, 8))
         self.selector = ttk.Combobox(parent, values=(), state='disabled', width=52)
         self.selector.pack(anchor='w', pady=(0, 8))
         self.selector.bind('<<ComboboxSelected>>', self.select_release)
-        self.install = ttk.Button(parent, text='Descargar e instalar / reparar',
+        self.install = ttk.Button(parent, text=tr('Descargar e instalar / reparar'),
                                   command=self.download, state='disabled')
         self.install.pack(anchor='w')
         from .progress_bar import page_bar
@@ -80,15 +77,12 @@ class UpdatePanel:
             self.bar.pack(anchor='w', pady=(12, 0))
         access = ttk.Frame(parent)
         access.pack(anchor='w', pady=(18, 8))
-        ttk.Button(access, text='Acceso a repositorio privado…', command=self.configure_access).pack(side='left')
-        ttk.Button(access, text='Quitar credencial guardada', command=self.remove_access).pack(side='left', padx=10)
-        ttk.Label(parent, text='Para el repositorio privado, usa un token de lectura con acceso a NewSnapRecomp. '
-                  'Se guarda en el Administrador de credenciales de Windows. También se admite tu sesión '
-                  'de GitHub CLI o GH_TOKEN / GITHUB_TOKEN; el token no se copia a GameData.',
+        ttk.Button(access, text=tr('Acceso a repositorio privado…'), command=self.configure_access).pack(side='left')
+        ttk.Button(access, text=tr('Quitar credencial guardada'), command=self.remove_access).pack(side='left', padx=10)
+        ttk.Label(parent, text=tr('Para el repositorio privado, usa un token de lectura con acceso a NewSnapRecomp. Se guarda en el Administrador de credenciales de Windows. También se admite tu sesión de GitHub CLI o GH_TOKEN / GITHUB_TOKEN; el token no se copia a GameData.'),
                   wraplength=760, style='Muted.TLabel').pack(anchor='w')
         if not getattr(sys, 'frozen', False):
-            ttk.Label(parent, text='En una copia de desarrollo puedes consultar versiones. '
-                      'La instalación automática funciona desde NewSnapLauncher.exe.',
+            ttk.Label(parent, text=tr('En una copia de desarrollo puedes consultar versiones. La instalación automática funciona desde NewSnapLauncher.exe.'),
                       wraplength=760, style='Muted.TLabel').pack(anchor='w', pady=16)
         self.root.after(150, self.poll)
         if automatic and getattr(sys, 'frozen', False):
@@ -97,8 +91,8 @@ class UpdatePanel:
     def configure_access(self):
         if self.working:
             return
-        token = simpledialog.askstring('Acceso a GitHub',
-                    'Token de lectura con acceso al repositorio privado NewSnapRecomp:',
+        token = simpledialog.askstring(tr('Acceso a GitHub'),
+                    tr('Token de lectura con acceso al repositorio privado NewSnapRecomp:'),
                     show='•', parent=self.root)
         if not token:
             return
@@ -117,7 +111,7 @@ class UpdatePanel:
         except (OSError, ValueError) as error:
             self.status.configure(text=str(error))
         else:
-            self.status.configure(text='Credencial de Windows retirada. Las variables de entorno o la sesión de GitHub CLI siguen siendo independientes.')
+            self.status.configure(text=tr('Credencial de Windows retirada. Las variables de entorno o la sesión de GitHub CLI siguen siendo independientes.'))
 
     def _activity(self, running):
         """The consultation and the download report no byte counts: the bar shows activity, then rests empty."""
@@ -156,7 +150,7 @@ class UpdatePanel:
         self.check.configure(state='disabled')
         self.install.configure(state='disabled')
         self._selector_state('disabled')
-        self.status.configure(text='Consultando versiones publicadas en GitHub…')
+        self.status.configure(text=tr('Consultando versiones publicadas en GitHub…'))
         self._activity(True)
 
         def work():
@@ -182,8 +176,8 @@ class UpdatePanel:
         self._selected_status()
 
     def _selected_status(self):
-        self.status.configure(text=(f'Versión elegida: {self.release.tag_name} · lista para instalar o reparar'
-                                    if self.release else 'No hay versiones publicadas con un launcher compatible.'))
+        self.status.configure(text=(''.join((tr('Versión elegida: '), f'{self.release.tag_name}', tr(' · lista para instalar o reparar'),))
+                                    if self.release else tr('No hay versiones publicadas con un launcher compatible.')))
         self.install.configure(state=('normal' if self.release and getattr(sys, 'frozen', False)
                                       and not self.working else 'disabled'))
 
@@ -199,7 +193,7 @@ class UpdatePanel:
         if self.working or not self.release or not getattr(sys, 'frozen', False):
             return
         if self.launcher.busy:
-            self.status.configure(text='Cierra la expedición o espera a que termine la preparación antes de actualizar.')
+            self.status.configure(text=tr('Cierra la expedición o espera a que termine la preparación antes de actualizar.'))
             return
         try:
             settings.validate_runtime_data(self.launcher.project)
@@ -211,12 +205,8 @@ class UpdatePanel:
             if not self.launcher.save_options():
                 return
         release = self.release
-        if not messagebox.askyesno('Instalar versión del launcher',
-                f'Se descargará {release.tag_name} y se reiniciará el launcher para instalarla. '
-                'Puedes usar esta opción aunque ya tengas esa versión. Tus datos y partidas se conservarán. '
-                'El runtime privado del juego se conserva y puede necesitar una recompilación por separado. '
-                'Si es incompatible, no se escribirán ajustes nuevos sobre él. '
-                '¿Continuar?', parent=self.root):
+        if not messagebox.askyesno(tr('Instalar versión del launcher'),
+                ''.join((tr('Se descargará '), f'{release.tag_name}', tr(' y se reiniciará el launcher para instalarla. Puedes usar esta opción aunque ya tengas esa versión. Tus datos y partidas se conservarán. El runtime privado del juego se conserva y puede necesitar una recompilación por separado. Si es incompatible, no se escribirán ajustes nuevos sobre él. ¿Continuar?'),)), parent=self.root):
             return
         self.working = True
         self.check.configure(state='disabled')
@@ -224,7 +214,7 @@ class UpdatePanel:
         self._selector_state('disabled')
         self.installing = True
         self.launcher._set_busy(True)
-        self.status.configure(text=f'Descargando y verificando {release.tag_name}…')
+        self.status.configure(text=''.join((tr('Descargando y verificando '), f'{release.tag_name}', tr('…'),)))
         self._activity(True)
 
         def work():
@@ -247,13 +237,13 @@ class UpdatePanel:
                     self.checking_stable = False
                     if kind == 'stable_error':
                         if not self.working and not getattr(self, 'catalog', []):
-                            self.status.configure(text=f'No se pudo comprobar el aviso automático: {value}')
+                            self.status.configure(text=''.join((tr('No se pudo comprobar el aviso automático: '), f'{value}',)))
                         continue
                     if (value and newer(getattr(value, 'version', value.tag_name), VERSION)
                             and value.tag_name != getattr(self, 'notified_tag', None)):
                         self.notified_tag = value.tag_name
                         if not self.working and not getattr(self, 'catalog', []):
-                            self.status.configure(text=f'Nueva versión estable disponible: {value.tag_name}')
+                            self.status.configure(text=''.join((tr('Nueva versión estable disponible: '), f'{value.tag_name}',)))
                         notify = getattr(self.launcher, 'notify_update', None)
                         if callable(notify):
                             notify(value)
@@ -269,7 +259,7 @@ class UpdatePanel:
                     if self.installing:
                         self.launcher._set_busy(False)
                         self.installing = False
-                    self.status.configure(text=f'No se completó la actualización: {value}')
+                    self.status.configure(text=''.join((tr('No se completó la actualización: '), f'{value}',)))
                     if self.release and getattr(sys, 'frozen', False):
                         self.install.configure(state='normal')
                     self._selector_state('readonly' if getattr(self, 'catalog', []) else 'disabled')
@@ -284,7 +274,7 @@ class UpdatePanel:
                     except Exception as error:
                         self.launcher._set_busy(False)
                         self.installing = False
-                        self.status.configure(text=f'No se pudo iniciar la instalación: {error}')
+                        self.status.configure(text=''.join((tr('No se pudo iniciar la instalación: '), f'{error}',)))
                         self.install.configure(state='normal')
                         self._selector_state('readonly' if getattr(self, 'catalog', []) else 'disabled')
                     else:

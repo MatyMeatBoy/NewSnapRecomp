@@ -1,4 +1,6 @@
 """Launcher-owned background maintenance; Tk remains on its UI thread."""
+
+from .launcher_language import tr
 import queue
 import threading
 from tkinter import ttk
@@ -6,18 +8,17 @@ from tkinter import ttk
 
 def completion_message(result):
     if not result.get('rebuilt'):
-        return 'Juego verificado; listo para iniciar.'
+        return tr('Juego verificado; listo para iniciar.')
     proof=result.get('replacement',{})
     verified=all(proof.get(key) is True for key in
                  ('cache_absence_verified','transaction_removed','build_temporaries_removed'))
     if not verified:
-        return 'Runtime reconstruido; sin comprobante de limpieza de cachés.'
+        return tr('Runtime reconstruido; sin comprobante de limpieza de cachés.')
     checked=len(proof.get('invalidated',[]))
     removed=len(proof.get('removed_existing',[]))
-    message=(f'Juego reemplazado y verificado. Cachés anteriores: {removed} retiradas; '
-             f'{checked}/{checked} rutas comprobadas; sin copias temporales de reconstrucción.')
+    message=(''.join((tr('Juego reemplazado y verificado. Cachés anteriores: '), f'{removed}', tr(' retiradas; '), f'{checked}', tr('/'), f'{checked}', tr(' rutas comprobadas; sin copias temporales de reconstrucción.'),)))
     if proof.get('log_recorded') is False:
-        message+=' El comprobante no se pudo guardar en el log.'
+        message+=tr(' El comprobante no se pudo guardar en el log.')
     return message
 
 class RuntimeMaintenance:
@@ -29,9 +30,9 @@ class RuntimeMaintenance:
         self.resume_game = False
         row=ttk.Frame(parent)
         row.pack(anchor='w',pady=8)
-        self.repair=ttk.Button(row,text='Verificar / reconstruir juego',command=lambda:self.start(force=True))
+        self.repair=ttk.Button(row,text=tr('Verificar / reconstruir juego'),command=lambda:self.start(force=True))
         self.repair.pack(side='left')
-        self.cancel=ttk.Button(row,text='Cancelar preparación',command=self.cancel_event.set,state='disabled')
+        self.cancel=ttk.Button(row,text=tr('Cancelar preparación'),command=self.cancel_event.set,state='disabled')
         self.cancel.pack(side='left',padx=8)
         from .progress_bar import page_bar
         self.bar=page_bar(row,width=220,height=12)   # this page's own view of the rebuild's progress
@@ -47,7 +48,7 @@ class RuntimeMaintenance:
         self.launcher._set_busy(True)
         self.repair.configure(state='disabled')
         self.cancel.configure(state='normal')
-        self.status.configure(text='Preparando la reconstrucción local…')
+        self.status.configure(text=tr('Preparando la reconstrucción local…'))
         self._show_progress(None)
         def progress(message):
             self.events.put(('progress',message))
@@ -89,8 +90,8 @@ class RuntimeMaintenance:
                 if kind=='progress':
                     from .progress import coerce
                     update=coerce(value)
-                    self.status.configure(text=update.label)
-                    self.launcher.status.set(update.label)
+                    self.status.configure(text=tr(update.label))
+                    self.launcher.status.set(tr(update.label))
                     self.launcher.home.progress.report(update)
                     self._show_progress(update.ratio)
                     continue
@@ -102,7 +103,8 @@ class RuntimeMaintenance:
                 message=completion_message(value) if kind=='done' else value
                 self.status.configure(text=message)
                 self.launcher.status.set(message)
-                self.launcher.home.progress.finish('Runtime verificado' if kind=='done' else 'Reconstrucción sin completar',error=kind!='done')
+                self.launcher.home.progress.finish(tr('Runtime verificado') if kind=='done' else tr('Reconstrucción sin completar'),error=kind!='done')
+                if kind=='done' and hasattr(self.launcher.home, 'refresh'):self.launcher.home.refresh()
                 if kind=='done' and self.resume_game:
                     self.launcher.root.after(100,self.launcher.launch)
                 self.resume_game=False

@@ -1,4 +1,6 @@
 """A main-thread SDL session owned by the launcher until its test window closes."""
+
+from .launcher_language import tr
 import tkinter as tk
 from tkinter import ttk
 
@@ -7,19 +9,20 @@ from .paths import runtime_dir
 
 
 def describe(controller):
-    kind='Gamepad reconocido' if controller['recognized'] else 'Joystick sin mapeo de gamepad'
-    state='conectado' if controller['connected'] else 'desconectado'
+    kind=tr('Gamepad reconocido') if controller['recognized'] else tr('Joystick sin mapeo de gamepad')
+    state=tr('conectado') if controller['connected'] else tr('desconectado')
     buttons=controller['buttons']
     pressed=[str(name) for name,on in buttons.items() if on] if buttons else [str(i) for i,on in enumerate(controller['raw_buttons']) if on]
     axes=controller['axes'] or {str(i):value for i,value in enumerate(controller['raw_axes'])}
     capabilities=[name for name,available in controller['capabilities'].items() if available]
-    return (f"{controller['name'] or 'Mando sin nombre'} · ID {controller['id']} · {state}\n"
+    return (f"{controller['name'] or tr('Mando sin nombre')} · ID {controller['id']} · {state}\n"
             f"{kind}{' · virtual' if controller['virtual'] else ''}\n"
             f"GUID: {controller['guid']}\n"
-            f"Botones pulsados: {', '.join(pressed) or 'ninguno'}\n"
-            f"Ejes: {', '.join(f'{key}={value}' for key,value in axes.items()) or 'ninguno'}\n"
-            f"Capacidades declaradas: {', '.join(capabilities) or 'ninguna adicional'}\n"
-            f"{('Error: '+controller['error']) if controller['error'] else ''}")
+            + tr('Botones pulsados: ') + (', '.join(pressed) or tr('ninguno')) + '\n'
+            + tr('Ejes: ') + (', '.join(f'{key}={value}' for key,value in axes.items()) or tr('ninguno')) + '\n'
+            + tr('Capacidades declaradas: ') + (', '.join(capabilities) or tr('ninguna adicional')) + '\n'
+            + (('Error: '+controller['error']) if controller['error'] else ''))
+
 
 
 class ControllerTest:
@@ -32,18 +35,17 @@ class ControllerTest:
         self.after_id=None
         self.last_text=None
         self.window=tk.Toplevel(launcher.root)
-        self.window.title('NewSnap · Prueba del mando')
+        self.window.title(tr('NewSnap · Prueba del mando'))
         self.window.geometry('920x680')
         self.window.minsize(820,640)
         self.window.protocol('WM_DELETE_WINDOW',self.close)
         outer=ttk.Frame(self.window,padding=18);outer.pack(fill='both',expand=True)
-        ttk.Label(outer,text='Comprueba tu mando',style='Title.TLabel').pack(anchor='w')
-        ttk.Label(outer,text='Pulsa los botones, mueve las palancas o desconecta y vuelve a conectar el mando. '
-                  'Cierra esta prueba antes de iniciar el juego.',wraplength=740).pack(anchor='w',pady=10)
-        self.state=ttk.Label(outer,text='Preparando SDL…',wraplength=740)
+        ttk.Label(outer,text=tr('Comprueba tu mando'),style='Title.TLabel').pack(anchor='w')
+        ttk.Label(outer,text=tr('Pulsa los botones, mueve las palancas o desconecta y vuelve a conectar el mando. Cierra esta prueba antes de iniciar el juego.'),wraplength=740).pack(anchor='w',pady=10)
+        self.state=ttk.Label(outer,text=tr('Preparando SDL…'),wraplength=740)
         self.state.pack(anchor='w',pady=6)
         footer=ttk.Frame(outer);footer.pack(side='bottom',fill='x',pady=(10,0))
-        ttk.Button(footer,text='Cerrar prueba',command=self.close).pack(side='right')
+        ttk.Button(footer,text=tr('Cerrar prueba'),command=self.close).pack(side='right')
         body=ttk.Frame(outer);body.pack(fill='both',expand=True)
         picture=ttk.Frame(body);picture.pack(side='left',anchor='n',padx=(0,16))
         from .controller_art import ControllerArt
@@ -69,7 +71,7 @@ class ControllerTest:
             self.lock=settings.ProfileLock(self.launcher.profile)
             self.lock.__enter__()
             self.session=Session(runtime_dir(self.launcher.project))
-            self.state.configure(text=f'SDL {self.session.sdl_version} · lectura en vivo, sin activar vibración.')
+            self.state.configure(text=''.join((tr('SDL '), f'{self.session.sdl_version}', tr(' · lectura en vivo, sin activar vibración.'),)))
             self.poll()
         except Exception as error:
             self._release()
@@ -80,7 +82,7 @@ class ControllerTest:
         try:
             values=self.session.snapshot()
             self.show_controllers(values)
-            text='\n\n'.join(describe(value) for value in values) or 'No hay mandos conectados. Puedes conectar uno ahora.'
+            text='\n\n'.join(describe(value) for value in values) or tr('No hay mandos conectados. Puedes conectar uno ahora.')
             if self.session.warnings:text+='\n\n'+'\n'.join(self.session.warnings)
             if text!=self.last_text:
                 position=self.text.yview()
@@ -101,7 +103,7 @@ class ControllerTest:
             self.selector.configure(values=tuple(f"{self.controllers[i]['name']} · ID {i}" for i in ids),
                                     state='readonly' if ids else 'disabled')
             if ids:self.selector.current(ids.index(self.selected_controller))
-            else:self.selector.set('Sin mandos conectados')
+            else:self.selector.set(tr('Sin mandos conectados'))
         self.art.set_buttons(self.controllers.get(self.selected_controller))
 
     def select_controller(self,event=None):

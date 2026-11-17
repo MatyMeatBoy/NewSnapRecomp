@@ -138,6 +138,18 @@ def package():
         'Windows x64, CPU x86-64-v3 (AVX2/FMA/BMI) y GPU/controlador Vulkan 1.3 compatible.\n'
         'Modo TV por defecto; modo portatil disponible. Resolucion interna de 50 a 300%, 30 a 144 FPS y modo VRR.\n'
         'Preparar shaders antes de jugar reconstruye la cache para tu GPU; puede tardar.\n', encoding='utf-8')
+    (destination / 'READ-ME-FIRST.txt').write_text(
+        f'NewSnapRecomp {VERSION} - MatyMeatBoy\n\n'
+        'Extract this entire folder before opening NewSnapLauncher.exe. Keep _internal and the other folders.\n'
+        'No Python installation is needed. Your own game data and console keys are not included.\n\n'
+        'The launcher follows the Windows display language. Use Language / Idioma to select English or Spanish.\n'
+        'Use the single main button at the bottom left: Load game, Verify, Build game if needed, then Play.\n'
+        'Load game selects an existing GameData folder without moving it. To import your own dump instead,\n'
+        'use Import NSP/XCI/NSZ; the destination is shown before importing.\n'
+        'The included public build kit builds the game locally from your verified inputs. Saves and photos are kept.\n'
+        'First-time shader preparation may take a while.\n\n'
+        'Requires Windows x64, x86-64-v3 CPU (AVX2/FMA/BMI) and a compatible Vulkan 1.3 GPU/driver.\n',
+        encoding='utf-8')
     files = {p.relative_to(destination).as_posix(): {'size': p.stat().st_size, 'sha256': digest(p)}
              for p in sorted(destination.rglob('*')) if p.is_file()}
     (destination / 'MANIFEST.json').write_text(json.dumps({'version': VERSION,

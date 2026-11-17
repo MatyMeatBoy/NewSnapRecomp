@@ -1,4 +1,6 @@
 """Tk-thread presentation of measured progress and honest unknown-duration work."""
+
+from .launcher_language import tr
 import time
 import tkinter as tk
 from tkinter import ttk
@@ -10,9 +12,9 @@ from .progress_bar import SnapBar
 
 class PreparationPanel(ttk.LabelFrame):
     def __init__(self,parent):
-        super().__init__(parent,text='Preparación de la expedición',padding=10)
-        self.label=tk.StringVar(self,value='Listo para iniciar')
-        self.detail=tk.StringVar(self,value='El progreso aparecerá aquí al preparar el juego.')
+        super().__init__(parent,text=tr('Preparación de la expedición'),padding=10)
+        self.label=tk.StringVar(self,value=tr('Listo para iniciar'))
+        self.detail=tk.StringVar(self,value=tr('El progreso aparecerá aquí al preparar el juego.'))
         self.elapsed=tk.StringVar(self,value='')
         self.note=tk.StringVar(self,value='')
         self.active=False;self.started=None;self._tick_id=None
@@ -31,24 +33,24 @@ class PreparationPanel(ttk.LabelFrame):
         self.report(label);self._tick()
 
     def report(self,message):
-        value=coerce(message);self.label.set(value.label)
+        value=coerce(message);self.label.set(tr(value.label))
         self.bar.stop()
         if value.ratio is None:
             self.bar.configure(mode='indeterminate',value=0)
-            self.detail.set('En curso · duración pendiente de medir')
+            self.detail.set(tr('En curso · duración pendiente de medir'))
             if self.active:self.bar.start(25)
         else:
             self.bar.configure(mode='determinate',value=value.ratio*100)
-            scope='este lote' if value.stage=='compile' else 'esta etapa'
-            self.detail.set(f'{value.current:,} / {value.total:,} · {value.ratio*100:.0f} % de {scope}')
+            scope=tr('este lote') if value.stage=='compile' else tr('esta etapa')
+            self.detail.set(''.join((f'{value.current:,}', tr(' / '), f'{value.total:,}', tr(' · '), f'{value.ratio * 100:.0f}', tr(' % de '), f'{scope}',)))
 
     def set_note(self,message):
-        self.note.set(message)
+        self.note.set(tr(message))
 
     def _tick(self):
         if not self.active:return
         seconds=int(time.monotonic()-self.started)
-        self.elapsed.set(f'{seconds//60}:{seconds%60:02d} transcurridos')
+        self.elapsed.set(''.join((f'{seconds // 60}', tr(':'), f'{seconds % 60:02d}', tr(' transcurridos'),)))
         self._tick_id=self.after(1000,self._tick)
 
     def stop(self):
@@ -60,7 +62,7 @@ class PreparationPanel(ttk.LabelFrame):
     def finish(self,label,*,error=False):
         self.stop();self.label.set(label)
         self.bar.configure(mode='determinate',value=0 if error else 100)
-        self.detail.set('Sin completar' if error else 'Preparación finalizada')
+        self.detail.set(tr('Sin completar') if error else tr('Preparación finalizada'))
 
     def _destroyed(self,event):
         if event.widget is self:self.stop()
