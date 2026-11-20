@@ -124,7 +124,7 @@ class RepeatedPreparationTests(unittest.TestCase):
         receipt = json.loads((self.folder / 'newsnap-shader-preparation.json').read_text())
         self.assertEqual(receipt['inputs']['scope'], 'observed')
         self.assertEqual(set(receipt['inputs']['files']),
-                         {'newsnap.exe', 'ac_xlate.exe', 'ac_xlate.id', 'shader-answers.bin', 'shader-programs.bin'})
+                         {'newsnap.exe', 'ac_xlate.exe', 'ac_xlate.id', 'shader-answers.bin', 'shader-programs.bin', 'pipeline-keys.bin'})
         seeds = [(self.folder / name).stat().st_mtime_ns for name in ('seed-answers.bin', 'seed-programs.bin')]
         for _ in range(3):
             self.assertEqual(prepare_observed(self.folder), 2)
@@ -135,6 +135,7 @@ class RepeatedPreparationTests(unittest.TestCase):
     def test_anything_new_prepares_again(self):
         prepare_observed(self.folder)
         changes = (
+            lambda: self.aged(self.folder / 'pipeline-keys.bin', b'recorded graphics pipeline', seconds=95),
             lambda: self.aged(self.folder / 'shader-answers.bin',          # the game recorded another variant
                               b'ACSANS\0\0' + struct.pack('<II', 2, 221) + bytes(442), seconds=90),
             lambda: self.aged(self.folder / 'newsnap.exe', b'RUNTIME', seconds=80),          # another runtime
@@ -153,6 +154,49 @@ class RepeatedPreparationTests(unittest.TestCase):
         runs = self.runs
         self.assertEqual(prepare_observed(self.folder), 2)
         self.assertEqual(self.runs, runs)
+
+    def test_switching_gpl_prepares_again(self):
+        prepare_observed(self.folder)
+        ini = self.folder / 'newsnap.ini'
+        ini.write_text('[display]\ngpl = 1\n', encoding='utf-8')
+        prepare_observed(self.folder)
+        self.assertEqual(self.runs, 2)
+        with patch.dict(os.environ, {'AC_GPL': '0'}):
+            prepare_observed(self.folder)
+            self.assertEqual(self.runs, 3)
+        ini.write_text('[display]\ngpl = 1\n[performance]\npipe_sync = 1\n', encoding='utf-8')
+        with patch.dict(os.environ, {'AC_GPL': '0'}):
+            prepare_observed(self.folder)
+            self.assertEqual(self.runs, 4)
+
+    def test_legacy_runtime_ini_is_a_preparation_input(self):
+        prepare_observed(self.folder)
+        legacy = self.folder / 'astralchain.ini'
+        legacy.write_text('[display]\ngpl = 1\n', encoding='utf-8')
+        prepare_observed(self.folder)
+        self.assertEqual(self.runs, 2)
+
+    def test_missing_prepared_pipeline_cache_requires_preparation(self):
+        from newsnap.shaders import already_prepared, preparation_inputs
+
+        prepare_observed(self.folder)
+        path = self.folder / 'newsnap-shader-preparation.json'
+        receipt = json.loads(path.read_text(encoding='utf-8'))
+        receipt['recorded_pipeline_cache'] = True
+        path.write_text(json.dumps(receipt), encoding='utf-8')
+        inputs = preparation_inputs(self.folder)
+        self.assertIsNone(already_prepared(self.folder, inputs))
+        (self.folder / 'pipeline-cache.bin').write_bytes(bytes(32))
+        self.assertEqual(already_prepared(self.folder, inputs), 2)
+
+    def test_failed_optional_recorded_warm_does_not_fail_shader_preparation(self):
+        from newsnap.shaders import _prepare_recorded_pipelines
+        from subprocess import TimeoutExpired
+
+        with patch('newsnap.shaders.subprocess.run', side_effect=TimeoutExpired('newsnap', 300)):
+            self.assertFalse(_prepare_recorded_pipelines(self.folder / 'newsnap.exe',
+                                                       self.folder / 'recorded.log', {}))
+
 
     def test_rebuilt_runtime_that_asks_for_preparation_gets_it(self):
         prepare_observed(self.folder)
