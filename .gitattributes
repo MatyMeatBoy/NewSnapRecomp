@@ -5,3 +5,4 @@
 *.yml text eol=lf
 *.bat text eol=crlf
 *.svg text eol=lf
+/assets/game-fingerprints/*.json text eol=lf
