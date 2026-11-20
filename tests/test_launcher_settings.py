@@ -92,7 +92,7 @@ class LauncherSettingsTests(unittest.TestCase):
             text = (staged / 'runtime/cfg.c').read_text(encoding='utf-8')
         metadata = {name.lower(): (default, choices) for name, default, choices in
                     re.findall(r'\{"([A-Z_]+)", "([^"]*)", "([^"]*)", (?:LIVE|RESTART)\}', text)}
-        for key in ('lang', 'pad_layout', 'rumble_strength', 'rumble_curve', 'rumble_triggers',
+        for key in ('hd_shadows', 'lang', 'pad_layout', 'rumble_strength', 'rumble_curve', 'rumble_triggers',
                     'motion', 'stick_deadzone', 'lstick_deadzone', 'rstick_deadzone', 'mouse_sens', 'perf_overlay'):
             with self.subTest(key=key):
                 default, domain = metadata[key]

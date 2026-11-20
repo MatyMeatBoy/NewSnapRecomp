@@ -11,7 +11,7 @@ def edits():
         'runtime/cfg.c': [
             ('"FPS", "FRAME_GEN", "FREEZE_IDLE", "HD_PHOTOS",', '"FPS", "FRAME_GEN", "FREEZE_IDLE", "HD_PHOTOS", "HD_SHADOWS", "TEX_PACK", "TEX_PACK_SAVE",'),
             ('{"HD_PHOTOS", "display"},', '{"HD_PHOTOS", "display"}, {"HD_SHADOWS", "display"}, {"TEX_PACK", "display"}, {"TEX_PACK_SAVE", "display"},'),
-            ('{"HD_PHOTOS", "1", "0|1", RESTART},', '{"HD_PHOTOS", "1", "0|1", RESTART}, {"HD_SHADOWS", "0", "0|1", RESTART}, {"TEX_PACK", "1", "0|1", RESTART}, {"TEX_PACK_SAVE", "0", "0|1", RESTART},'),
+            ('{"HD_PHOTOS", "1", "0|1", RESTART},', '{"HD_PHOTOS", "1", "0|1", RESTART}, {"HD_SHADOWS", "1", "0|1", RESTART}, {"TEX_PACK", "1", "0|1", RESTART}, {"TEX_PACK_SAVE", "0", "0|1", RESTART},'),
         ],
         'runtime/vk_texture.c': [
             ('    e->n_up++;\n    perf_end(PERF_TEX, p0);\n}',

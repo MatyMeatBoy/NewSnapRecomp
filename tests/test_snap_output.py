@@ -31,7 +31,7 @@ class SnapOutputTests(unittest.TestCase):
         self.assertIn('if (scale <= 1.0f && nvn_gpu_only(k->addr))', texture)
         self.assertLess(texture.index('static int tex_mirrored('), texture.index('snap_output_image_scale_ex(d,'))
         draw = staged['runtime/vk_exec_draw.c']
-        self.assertIn('if (!skip && snap_host_scale_factor() <= 1.0f && !snap_hd_photo_scale_on()) return;', draw)
+        self.assertIn('if (!skip && !snap_hd_photo_scale_on() && snap_host_scale_factor() <= 1.0f) return;', draw)
         self.assertIn('o->scale = snap_output_target_scale', staged['runtime/vk_exec.c'])
 
     def test_policy_native(self):
@@ -55,11 +55,11 @@ class SnapOutputTests(unittest.TestCase):
 #include "snap_output_scale.h"
 static const char *choice="game",*mode=NULL,*upscaling="off";
 static int portable;
-const char *cfg_value(const char *key) {if(!strcmp(key,"AC_UPSCALING_QUALITY"))return "quality";if(strcmp(key,"AC_RENDER_SCALE"))abort();return choice;}
+static const char *hd_shadows_knob = "0";
+const char *cfg_value(const char *key) {if(!strcmp(key,"AC_HD_SHADOWS"))return hd_shadows_knob;if(!strcmp(key,"AC_UPSCALING_QUALITY"))return "quality";if(strcmp(key,"AC_RENDER_SCALE"))abort();return choice;}
 static const char *chain_knob=NULL;
 static const char *photo_knob=NULL;
 static const char *hd_knob="0";
-static const char *hd_shadows_knob = "0";
 const char *cfg_get(const char *key) {if(!strcmp(key,"AC_SS_WITH_UPSCALER"))return NULL;if(!strcmp(key,"AC_HD_SHADOWS"))return hd_shadows_knob;if(!strcmp(key,"AC_HD_PHOTOS"))return hd_knob;if(!strcmp(key,"AC_SS_PHOTO"))return photo_knob;if(!strcmp(key,"AC_SS_CHAIN"))return chain_knob;if(strcmp(key,"AC_SS_MODE"))abort();return mode;}
 const char *cfg_upscaling(void) {return upscaling;}
 int ov_handheld(void) {return portable;}
@@ -129,9 +129,9 @@ int main(void) {
   nvn_texdesc s=rt(0);s.format=NVN_FORMAT_DEPTH32F;s.width=s.height=1024;
   if(!snap_shadow_map_class(&s)) return 46;
   s.width=1920;s.height=1080;if(snap_shadow_map_class(&s)) return 47;   /* the scene depth is not a shadow map */
-  if(snap_shadow_scale_parse("auto")!=2||snap_shadow_scale_parse("4")!=4||snap_shadow_scale_parse("9")!=4) return 48;
-  choice="200";if(snap_shadow_scale_parse("auto")!=4) return 49;
-  choice="150";if(snap_shadow_scale_parse("auto")!=3) return 50;
+  if(snap_shadow_scale_parse("auto")!=1||snap_shadow_scale_parse("4")!=1||snap_shadow_scale_parse("9")!=1) return 48;
+  choice="200";if(snap_shadow_scale_parse("auto")!=1) return 49;
+  choice="150";if(snap_shadow_scale_parse("auto")!=1) return 50;
   hd_shadows_knob="1";if(snap_shadow_scale_parse("1")!=4) return 51;hd_shadows_knob="0";
   choice="200";
  }

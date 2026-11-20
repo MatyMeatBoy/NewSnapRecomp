@@ -42,10 +42,10 @@ TEXTS = {
     'UI_SNAP_TEXPACK_DESC': 'Uses the HD textures in the texpack folder next to the game, made on this PC from your own '
                             'game. Takes effect after a restart.',
     'UI_SNAP_TEXPACK_NONE': 'no pack in the texpack folder',
-    'UI_SNAP_HDSH': 'HD shadows mode (experimental)',
+    'UI_SNAP_HDSH': 'HD shadows',
     'UI_SNAP_HDSH_DESC': 'The shadows of plants, rocks, stairs and scenery are painted into textures of each level. On: '
                          'the launcher reads them from your own game and enlarges them on this PC for every level '
-                         '(Generate HD shadows; it starts by itself when the launcher opens); they show once built. '
+                         '(prepared automatically before startup). This also enables 4x realtime shadows; off restores originals. '
                          'Takes effect after a restart.',
     'UI_SNAP_TAB_SYS': 'System',
     'UI_SNAP_SYS_CONT': 'Back to the game',

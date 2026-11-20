@@ -96,18 +96,20 @@ class HdShadowsButton:
     def _work(self, report, progress=None):
         from .game_textures import install
         from .hdshadows import ensure_esrgan, generate
-        ensure_esrgan(report)
-        project = self.launcher.project
-        made, kept, failed = install(runtime_dir(project), data_dir(project), report=report, cancel=self.cancel)
-        if not self.cancel.is_set():   # light maps saved while playing by versions before 0.9.15
-            extra = {'progress': progress} if progress is not None else {}
-            more = generate(self.folder(), report=report, cancel=self.cancel, **extra)
-            made, failed = made + more[0], failed + more[2]
-        if self.cancel.is_set():
-            report(tr('Sombras HD: detenido. Lo generado se conserva; continúa al volver a pulsar el botón.'))
-        else:
-            report(f'Sombras HD: {made} texturas generadas' + (''.join((tr(', '), f'{failed}', tr(' sin procesar'),)) if failed else '')
-                   + tr('. Se ven desde la próxima vez que abras el juego.'))
+        from .launcher_settings import ProfileLock
+        with ProfileLock(self.folder()):
+            ensure_esrgan(report)
+            project = self.launcher.project
+            made, kept, failed = install(runtime_dir(project), data_dir(project), report=report, cancel=self.cancel)
+            if not self.cancel.is_set():   # light maps saved while playing by versions before 0.9.15
+                extra = {'progress': progress} if progress is not None else {}
+                more = generate(self.folder(), report=report, cancel=self.cancel, **extra)
+                made, failed = made + more[0], failed + more[2]
+            if self.cancel.is_set():
+                report(tr('Sombras HD: detenido. Lo generado se conserva; continúa al volver a pulsar el botón.'))
+            else:
+                report(f'Sombras HD: {made} texturas generadas' + (''.join((tr(', '), f'{failed}', tr(' sin procesar'),)) if failed else '')
+                       + tr('. Se ven desde la próxima vez que abras el juego.'))
 
     # --- progress, on the Tk thread ---
     def show_message(self, text):

@@ -131,7 +131,8 @@ class RecompLauncherTests(unittest.TestCase):
             with patch('newsnap.maintenance.assess_runtime',side_effect=[{'needs_rebuild':True},{'needs_rebuild':False}]), \
                  patch.object(adapter,'prepare') as prepare, \
                  patch('newsnap.launcher_settings.validate_runtime_data'), \
-                 patch.object(adapter.subprocess,'Popen') as process:
+                 patch.object(adapter.subprocess,'Popen') as process, \
+                 patch('newsnap.startup_assets.prepare_hd_shadows'):
                 process.return_value.wait.return_value=0
                 self.assertEqual(adapter.play(root,{}),0)
                 prepare.assert_called_once()
@@ -153,8 +154,10 @@ class RecompLauncherTests(unittest.TestCase):
                  patch('newsnap.launcher_settings.ProfileLock',Lock), \
                  patch('newsnap.launcher_settings.validate_runtime_data'), \
                  patch('newsnap.maintenance.assess_runtime',return_value={'needs_rebuild':False}), \
-                 patch.object(adapter.subprocess,'Popen',side_effect=start):
+                 patch.object(adapter.subprocess,'Popen',side_effect=start), \
+                 patch('newsnap.startup_assets.prepare_hd_shadows') as assets:
                 self.assertEqual(adapter.play(root, {}),9)
+                self.assertEqual(assets.call_count,2)
             self.assertEqual(len(calls),2)
             self.assertNotIn('--boot',calls[0])
             self.assertFalse(state['locked'])
