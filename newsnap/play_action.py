@@ -16,5 +16,5 @@ def play_action(state, *, busy=False, verifying=False):
     if state.get('runtime_checking'):
         return {'label': tr('Comprobando juego…'), 'action': 'check', 'kind': 'verify', 'enabled': False}
     if state.get('needs_build'):
-        return {'label': tr('Preparando…') if busy else tr('Construir juego'), 'action': 'build', 'kind': 'verify', 'enabled': not busy}
+        return {'label': tr('Preparando…') if busy else tr('Construir y jugar'), 'action': 'build', 'kind': 'verify', 'enabled': not busy}
     return {'label': tr(PLAY), 'action': 'play', 'kind': 'play', 'enabled': not busy}

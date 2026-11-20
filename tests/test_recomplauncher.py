@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 import tempfile
+from types import SimpleNamespace
 import shutil
 import unittest
 from unittest.mock import patch
@@ -226,6 +227,25 @@ class RecompLauncherTests(unittest.TestCase):
             self.assertFalse(state['locked'])
             self.assertEqual(len(list((root/'logs').glob('recomplauncher-game-*.log'))),2)
 
+
+    def test_play_prepares_graphics_automatically_before_starting(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            stages = []
+            def stage(name):
+                def run(*args, **kwargs):
+                    stages.append(name)
+                    return SimpleNamespace(returncode=0, wait=lambda: 0)
+                return run
+            with patch('newsnap.maintenance.assess_runtime', return_value={'needs_rebuild': False}), \
+                 patch('newsnap.launcher_settings.validate_runtime_data'), \
+                 patch('newsnap.launcher_settings.preparation_command', return_value=['prepare']), \
+                 patch.object(adapter.subprocess, 'run', side_effect=stage('shaders')), \
+                 patch.object(adapter.subprocess, 'Popen', side_effect=stage('play')), \
+                 patch('newsnap.startup_assets.prepare_hd_shadows', side_effect=stage('shadows')), \
+                 patch('newsnap.startup_assets.warm_hd_assets', side_effect=stage('textures')):
+                self.assertEqual(adapter.play(root, {}), 0)
+                self.assertEqual(stages, ['shaders', 'shadows', 'textures', 'play'])
 
     def test_nup_prepare_needs_no_console_keys_and_uses_content_detection(self):
         with tempfile.TemporaryDirectory() as temporary:

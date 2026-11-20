@@ -43,11 +43,6 @@ class HomePanel:
         self.verify_button.grid(row=1,column=0,sticky='w',padx=(0,8))
         self.cancel_button=ttk.Button(actions,text=tr('Cancelar'),command=self.cancel.set,state='disabled')
         self.cancel_button.grid(row=1,column=1,sticky='w')
-        launcher.prepare=tk.BooleanVar(value=True)
-        prepare = ttk.Checkbutton(body,text=tr('Precompilar shaders disponibles'),variable=launcher.prepare)
-        prepare.pack(anchor='w',pady=(4,2))
-        from .tooltip import Tooltip
-        Tooltip(prepare, tr('Prepara los shaders y pipelines registrados para esta GPU antes de jugar. Si es el primer inicio y aún no hay registros, el juego arranca y los compila durante la expedición. Un cambio de GPU/controlador/runtime puede requerir preparar de nuevo la caché.'))
         from .progress_ui import PreparationPanel
         self.progress=PreparationPanel(body);self.progress.pack(fill='x',pady=(2,0))
         self.update_notice=ttk.Button(self.notice_slot,text='',command=lambda:launcher.tabs.select(launcher.update_tab))

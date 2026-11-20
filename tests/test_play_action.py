@@ -48,13 +48,13 @@ class PlayActionTests(TestCase):
     def test_missing_runtime_exposes_build_before_play(self):
         state={'loaded':True,'verified':True,'needs_build':True}
         self.assertEqual(play_action(state)['action'], 'build')
-        self.assertEqual(play_action(state)['label'], 'Construir juego')
+        self.assertEqual(play_action(state)['label'], 'Construir y jugar')
         self.assertFalse(play_action(state,busy=True)['enabled'])
         home=SimpleNamespace(refresh=Mock(return_value=state),verify=Mock())
         maintenance=SimpleNamespace(start=Mock())
         app=SimpleNamespace(busy=False,home=home,updates=SimpleNamespace(maintenance=maintenance),launch=Mock())
         Launcher.primary_action(app)
-        maintenance.start.assert_called_once_with(resume_game=False)
+        maintenance.start.assert_called_once_with(resume_game=True)
         app.launch.assert_not_called()
 
     def test_pressing_verify_verifies_without_starting_the_game(self):

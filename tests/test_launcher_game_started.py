@@ -20,7 +20,6 @@ def launcher():
     app._set_busy = Mock()
     app.reload_options = Mock()
     app._tab_changed = Mock()
-    app._auto_hd_shadows = Mock(return_value=False)
     return app
 
 
@@ -60,13 +59,6 @@ class GameStartedTests(TestCase):
         app._handle(('finished', None))
         app.root.deiconify.assert_not_called()
         app.root.after.assert_called_once_with(300, app.close)
-
-    def test_hd_shadows_build_keeps_the_launcher_after_the_game(self):
-        app = launcher()
-        app._auto_hd_shadows.return_value = True
-        app._handle(('game_started', None))
-        app._handle(('finished', None))
-        app.root.after.assert_not_called()
 
     def test_there_is_one_game_started_branch(self):
         source = (ROOT / 'newsnap/launcher.py').read_text(encoding='utf-8')
