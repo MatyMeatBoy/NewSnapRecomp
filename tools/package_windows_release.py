@@ -115,7 +115,7 @@ def package():
         raise ValueError('Stale launcher executable; rebuild before packaging')
     verify_public_tree(candidate)
     kit, kit_checksum, kit_pins = closed_build_kit(revision)
-    name = f'NewSnapRecomp-{VERSION}-windows-{revision[:8]}'
+    name = f'NewSnapRecomp-{VERSION}-windows-x64-{revision[:8]}'
     destination = ROOT / 'build/releases' / name
     shutil.copytree(candidate, destination)
     bundled = destination / 'build-kits'

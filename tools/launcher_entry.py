@@ -8,6 +8,9 @@ def main():
     from newsnap.upstream import ROOT
     from newsnap.paths import runtime_dir
     os.chdir(ROOT)
+    from newsnap import recomplauncher
+    if recomplauncher.handles(sys.argv[1:]):
+        return recomplauncher.main(sys.argv[1:], ROOT)
     if getattr(sys, 'frozen', False):   # an installed launcher: drop what earlier releases shipped beside it
         from newsnap.updater import remove_retired_files
         remove_retired_files(ROOT)
