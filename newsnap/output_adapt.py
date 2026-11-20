@@ -41,6 +41,6 @@ def edits():
             # Fragment coordinates, texel fetches and size queries of enlarged
             # targets need the translator's render scale, not only with mip skip.
             ('    int skip = vk_tex_mip_skip() > 0;\n    if (!skip) return;',
-             '    int skip = vk_tex_mip_skip() > 0;\n    if (!skip && snap_host_scale_factor() <= 1.0f && !snap_hd_photo_scale_on()) return;'),
+             '    int skip = vk_tex_mip_skip() > 0;\n    if (!skip && !snap_hd_photo_scale_on() && snap_host_scale_factor() <= 1.0f) return;'),
         ],
     }
