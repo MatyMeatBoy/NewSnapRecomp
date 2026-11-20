@@ -117,7 +117,7 @@ class OfflineKitPackageTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,'Stale launcher'):
             package.package()
         (self.candidate/'launcher-build.json').write_text(json.dumps({'inputs':{'source':'pin'}}))
-        destination=self.releases/f'NewSnapRecomp-{package.VERSION}-windows-{self.revision[:8]}'
+        destination=self.releases/f'NewSnapRecomp-{package.VERSION}-windows-x64-{self.revision[:8]}'
         destination.mkdir()
         (destination/'sentinel').write_bytes(b'old immutable asset')
         with self.assertRaises(FileExistsError):package.package()

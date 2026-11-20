@@ -21,7 +21,7 @@ def source_fingerprints(root=ROOT):
         files.extend(p for p in root.glob(pattern) if p.is_file())
     files.extend(root / name for name in ('tools/launcher_entry.py', 'tools/build_launcher.py',
                  'requirements-release.txt', 'requirements.txt', 'LICENSE', 'THIRD_PARTY_NOTICES.md',
-                 'third_party/astral/recomp/nso.py', 'assets/windows-version.txt') if (root / name).is_file())
+                 'third_party/astral/recomp/nso.py', 'assets/windows-version.txt', 'recomplauncher.json') if (root / name).is_file())
     return {p.relative_to(root).as_posix(): hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted(set(files))}
 
 
@@ -53,7 +53,7 @@ def build():
         shutil.copy2(hactool, application / 'tools/hactool.exe')
         (application / 'licenses').mkdir(parents=True, exist_ok=True)
         shutil.copy2(ROOT / 'toolchain/hactool/LICENSE', application / 'licenses/hactool-LICENSE.txt')
-    for name in ('LICENSE', 'THIRD_PARTY_NOTICES.md'):
+    for name in ('LICENSE', 'THIRD_PARTY_NOTICES.md', 'recomplauncher.json'):
         shutil.copy2(ROOT / name, application / name)
     for name in ('nso.py',):
         target = application / 'third_party/astral/recomp' / name

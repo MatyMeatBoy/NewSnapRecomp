@@ -14,6 +14,10 @@
   <a href="docs/showcase/overview.png"><img src="docs/showcase/overview.png" alt="NewSnapRecomp project overview: native PC features, up to 4K internal resolution and up to 144 Hz" width="100%"></a>
 </p>
 
+<a href="https://recomplauncher.com/game/newsnaprecomp"><picture><source media="(prefers-color-scheme: dark)" srcset="https://recomplauncher.com/assets/press/launcher/badge-light.svg"><img alt="Get it on RecompLauncher" src="https://recomplauncher.com/assets/press/launcher/badge-dark.svg" height="48"></picture></a>
+
+[RecompLauncher setup, settings and save-backup limits](docs/RECOMPLAUNCHER.md).
+
 **NewSnap** (NewSnapRecomp) is a native Windows recompilation of **New Pokémon Snap** (update 2.0.1). It runs the
 game's own code, recompiled for PC, with a Vulkan renderer and PC options: higher resolutions, 90–144 FPS, upscalers,
 frame generation and HD enhancements. It builds on [Astral Chain Recomp](https://github.com/captainj-sparrow/astral-chain-pc-recomp),

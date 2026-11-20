@@ -1,0 +1,454 @@
+{
+  "$schema": "https://recomplauncher.com/schema/recomplauncher.json",
+  "format": 1,
+  "name": "NewSnap Recomp",
+  "repo": "MatyMeatBoy/NewSnapRecomp",
+  "inputs": [
+    {
+      "id": "game",
+      "label": "Your New Pok\u00e9mon Snap NSP/NSZ/XCI/XCZ or imported 2.0.1 GameData folder",
+      "role": "game",
+      "formats": [
+        {
+          "type": "folder"
+        },
+        {
+          "type": "file",
+          "extensions": [
+            "nsp",
+            "nsz",
+            "xci",
+            "xcz"
+          ],
+          "requires": [
+            "keys"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "update",
+      "label": "Your 2.0.1 update (required with a base container)",
+      "role": "update",
+      "optional": true,
+      "formats": [
+        {
+          "type": "file",
+          "extensions": [
+            "nsp",
+            "nsz"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "keys",
+      "label": "Your console prod.keys",
+      "role": "key",
+      "shared": "switch.prod-keys"
+    }
+  ],
+  "start": {
+    "program": [
+      "NewSnapLauncher.exe"
+    ],
+    "args": [
+      "--recomplauncher-play"
+    ]
+  },
+  "prepare": {
+    "program": [
+      "NewSnapLauncher.exe"
+    ],
+    "args": [
+      "--recomplauncher-prepare",
+      "--game={input:game}",
+      "--update={input:update}",
+      "--keys={input:keys}"
+    ],
+    "label": "Verify your copy and build the game locally",
+    "timeout": 3600,
+    "done": [
+      "{install}/recomplauncher-ready.json"
+    ]
+  },
+  "folders": {
+    "logs": [
+      {
+        "path": "{install}/logs"
+      }
+    ]
+  },
+  "exit_codes": {
+    "2": "Setup or settings need attention. See logs/recomplauncher-setup.log and run Easy Setup again."
+  },
+  "system": {
+    "windows": {
+      "version": "10",
+      "graphics": {
+        "vulkan": "1.3"
+      }
+    }
+  },
+  "looks": {
+    "allowed": false,
+    "reason": "Snap preserves its original colour and post-processing; external filters are unverified."
+  },
+  "settings": [
+    {
+      "id": "fullscreen",
+      "label": "Window mode",
+      "help": "Big Picture defaults to fullscreen; explicit choices override the launch mode.",
+      "in": "args",
+      "choices": [
+        {
+          "label": "Game setting",
+          "args": []
+        },
+        {
+          "label": "Fullscreen",
+          "args": [
+            "--set=fullscreen=1"
+          ]
+        },
+        {
+          "label": "Windowed",
+          "args": [
+            "--set=fullscreen=0"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "fps",
+      "label": "Frame rate",
+      "help": "High frame rates are experimental; simulation and photography retain their own timing.",
+      "in": "args",
+      "choices": [
+        {
+          "label": "Game setting",
+          "args": []
+        },
+        {
+          "label": "30 FPS",
+          "args": [
+            "--set=fps=30"
+          ]
+        },
+        {
+          "label": "60 FPS",
+          "args": [
+            "--set=fps=60"
+          ]
+        },
+        {
+          "label": "90 FPS",
+          "args": [
+            "--set=fps=90"
+          ]
+        },
+        {
+          "label": "120 FPS",
+          "args": [
+            "--set=fps=120"
+          ]
+        },
+        {
+          "label": "144 FPS",
+          "args": [
+            "--set=fps=144"
+          ]
+        },
+        {
+          "label": "Display refresh",
+          "args": [
+            "--set=fps=display"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "render_scale",
+      "label": "Internal resolution",
+      "help": "Higher resolution costs GPU time and video memory.",
+      "in": "args",
+      "choices": [
+        {
+          "label": "Game setting",
+          "args": []
+        },
+        {
+          "label": "Console",
+          "args": [
+            "--set=render_scale=game"
+          ]
+        },
+        {
+          "label": "100%",
+          "args": [
+            "--set=render_scale=100"
+          ]
+        },
+        {
+          "label": "150%",
+          "args": [
+            "--set=render_scale=150"
+          ]
+        },
+        {
+          "label": "200%",
+          "args": [
+            "--set=render_scale=200"
+          ]
+        },
+        {
+          "label": "Display resolution",
+          "args": [
+            "--set=render_scale=display"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "upscaling",
+      "label": "Temporal AA / upscaling",
+      "help": "DLSS needs NVIDIA RTX. FSR modes work on compatible Vulkan GPUs.",
+      "in": "args",
+      "choices": [
+        {
+          "label": "Game setting",
+          "args": []
+        },
+        {
+          "label": "Off",
+          "args": [
+            "--set=upscaling=off"
+          ]
+        },
+        {
+          "label": "FSR 3.1",
+          "args": [
+            "--set=upscaling=fsr3"
+          ]
+        },
+        {
+          "label": "FSR 4",
+          "args": [
+            "--set=upscaling=fsr4"
+          ]
+        },
+        {
+          "label": "DLSS",
+          "args": [
+            "--set=upscaling=dlss"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "upscaling_quality",
+      "label": "Upscaling quality",
+      "help": "Native AA keeps the internal resolution; other modes render below it.",
+      "in": "args",
+      "choices": [
+        {
+          "label": "Game setting",
+          "args": []
+        },
+        {
+          "label": "Native AA",
+          "args": [
+            "--set=upscaling_quality=native"
+          ]
+        },
+        {
+          "label": "Quality",
+          "args": [
+            "--set=upscaling_quality=quality"
+          ]
+        },
+        {
+          "label": "Balanced",
+          "args": [
+            "--set=upscaling_quality=balanced"
+          ]
+        },
+        {
+          "label": "Performance",
+          "args": [
+            "--set=upscaling_quality=performance"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "anti_aliasing",
+      "label": "SMAA",
+      "help": "Spatial antialiasing; does not enable temporal upscaling.",
+      "in": "args",
+      "choices": [
+        {
+          "label": "Game setting",
+          "args": []
+        },
+        {
+          "label": "Off",
+          "args": [
+            "--set=anti_aliasing=off"
+          ]
+        },
+        {
+          "label": "Low",
+          "args": [
+            "--set=anti_aliasing=low"
+          ]
+        },
+        {
+          "label": "Medium",
+          "args": [
+            "--set=anti_aliasing=medium"
+          ]
+        },
+        {
+          "label": "High",
+          "args": [
+            "--set=anti_aliasing=high"
+          ]
+        },
+        {
+          "label": "Ultra",
+          "args": [
+            "--set=anti_aliasing=ultra"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "frame_gen",
+      "label": "Frame generation",
+      "help": "Experimental: FSR requires temporal FSR; DLSS requires RTX 40/50 and DLSS.",
+      "in": "args",
+      "choices": [
+        {
+          "label": "Game setting",
+          "args": []
+        },
+        {
+          "label": "Off",
+          "args": [
+            "--set=frame_gen=off"
+          ]
+        },
+        {
+          "label": "FSR",
+          "args": [
+            "--set=frame_gen=fsr"
+          ]
+        },
+        {
+          "label": "DLSS",
+          "args": [
+            "--set=frame_gen=dlss"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "vk_present",
+      "label": "VSync",
+      "help": "Mailbox and FIFO do not prove FreeSync is active.",
+      "in": "args",
+      "choices": [
+        {
+          "label": "Game setting",
+          "args": []
+        },
+        {
+          "label": "VSync",
+          "args": [
+            "--set=vk_present=fifo"
+          ]
+        },
+        {
+          "label": "Adaptive",
+          "args": [
+            "--set=vk_present=mailbox"
+          ]
+        },
+        {
+          "label": "Off",
+          "args": [
+            "--set=vk_present=immediate"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "aniso",
+      "label": "Texture filtering",
+      "help": "Keeps distant surfaces clear at shallow angles.",
+      "in": "args",
+      "choices": [
+        {
+          "label": "Game setting",
+          "args": []
+        },
+        {
+          "label": "Console",
+          "args": [
+            "--set=aniso=game"
+          ]
+        },
+        {
+          "label": "16x",
+          "args": [
+            "--set=aniso=16"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "pad_layout",
+      "label": "Controller prompts",
+      "help": "Automatic follows the controller hint from RecompLauncher.",
+      "in": "args",
+      "choices": [
+        {
+          "label": "Game setting",
+          "args": []
+        },
+        {
+          "label": "Auto",
+          "args": [
+            "--set=pad_layout=auto"
+          ]
+        },
+        {
+          "label": "Nintendo",
+          "args": [
+            "--set=pad_layout=nintendo"
+          ]
+        },
+        {
+          "label": "Xbox",
+          "args": [
+            "--set=pad_layout=xbox"
+          ]
+        },
+        {
+          "label": "Playstation",
+          "args": [
+            "--set=pad_layout=playstation"
+          ]
+        }
+      ]
+    }
+  ],
+  "actions": [
+    {
+      "id": "logs",
+      "label": "Open logs",
+      "open": "logs"
+    }
+  ]
+}
