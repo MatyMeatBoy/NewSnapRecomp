@@ -451,9 +451,9 @@ class Launcher:
         self._choice(content, tr('Miniaturas de fotos en HD'), 'hd_photos', {tr('Activadas · 1080×720'): '1', tr('Originales · 360×240'): '0'},
                      help_text=tr('La vista previa al hacer una foto y las fotos grandes de las carpetas y la selección se muestran con la foto de 1080×720 en vez de la miniatura de 360×240 del juego. Las fotos guardadas y la puntuación no cambian. Funciona en cualquier GPU.'))
         self._heading(content, tr('Sombras'))
-        self._help(content, tr('La resolución de las sombras en tiempo real sigue sola a la resolución interna (2× a 1080p, 3× a 125–150 %, 4× desde 200 %).'))
-        self._choice(content, tr('Modo Sombras HD'), 'hd_shadows', {tr('Desactivado · sombras originales'): '0', tr('Activado (experimental)'): '1'},
-                     help_text=tr('Las sombras de plantas, rocas, casas, escaleras y escenario están pintadas en texturas de cada nivel, de baja resolución (por eso se ven pixeladas). Activado: el launcher las lee de tu propio juego y las amplía en este PC para todos los niveles, sin tener que jugarlos antes, conservando la luz y el color del juego. Se hace una vez al guardar los ajustes: tarda unos 35 minutos, ocupa unos 6 GB junto al juego y la herramienta de escalado se descarga una vez. Puedes detenerlo y continúa después. Incluye también las sombras en tiempo real al máximo (4×). «Generar sombras HD» lo inicia o lo detiene a mano.'))
+        self._help(content, tr('Una sola opción controla las sombras del escenario y las sombras en tiempo real.'))
+        self._choice(content, tr('Modo Sombras HD'), 'hd_shadows', {tr('Desactivado · sombras originales'): '0', tr('Activado · escenario y tiempo real'): '1'},
+                     help_text=tr('Las sombras de plantas, rocas, casas, escaleras y escenario están pintadas en texturas de cada nivel, de baja resolución (por eso se ven pixeladas). Activado: el launcher las lee de tu propio juego y las amplía en este PC para todos los niveles, sin tener que jugarlos antes, conservando la luz y el color del juego. Se prepara automáticamente antes de iniciar el juego: tarda unos 35 minutos, ocupa unos 6 GB junto al juego y la herramienta de escalado se descarga una vez. Si falla, el próximo inicio continúa lo pendiente. Incluye también las sombras en tiempo real al máximo (4×). «Generar sombras HD» lo inicia o lo detiene a mano.'))
         from .hdshadows_ui import HdShadowsButton
         self.hd_shadows_button = HdShadowsButton(self, content)
         # TEXPACK-01 is hidden for now (owner, 2026-11-15): no colour textures redrawn by a generative upscaler;
@@ -636,7 +636,7 @@ class Launcher:
             self.baseline = dict(current)
             self._set_option_values(current)
             self.status.set(tr('Ajustes guardados para el próximo inicio'))
-            self.root.after(200, self._build_hd_shadows)
+            # HD shadows are prepared by the startup worker before gameplay.
             return True
         except (OSError, ValueError) as error:
             messagebox.showerror(tr('No se pudieron guardar los ajustes'), str(error), parent=self.root)
@@ -735,6 +735,9 @@ class Launcher:
     def launch(self):
         if self.busy:
             return
+        if getattr(getattr(self, 'hd_shadows_button', None), 'running', False):
+            self.status.set(tr('Espera a que termine la preparación de sombras HD.'))
+            return
         data=self.home.refresh()
         if not data['loaded']:
             self.home.choose_data();return
@@ -749,6 +752,7 @@ class Launcher:
         self._session_diagnostic_env=({'AC_SNAP_PRESENT_TRACE':'1'} if self.trace_present.get() else {})
         required = settings.shader_preparation_required(self.project)
         command = settings.preparation_command(self.project) if self.prepare.get() or required else None
+        self.home.cancel.clear()
         self._set_busy(True)
         self.status.set(tr('Comprobando el runtime antes de la expedición…'))
         threading.Thread(target=self._run_game, args=(profile, command, options), daemon=True).start()
@@ -778,6 +782,12 @@ class Launcher:
             self.process = None
         if not deferred:self.events.put(('finished', error))
 
+    def _ask_hd_shadows(self, text):
+        done, answer = threading.Event(), []
+        self.events.put(('hd_shadow_consent', text, done, answer))
+        done.wait()
+        return bool(answer and answer[0])
+
     def _execute_game(self, profile, preparation):
         logdir = runtime_dir(self.project) / 'logs'
         logdir.mkdir(parents=True, exist_ok=True)
@@ -798,6 +808,16 @@ class Launcher:
         logfile = None
         def run_attempt(attempt):
             nonlocal logfile
+            from .startup_assets import prepare_hd_shadows
+            env.pop('AC_HD_SHADOWS', None)
+            self.events.put(('hd_shadow_loading', True))
+            try:
+                prepare_hd_shadows(self.project, env,
+                                   report=lambda text: self.events.put(('progress', text)),
+                                   ask=self._ask_hd_shadows, cancel=self.home.cancel)
+            finally:
+                self.events.put(('hd_shadow_loading', False))
+            self.events.put(('settings_saved', settings.load_settings(self.ini)))
             logfile = logdir / f'launcher-game-{session}-{attempt:03d}.log'
             display_file=logdir/f'launcher-display-{session}-{attempt:03d}.json'
             env['NEWSNAP_DISPLAY_STATUS']=str(display_file.resolve())
@@ -943,7 +963,17 @@ class Launcher:
     def _handle(self, event):
         """One event from the worker threads, on the Tk thread."""
         kind = event[0]
-        if kind == 'status':
+        if kind == 'hd_shadow_loading':
+            self.hd_preparing = event[1]
+            self.home.cancel_button.configure(state='normal' if event[1] else 'disabled')
+        elif kind == 'hd_shadow_consent':
+            _, text, done, answer = event
+            try:
+                self.root.deiconify()
+                answer.append(messagebox.askyesno(tr('Sombras HD'), tr(text), parent=self.root))
+            finally:
+                done.set()
+        elif kind == 'status':
             self.status.set(event[1])
         elif kind == 'progress':
             self.home.progress.report(event[1])
@@ -1020,6 +1050,10 @@ class Launcher:
         if self.diagnostics_running:
             messagebox.showinfo(tr('Diagnóstico en curso'), tr('Espera a que termine la exportación del diagnóstico.'), parent=self.root)
             return
+        if self.busy and getattr(self, 'hd_preparing', False):
+            self.home.cancel.set()
+            self.status.set(tr('Deteniendo la generación de sombras HD…'))
+            return
         if self.busy:
             messagebox.showinfo(tr('Operación en curso'), tr('Espera a que termine la preparación o actualización, o cierra la ventana del juego antes de cerrar el launcher.'), parent=self.root)
             return
@@ -1047,7 +1081,7 @@ def main():
                 root.iconify()
                 root.after(800, launcher.launch)
             else:
-                root.after(2500, launcher._build_hd_shadows)
+                pass  # Missing HD assets are prepared when starting the game.
         except ImportError:
             messagebox.showerror('Missing Pillow', 'Install dependencies with python -m pip install -r requirements.txt.', parent=root)
             root.destroy()

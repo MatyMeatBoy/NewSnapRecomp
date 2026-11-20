@@ -11,7 +11,7 @@
 // builds the pack from there (Real-ESRGAN, BC1/BC3). A pack holds game-derived pictures: it is made
 // locally from the player's own game and never distributed.
 //
-// HD-SHADOW-01 (AC_HD_SHADOWS=1, off by default): the shadows of scenery and plants are baked into the levels' light
+// HD-SHADOW-01 (AC_HD_SHADOWS=1, on by default): the shadows of scenery and plants are baked into the levels' light
 // maps, single-level BC6H textures of 512x512 texels or less, so the shadow map scale does not reach them. With the
 // option on, each new light map is written once, as float (RGBA16F DDS), to hdshadows/src/<hash>.dds; the launcher's
 // tools/hdshadows.py enlarges them (Real-ESRGAN on a log encoding, light kept, no seams at the UV islands) into
@@ -92,7 +92,7 @@ static void setup(void) {
     char *slash = strrchr(exe, '/'), *bs = strrchr(exe, 92);   // 92: backslash
     if (bs && (!slash || bs > slash)) slash = bs;
     if (slash) *slash = 0;
-    const char *shadows = cfg_get("AC_HD_SHADOWS");
+    const char *shadows = cfg_value("AC_HD_SHADOWS");
     const char *save = cfg_get("AC_TEX_PACK_SAVE");   // TEXPACK-01: the launcher's pack generation reads texpack/src
     if (!dump_dir[0] && save && !strcmp(save, "1")) {
         char packs[1000];

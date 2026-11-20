@@ -447,6 +447,8 @@ def generate(folder, scale=2, limit=0, report=print, cancel=None, sources=None, 
     (made, left as they are, failed)."""
     from concurrent.futures import ThreadPoolExecutor
     folder = Path(folder)
+    from .shadow_storage import enable_generated_compression
+    enable_generated_compression(folder, report)
     todo = pending(folder) if sources is None else [Path(p) for p in sources]
     if limit:
         todo = todo[:limit]

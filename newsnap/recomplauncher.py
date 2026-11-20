@@ -110,6 +110,11 @@ def play(root, overrides):
         session = datetime.now().strftime('%Y%m%d-%H%M%S') + '-' + uuid.uuid4().hex[:8]
 
         def attempt(number):
+            from .startup_assets import prepare_hd_shadows
+            if 'hd_shadows' not in overrides:
+                env.pop('AC_HD_SHADOWS', None)
+            prepare_hd_shadows(root, env, report=lambda text: emit(0.95, text),
+                               explicit=overrides.get('hd_shadows') == '1')
             path = logs / f'recomplauncher-game-{session}-{number:03d}.log'
             with path.open('x', encoding='utf-8') as log:
                 process = subprocess.Popen(settings.game_command(root, profile), cwd=root, env=env,

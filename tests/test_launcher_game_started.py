@@ -71,3 +71,17 @@ class GameStartedTests(TestCase):
     def test_there_is_one_game_started_branch(self):
         source = (ROOT / 'newsnap/launcher.py').read_text(encoding='utf-8')
         self.assertEqual(source.count("kind == 'game_started'"), 1)
+
+    def test_hd_consent_signals_worker_and_cancel_loading_is_visible(self):
+        import threading
+        app=launcher(); app.home.cancel_button=Mock()
+        done=threading.Event();answer=[]
+        with patch('newsnap.launcher.messagebox.askyesno',return_value=False) as prompt:
+            app._handle(('hd_shadow_consent','Estimated size: 6 GB',done,answer))
+            self.assertIn('6 GB',prompt.call_args.args[1])
+        self.assertTrue(done.is_set());self.assertEqual(answer,[False])
+        app._handle(('hd_shadow_loading',True))
+        self.assertTrue(app.hd_preparing)
+        app.home.cancel_button.configure.assert_called_with(state='normal')
+        app._handle(('hd_shadow_loading',False))
+        self.assertFalse(app.hd_preparing)

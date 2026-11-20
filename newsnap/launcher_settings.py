@@ -56,7 +56,7 @@ CONTROL_DEFAULTS = {'mouse_sens': '1', 'motion': '1', 'gyro_sens': '2.5', 'pad_l
                     'lstick_deadzone': '', 'rstick_deadzone': '', **BINDING_DEFAULTS}
 DEFAULTS.update(CONTROL_DEFAULTS)
 DEFAULTS.update(lang='', audio_prefill_ms='20', perf_overlay='off')
-DEFAULTS.update(upscaling='off', anti_aliasing='high', upscaling_quality='native', frame_gen='off', hd_photos='1', hd_shadows='0', tex_pack='1', tex_pack_save='0', ui_motion='1')
+DEFAULTS.update(upscaling='off', anti_aliasing='high', upscaling_quality='native', frame_gen='off', hd_photos='1', hd_shadows='1', tex_pack='1', tex_pack_save='0', ui_motion='1')
 ENV_UI_OVERRIDES = ENV_UI_OVERRIDES | {'upscaling', 'upscaling_quality'}
 SECTIONS.update(upscaling='display', anti_aliasing='display', upscaling_quality='display', frame_gen='display', hd_photos='display', hd_shadows='display', tex_pack='display', tex_pack_save='display', ui_motion='display')
 SECTIONS.update({key: 'input' for key in CONTROL_DEFAULTS})

@@ -68,3 +68,16 @@ different from authoritative whole-container CRC32 values.
 A free developer account at https://recomplauncher.com/dev (GitHub sign-in) lets
 the maintainer claim the project, manage art/statistics/player reports and receive
 the Verified developer badge once approved.
+
+
+## 0.9.24 shadows and preparation
+
+HD shadows is one setting for baked scenery maps and 4x realtime maps. In the
+desktop launcher, missing maps prompt once with the conservative size/time estimate
+(up to 6 GB / about 35 minutes); No remembers Off. Explicit On in RecompLauncher
+consents to the initial public-tools download and local preparation before play.
+Game setting with no previous consent uses original shadows for that headless
+session. The offline build-kit guarantee covers recompilation, not the optional
+Real-ESRGAN tool download. New generated DDS files use lossless filesystem
+compression where supported. Existing imported inputs and photo/save files are
+not compressed or changed by this feature.

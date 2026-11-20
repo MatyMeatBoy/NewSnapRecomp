@@ -44,12 +44,13 @@ class SessionLogTests(TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             root=Path(temporary)
             exe=root/'newsnap.exe';exe.write_bytes(b'fixture runtime')
-            app=SimpleNamespace(project=root,events=queue.Queue(),process=None,_session_diagnostic_env={})
+            app=SimpleNamespace(project=root,ini=root/'newsnap.ini',events=queue.Queue(),process=None,_session_diagnostic_env={},_ask_hd_shadows=Mock(),home=SimpleNamespace(cancel=Mock()))
             process=Mock(pid=42);process.wait.return_value=71
             with patch('newsnap.launcher.runtime_dir',return_value=root), \
                  patch('newsnap.launcher.settings.game_environment',return_value={'AC_VK_PRESENT':'mailbox','AC_SNAP_PRESENT_TRACE':'1'}), \
                  patch('newsnap.launcher.settings.game_command',return_value=[str(exe)]), \
-                 patch('newsnap.launcher.subprocess.Popen',return_value=process) as start:
+                 patch('newsnap.launcher.subprocess.Popen',return_value=process) as start, \
+                 patch('newsnap.startup_assets.prepare_hd_shadows'):
                 with self.assertRaises(RuntimeError):
                     Launcher._execute_game(app,root/'profile',None)
             self.assertNotIn('AC_SNAP_PRESENT_TRACE',start.call_args.kwargs['env'])

@@ -1953,3 +1953,18 @@ ENGLISH = {'\n\nF1, F8, F10, F11 y Escape están reservadas por el runtime.': '\
  'Álbum': 'Album',
  'Álbum · Vista de fotografía': 'Album · Photo preview',
  '← Anterior': '← Previous'}
+
+# Unified HD shadows, prepared by the startup worker.
+ENGLISH.update({
+    'Una sola opción controla las sombras del escenario y las sombras en tiempo real.': 'One option controls scenery shadow maps and real-time shadows.',
+    'Activado · escenario y tiempo real': 'On · scenery and real-time shadows',
+    'Espera a que termine la preparación de sombras HD.': 'Wait for HD shadow preparation to finish.',
+})
+
+from .startup_assets import PROMPT as _HD_SHADOW_PROMPT
+ENGLISH[_HD_SHADOW_PROMPT] = ("Prepare HD shadows?\n\nIncludes scenery shadow maps and 4x real-time shadows.\n"
+    "Estimated size: up to 6 GB; first preparation: about 35 minutes.\n"
+    "Generated locally from your game; requires a one-time tools download.\n\n"
+    "Choose No to use original shadows. You can enable HD shadows later in Enhancements.")
+
+ENGLISH['Las sombras de plantas, rocas, casas, escaleras y escenario están pintadas en texturas de cada nivel, de baja resolución (por eso se ven pixeladas). Activado: el launcher las lee de tu propio juego y las amplía en este PC para todos los niveles, sin tener que jugarlos antes, conservando la luz y el color del juego. Se prepara automáticamente antes de iniciar el juego: tarda unos 35 minutos, ocupa unos 6 GB junto al juego y la herramienta de escalado se descarga una vez. Si falla, el próximo inicio continúa lo pendiente. Incluye también las sombras en tiempo real al máximo (4×). «Generar sombras HD» lo inicia o lo detiene a mano.'] = 'One switch for enhanced scenery shadow maps and 4x real-time shadows. When maps are missing, startup asks once before the download and local preparation (about 35 minutes, up to 6 GB). Declining uses original shadows; enable later to retry. Interrupted preparation resumes. Light and colour are preserved.'

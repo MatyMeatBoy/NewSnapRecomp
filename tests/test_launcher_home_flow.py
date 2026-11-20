@@ -38,7 +38,7 @@ class HomeLaunchFlowTests(TestCase):
             marker.write_text('{"shader_preparation_required": true}',encoding='utf-8')
             original=marker.read_bytes()
             app=Launcher.__new__(Launcher)
-            app.project=root;app.events=queue.Queue();app.process=None
+            app.project=root;app.ini=data/'newsnap.ini';app.events=queue.Queue();app.process=None;app.home=SimpleNamespace(cancel=Mock())
             app._execute_game=Mock()
             with patch('newsnap.launcher.settings.ProfileLock',return_value=nullcontext()), \
                  patch('newsnap.launcher.settings.is_release_layout',return_value=True), \
@@ -63,7 +63,7 @@ class HomeLaunchFlowTests(TestCase):
             marker=data/'newsnap-game.json'
             marker.write_text('{"shader_preparation_required": true}',encoding='utf-8')
             original=marker.read_bytes();app=Launcher.__new__(Launcher)
-            app.project=root;app.events=queue.Queue();app.process=None
+            app.project=root;app.ini=data/'newsnap.ini';app.events=queue.Queue();app.process=None;app.home=SimpleNamespace(cancel=Mock())
             process=SimpleNamespace(wait=Mock(return_value=code),pid=42)
             calls=[]
             def popen(command,**kwargs):
@@ -72,7 +72,8 @@ class HomeLaunchFlowTests(TestCase):
             with patch('newsnap.launcher.subprocess.Popen',side_effect=popen), \
                  patch('newsnap.launcher.settings.game_environment',return_value={}), \
                  patch('newsnap.launcher.settings.game_command',return_value=['native-game']), \
-                 patch('newsnap.session_log.runtime_identity',return_value={}):
+                 patch('newsnap.session_log.runtime_identity',return_value={}), \
+                 patch('newsnap.startup_assets.prepare_hd_shadows'):
                 if code:
                     with self.assertRaisesRegex(RuntimeError,'preparación'):
                         app._execute_game(root/'profile',['preparation-worker'])

@@ -123,18 +123,11 @@ static inline int snap_shadow_map_class(const nvn_texdesc *d) {
     return depth && target && d->width == d->height && d->width >= 256 && d->width <= 2048 && d->levels <= 1;
 }
 
-// AC_SHADOW_SCALE: 1..4, or "auto": shadow texels follow the 3D resolution, twice the
-// scene scale rounded up (1080p 2x, 125-150 % 3x, 200 % and above 4x).
+// One player-facing switch controls baked HD maps and realtime shadow resolution.
+// Keep the legacy parser signature for source/INI compatibility; no second quality control.
 static inline int snap_shadow_scale_parse(const char *v) {
-    const char *hd = cfg_get("AC_HD_SHADOWS");   // HD shadows mode: every shadow, real-time ones at the largest map
-    if (hd && !strcmp(hd, "1")) return 4;
-    if (v && !strcmp(v, "auto")) {
-        float r = snap_host_scale_factor();
-        int s = (int)(2.0f * r + 0.999f);
-        return s < 2 ? 2 : s > 4 ? 4 : s;
-    }
-    int s = v ? atoi(v) : 1;
-    return s < 1 ? 1 : s > 4 ? 4 : s;
+    (void)v;
+    return !strcmp(cfg_value("AC_HD_SHADOWS"), "1") ? 4 : 1;
 }
 
 // SS-03 (AC_HD_PHOTOS, on by default): the 360x240 RGBA8 picture each photo

@@ -442,6 +442,30 @@
           ]
         }
       ]
+    },
+    {
+      "id": "hd_shadows",
+      "label": "HD shadows",
+      "help": "One switch for enhanced scenery shadow maps and 4x real-time shadows. Explicit On authorizes the one-time tools download and local preparation (about 35 minutes, up to 6 GB). Game setting uses original shadows if missing maps have not been accepted in the desktop launcher.",
+      "in": "args",
+      "choices": [
+        {
+          "label": "Game setting",
+          "args": []
+        },
+        {
+          "label": "On",
+          "args": [
+            "--set=hd_shadows=1"
+          ]
+        },
+        {
+          "label": "Off (original shadows)",
+          "args": [
+            "--set=hd_shadows=0"
+          ]
+        }
+      ]
     }
   ],
   "actions": [
