@@ -55,17 +55,17 @@ CONTROL_DEFAULTS = {'mouse_sens': '1', 'motion': '1', 'gyro_sens': '2.5', 'pad_l
                     'rumble_curve': '0.6', 'rumble_triggers': '0', 'stick_deadzone': '8',
                     'lstick_deadzone': '', 'rstick_deadzone': '', **BINDING_DEFAULTS}
 DEFAULTS.update(CONTROL_DEFAULTS)
-DEFAULTS.update(lang='', audio_prefill_ms='20', perf_overlay='off')
+DEFAULTS.update(lang='', audio_prefill_ms='20', perf_overlay='off', gpl='')
 DEFAULTS.update(upscaling='off', anti_aliasing='high', upscaling_quality='native', frame_gen='off', hd_photos='1', hd_shadows='1', tex_pack='1', tex_pack_save='0', ui_motion='1')
 ENV_UI_OVERRIDES = ENV_UI_OVERRIDES | {'upscaling', 'upscaling_quality'}
 SECTIONS.update(upscaling='display', anti_aliasing='display', upscaling_quality='display', frame_gen='display', hd_photos='display', hd_shadows='display', tex_pack='display', tex_pack_save='display', ui_motion='display')
 SECTIONS.update({key: 'input' for key in CONTROL_DEFAULTS})
-SECTIONS.update(lang='language', audio_prefill_ms='audio', perf_overlay='display')
+SECTIONS.update(lang='language', audio_prefill_ms='audio', perf_overlay='display', gpl='display')
 CHOICES.update(lang=LANGUAGES, pad_layout=('auto', 'nintendo', 'xbox', 'playstation'),
                upscaling=('off', 'auto', 'fsr3', 'fsr4', 'dlss'),
                anti_aliasing=('high', 'ultra', 'medium', 'low', 'off'),
                upscaling_quality=('native', 'quality', 'balanced', 'performance'),
-               perf_overlay=('off', 'fps', 'full'))
+               perf_overlay=('off', 'fps', 'full'), gpl=('', '1', '0'))
 RANGES.update(gyro_sens=(0.1, 10, False), rumble_strength=(0, 300, True), rumble_curve=(0.2, 1.5, False),
               stick_deadzone=(0, 50, False), lstick_deadzone=(0, 50, False),
               rstick_deadzone=(0, 50, False), audio_prefill_ms=(0, 500, False))

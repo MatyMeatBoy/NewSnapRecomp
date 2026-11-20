@@ -6,6 +6,7 @@ import json
 import os
 import re
 import tempfile
+import subprocess
 from contextlib import contextmanager
 from collections import Counter
 from pathlib import Path
@@ -120,10 +121,12 @@ def preparation_inputs(folder, all_libraries=False, libraries=None):
     The executable, the translator and the recordings are recognised by their receipts when unchanged
     (verified_files), so asking this before every game start reads no large file again.
     """
+    from .launcher_settings import _settings_source
     from .verified_files import STORE, VerifiedFiles
     folder = Path(folder)
     receipts = VerifiedFiles(folder / STORE)
-    names = ('newsnap.exe', 'ac_xlate.exe', 'ac_xlate.id', 'shader-answers.bin', 'shader-programs.bin')
+    names = ('newsnap.exe', 'ac_xlate.exe', 'ac_xlate.id', 'shader-answers.bin', 'shader-programs.bin',
+             'pipeline-keys.bin')
     files = {name: receipts.digest(folder / name) if (folder / name).is_file() else None for name in names}
     receipts.save()
     listing = None
@@ -135,7 +138,21 @@ def preparation_inputs(folder, all_libraries=False, libraries=None):
                                              for entry in found if entry.is_file()):
                 value.update(f'{name}\0{size}\0{moment}\n'.encode('utf-8'))
         listing = value.hexdigest()
-    return {'format': 1, 'scope': 'all' if all_libraries else 'observed', 'files': files, 'libraries': listing}
+    config = dict.fromkeys(('GPL', 'PIPE_PREBUILD', 'PIPE_SYNC'))
+    ini = _settings_source(folder / 'newsnap.ini')
+    if ini.is_file():
+        for line in ini.read_text(encoding='utf-8-sig').splitlines():
+            key, _, value = line.partition('=')
+            key = key.strip().upper().removeprefix('AC_')
+            value = value.strip()
+            if len(value) >= 2 and value.startswith('"') and value.endswith('"'):
+                value = value[1:-1]
+            if key in config and value:
+                config[key] = value
+    for key in config:
+        config[key] = os.environ.get(f'AC_{key}', config[key])
+    return {'format': 2, 'scope': 'all' if all_libraries else 'observed', 'files': files, 'libraries': listing,
+            'pipeline_settings': config}
 
 
 def already_prepared(folder, inputs):
@@ -167,9 +184,23 @@ def already_prepared(folder, inputs):
             return None
         if receipt.get('shader_cache') is not (folder / 'shader-cache').is_dir():
             return None   # the translated shaders the preparation left were removed
+        if receipt.get('recorded_pipeline_cache') and (folder / 'pipeline-cache.bin').stat().st_size < 32:
+            return None
         return receipt['variants']
     except (OSError, ValueError, TypeError, AttributeError):
         return None
+
+
+def _prepare_recorded_pipelines(exe, logfile, env):
+    try:
+        with logfile.open('wb') as stream:
+            subprocess.run([exe, '--prepare-recorded-pipelines'], cwd=exe.parent, env=env, stdout=stream,
+                           stderr=subprocess.STDOUT, creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0),
+                           check=True, timeout=300)
+        return 'prepare-shaders: recorded graphics cache saved' in logfile.read_text(encoding='utf-8', errors='replace')
+    except (OSError, subprocess.SubprocessError):
+        print(f'Optional recorded pipeline preparation did not finish. See {logfile}.', flush=True)
+        return False
 
 
 def prepare_observed(folder, all_libraries=False):
@@ -217,10 +248,15 @@ def prepare_observed(folder, all_libraries=False):
         if len(data) < 16 or data[:8] != b'ACSPRP\0\0' or struct.unpack_from('<II', data, 8) != (1, 36) or (len(data) - 16) % 36:
             raise ValueError('The runtime did not produce a valid preparation record')
         count = (len(data) - 16) // 36
+        recorded_cache = (
+            'vk_pipeline: graphics pipeline library off:' in log
+            and (folder / 'pipeline-keys.bin').is_file()
+            and _prepare_recorded_pipelines(exe, logfile.with_name('prepare-recorded-pipelines.log'), env))
         write_json(folder / RECEIPT, {
             'scope': 'library defaults and observed variants' if all_libraries else 'observed variants only',
             'census': census, 'variants': count, 'inputs': inputs,
             'shader_cache': (folder / 'shader-cache').is_dir(),
+            'recorded_pipeline_cache': recorded_cache,
             'prepared_sha256': source_digest(prepared), 'exe_sha256': source_digest(exe),
             'translator_sha256': source_digest(folder / 'ac_xlate.exe')})
     print(f'Prepared {count} shader variants before gameplay. Unvisited scenes remain unverified.', flush=True)

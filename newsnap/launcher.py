@@ -264,6 +264,9 @@ class Launcher:
         self.display=DisplayPanel(self,video)
         self._choice(video, tr('Overlay de rendimiento'), 'perf_overlay', {tr('Oculta'): 'off', tr('Solo FPS'): 'fps', tr('Completa'): 'full'},
                      help_text=tr('Muestra datos del runtime. La vista completa incluye tiempos de CPU/GPU y actividad de compilación cuando están disponibles.'))
+        self._choice(video, tr('Bibliotecas de pipelines Vulkan (GPL)'), 'gpl',
+                     {tr('Automático · según el controlador'): '', tr('Activado · experimental'): '1', tr('Desactivado'): '0'},
+                     help_text=tr('Se aplica al reiniciar. Automático desactiva GPL en el controlador AMD RDNA 1/2. Actívalo solo para probar si tu controlador admite el enlace rápido.'))
         self._heading(video, tr('Resolución y escalado'))
         from .display_scales import primary_display_size, render_scale_choices
         display = primary_display_size()
