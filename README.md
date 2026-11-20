@@ -25,6 +25,7 @@ which builds on [TotK Recomp](https://github.com/valentderah/totk-pc-recomp).
 
 **Bring your own game.** You need your own dump of the game, its 2.0.1 update and your console keys. No game data,
 keys or game-derived executables are distributed here; the launcher builds the game on your PC.
+A complete, verified decrypted 2.0.1 NUP v1 is also accepted without keys.
 
 ## Project showcase
 

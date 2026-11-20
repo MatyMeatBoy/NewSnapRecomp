@@ -19,5 +19,11 @@
     "display_version": "2.0.1",
     "save_size": 513802240,
     "journal_size": 10485760
+  },
+  "romfs_normalized": {
+    "manifest": "assets/game-fingerprints/snap-2.0.1-files.json",
+    "manifest_sha256": "8de045b92973c3f060d18f2a52f8898b8c8b845e919850325843e7b4f3c2149e",
+    "sha256": "364f583ab144ab899e4ba21e0508f9b76eddc9ac17236e4e0d9077a58c8335d3",
+    "size": 7316203672
   }
 }

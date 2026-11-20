@@ -74,7 +74,7 @@ def package(sdk_root, destination=None, shader_tools=None, allow_dirty=False):
         raise ValueError('The donor checkout differs from the pinned source revision')
     target = Path(destination) if destination else ROOT / 'build/releases' / f'NewSnapBuildKit-{VERSION}-{revision[:8]}'
     target.mkdir(parents=True, exist_ok=False)
-    for name in ('newsnap', 'patches', 'profiles', 'assets/icons', 'LICENSE', 'THIRD_PARTY_NOTICES.md'):
+    for name in ('newsnap', 'patches', 'profiles', 'assets/icons', 'assets/game-fingerprints', 'third_party/recomp_achievements', 'LICENSE', 'THIRD_PARTY_NOTICES.md'):
         _copy(ROOT / name, target / 'source' / name)
     for name in ('fetch_upscaler_sdk.py', 'fetch_dlss.py', 'triage_game_log.py'):
         _copy(ROOT / 'tools' / name, target / 'source/tools' / name)

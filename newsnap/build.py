@@ -112,10 +112,12 @@ def build(sdk_root, shader_tools=None, jobs=0, generate=True, cpu='v3', *, owner
     if owner_data is None:
         extracted = ROOT / 'build/extracted/updated'
         manifest_path = extracted / 'extraction-manifest.json'
-        if not manifest_path.is_file() or not (extracted / 'romfs/import-receipt.json').is_file():
+        if (not (manifest_path.is_file() or (extracted/'nup-import.json').is_file())
+                or not (extracted / 'romfs/import-receipt.json').is_file()):
             raise ValueError('Run the verified import before building')
         print('Checking imported modules, RomFS and control metadata', flush=True)
         manifest, control = verify_import(extracted)
+        verified_romfs_sha256 = manifest.get('romfs_sha256', profile['romfs_sha256'])
         exefs, romfs = extracted / 'exefs', extracted / 'romfs'
     else:
         from .maintenance import verify_owner_inputs
@@ -127,6 +129,7 @@ def build(sdk_root, shader_tools=None, jobs=0, generate=True, cpu='v3', *, owner
         from .home_state import owner_receipts
         receipts = owner_receipts(owner_data, profile)
         manifest, control = verify_owner_inputs(owner_data, profile, receipts=receipts, full=full_verification)
+        verified_romfs_sha256 = receipts.digest(owner_data/'romfs/romfs.bin')
         receipts.save()
         print(f'Owner inputs: {receipts.hashed} read whole, {receipts.reused} recognised from their receipts',
               flush=True)
@@ -135,14 +138,21 @@ def build(sdk_root, shader_tools=None, jobs=0, generate=True, cpu='v3', *, owner
         romfs.mkdir(parents=True, exist_ok=True)
         image = owner_data / 'romfs/romfs.bin'
         staged = romfs / 'romfs.bin'
-        if not staged.exists():
-            # Same volume for normal maintenance; no duplicate 7 GiB image.
-            try:
-                os.link(image, staged)
-            except OSError:
-                shutil.copyfile(image, staged)
+        if not staged.exists() or not image.samefile(staged):
+            if not staged.is_file() or source_digest(staged) != verified_romfs_sha256:
+                import tempfile
+                fd, temporary = tempfile.mkstemp(prefix='.romfs-stage-',dir=romfs)
+                os.close(fd)
+                temporary = Path(temporary)
+                try:
+                    temporary.unlink()
+                    try: os.link(image, temporary)
+                    except OSError: shutil.copyfile(image, temporary)
+                    temporary.replace(staged)
+                finally:
+                    temporary.unlink(missing_ok=True)
         write_json(romfs / 'index.json', {'status': 'pass', 'romfs_size': image.stat().st_size,
-                   'romfs_sha256': profile['romfs_sha256'], 'files': extractor().index_romfs(image)})
+                   'romfs_sha256': verified_romfs_sha256, 'files': extractor().index_romfs(image)})
     source = adapt_sources(work / 'source', patch_output=(work / 'snap-bringup.patch' if owner_data else
                                                         ROOT / 'patches/001-snap-bringup.patch'))
     if not stage_runtime_shaders(sdk_root, source, work / 'updated') and owner_data:
@@ -167,7 +177,7 @@ def build(sdk_root, shader_tools=None, jobs=0, generate=True, cpu='v3', *, owner
         from .generation_cache import GenerationCache, owner_identity
         # Original ExeFS and the entire RomFS were verified above (read whole, or recognised as the unchanged
         # files of an earlier whole read), even on a hit.
-        identity = owner_identity(owner_data, manifest, profile['romfs_sha256'])
+        identity = owner_identity(owner_data, manifest, verified_romfs_sha256)
         cache = GenerationCache(generation_cache_root)
         started = time.perf_counter()
         restored = cache.restore(identity, recipe, gen)

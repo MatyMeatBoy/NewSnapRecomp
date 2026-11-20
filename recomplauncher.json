@@ -6,11 +6,17 @@
   "inputs": [
     {
       "id": "game",
-      "label": "Your New Pok\u00e9mon Snap NSP/NSZ/XCI/XCZ or imported 2.0.1 GameData folder",
+      "label": "Your supported 2.0.1 NUP, NSP/NSZ/XCI/XCZ or imported GameData folder",
       "role": "game",
       "formats": [
         {
           "type": "folder"
+        },
+        {
+          "type": "file",
+          "extensions": [
+            "nup"
+          ]
         },
         {
           "type": "file",
@@ -95,6 +101,40 @@
     "reason": "Snap preserves its original colour and post-processing; external filters are unverified."
   },
   "settings": [
+    {
+      "id": "appearance",
+      "label": "Optional original appearance",
+      "help": "No default changes. Select to use native resolution/filtering, 30 FPS, neutral colour and original shadows/photos without frame generation. Other explicit settings can override individual values.",
+      "in": "args",
+      "choices": [
+        {
+          "label": "Keep my settings",
+          "args": []
+        },
+        {
+          "label": "Original appearance",
+          "args": [
+            "--set=render_scale=game",
+            "--set=aniso=game",
+            "--set=upscaling=off",
+            "--set=anti_aliasing=off",
+            "--set=shadow_scale=auto",
+            "--set=hd_photos=0",
+            "--set=hd_shadows=0",
+            "--set=fps=30",
+            "--set=frame_gen=off",
+            "--set=tex_pack=0",
+            "--set=ui_motion=0",
+            "--set=sharpness=0",
+            "--set=color_preset=default",
+            "--set=color_brightness=0",
+            "--set=color_contrast=100",
+            "--set=color_saturation=100",
+            "--set=color_gamma=1"
+          ]
+        }
+      ]
+    },
     {
       "id": "fullscreen",
       "label": "Window mode",

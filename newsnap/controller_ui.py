@@ -39,9 +39,11 @@ class ControllerTest:
         self.window.geometry('920x680')
         self.window.minsize(820,640)
         self.window.protocol('WM_DELETE_WINDOW',self.close)
+        self.window.bind('<Escape>',lambda event:self.close())
+        self.window.bind('<<ControllerBack>>',lambda event:self.close())
         outer=ttk.Frame(self.window,padding=18);outer.pack(fill='both',expand=True)
         ttk.Label(outer,text=tr('Comprueba tu mando'),style='Title.TLabel').pack(anchor='w')
-        ttk.Label(outer,text=tr('Pulsa los botones, mueve las palancas o desconecta y vuelve a conectar el mando. Cierra esta prueba antes de iniciar el juego.'),wraplength=740).pack(anchor='w',pady=10)
+        ttk.Label(outer,text=tr('Pulsa los botones, mueve las palancas o desconecta y vuelve a conectar el mando. Cierra esta prueba antes de iniciar el juego. Con mando: Start + Back.'),wraplength=740).pack(anchor='w',pady=10)
         self.state=ttk.Label(outer,text=tr('Preparando SDL…'),wraplength=740)
         self.state.pack(anchor='w',pady=6)
         footer=ttk.Frame(outer);footer.pack(side='bottom',fill='x',pady=(10,0))
@@ -70,17 +72,33 @@ class ControllerTest:
             from .controller_probe import Session
             self.lock=settings.ProfileLock(self.launcher.profile)
             self.lock.__enter__()
-            self.session=Session(runtime_dir(self.launcher.project))
+            from .controller_probe import launcher_runtime
+            self.session=Session(launcher_runtime(self.launcher.project))
             self.state.configure(text=''.join((tr('SDL '), f'{self.session.sdl_version}', tr(' · lectura en vivo, sin activar vibración.'),)))
             self.poll()
         except Exception as error:
-            self._release()
-            self.state.configure(text=str(error))
+            self._failed(error)
+
+    def _failed(self,error):
+        self._release()
+        self.state.configure(text=str(error))
+        # Once diagnostics has no session, its close chord cannot be read.
+        # Restore normal navigation inside the still-grabbed error window so
+        # the user can reach Close/Back without a keyboard or mouse. A healthy
+        # diagnostic session keeps exclusive ownership of its face buttons.
+        navigation=getattr(self.launcher,'navigation',None)
+        if navigation is not None and not self.closed:navigation.resume()
 
     def poll(self):
         if self.closed or self.session is None:return
         try:
             values=self.session.snapshot()
+            # Face buttons are diagnostic input, never normal button activation.
+            chord=any(v.get('connected') and v.get('buttons',{}).get('start') and
+                      v.get('buttons',{}).get('back') for v in values)
+            if not chord:self.close_chord_armed=True
+            elif getattr(self,'close_chord_armed',False):
+                self.close();return
             self.show_controllers(values)
             text='\n\n'.join(describe(value) for value in values) or tr('No hay mandos conectados. Puedes conectar uno ahora.')
             if self.session.warnings:text+='\n\n'+'\n'.join(self.session.warnings)
@@ -90,8 +108,7 @@ class ControllerTest:
                 self.text.configure(state='disabled');self.text.yview_moveto(position[0]);self.last_text=text
             self.after_id=self.launcher.root.after(100,self.poll)
         except Exception as error:
-            self._release()
-            self.state.configure(text=str(error))
+            self._failed(error)
 
     def show_controllers(self,values):
         self.controllers={value['id']:value for value in values if value['connected']}
@@ -137,3 +154,5 @@ class ControllerTest:
         if self.after_id is not None:self.launcher.root.after_cancel(self.after_id)
         self._release()
         self.window.destroy()
+        navigation=getattr(self.launcher,'navigation',None)
+        if navigation is not None:navigation.resume()

@@ -76,6 +76,8 @@ class OfflineKitPackageTests(unittest.TestCase):
                ({'donor_commit':'b'*40},None,False),
                ({'contains_game_data':True},None,False),
                ({},{'source/generated/main.c':b'private'},False),
+               ({},{'source/assets/private.nup':b'private'},False),
+               ({},{'source/assets/private.xcz':b'private'},False),
                ({},{'source/GameData/exefs/main':b'private'},False),
                ({},None,True)]
         for changes,extra,damage in cases:

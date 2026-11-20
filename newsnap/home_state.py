@@ -42,6 +42,8 @@ def _receipt(directory, profile):
     if len(raw)>65536:return None
     receipt=json.loads(raw.decode('utf-8'))
     expected={**profile['exefs_sha256'],'romfs':profile['romfs_sha256']}
+    from .maintenance import accepted_romfs_hashes
+    if receipt.get('image_sha256',profile['romfs_sha256']) not in accepted_romfs_hashes(profile):return None
     fingerprints=_fingerprints(directory,profile)
     if not (receipt.get('format')==1 and receipt.get('expected')==expected and
             receipt.get('fingerprints')==fingerprints and
@@ -79,9 +81,10 @@ def owner_receipts(directory, profile=None):
     receipts=VerifiedFiles(directory/STORE)
     try:
         profile=profile or _profile()
-        if _receipt(directory,profile):
+        receipt=_receipt(directory,profile)
+        if receipt:
             digests={'exefs/'+name:value for name,value in profile['exefs_sha256'].items()}
-            digests[IMAGE]=profile['romfs_sha256']
+            digests[IMAGE]=receipt.get('image_sha256',profile['romfs_sha256'])
             for name,value in digests.items():
                 if key_of(directory/name) not in receipts.entries:receipts.record(directory/name,value)
     except (OSError,ValueError,TypeError,AttributeError,KeyError):pass
@@ -98,7 +101,7 @@ def verify(root, cancel_event=None):
     _cancel(cancel_event)
     after=_fingerprints(directory,profile)
     if before!=after:raise ValueError('Los datos cambiaron durante la verificación; vuelve a comprobarlos.')
-    record={'format':1,'verified_at':time.time(),'game_version':'2.0.1',
+    record={'format':1,'image_sha256':receipts.digest(directory/IMAGE),'verified_at':time.time(),'game_version':'2.0.1',
             'expected':{**profile['exefs_sha256'],'romfs':profile['romfs_sha256']},'fingerprints':after,
             'edges':_image_edges(directory,after,fresh=True)}
     descriptor,temporary=tempfile.mkstemp(prefix='.data-verification-',suffix='.tmp',dir=directory)

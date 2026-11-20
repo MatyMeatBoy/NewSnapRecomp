@@ -118,3 +118,16 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+
+## Recomp Achievements (native game integration only)
+
+Pinned SDK: elripalda/RecompAchievements `faf094acdf1efb57d8db7c8187b4b47aa1501805`.
+The SDK uses Recomp Achievements License 1.0 (free Game use/distribution; separate
+permission is required for Launcher use). Its source is included in the local
+build kit solely to compile the native game's reporting bridge. It is not run
+as a host/launcher achievements service. Preserve the SDK LICENSE and its
+rcheevos/cJSON MIT notices in `third_party/recomp_achievements`.
+
+The launcher additionally redistributes pinned SDL3 3.4.18 under its zlib license
+(`licenses/SDL3-launcher-LICENSE.txt`) for first-run controller navigation.

@@ -15,6 +15,11 @@ ROOT = Path(__file__).resolve().parents[1]
 DLL = ROOT / 'build/updated/SDL3.dll'
 if not DLL.is_file():
     DLL = ROOT / 'toolchain/astral-release/Astral Chain-Setup/bin/SDL3.dll'
+if not DLL.is_file():
+    try:
+        DLL = probe.launcher_runtime(ROOT)
+    except probe.ProbeError:
+        pass
 
 
 class VirtualJoystickDesc(C.Structure):
@@ -168,6 +173,10 @@ class NativeControllerTests(unittest.TestCase):
         self.assertEqual(rows[second]['hats'][0], 1)
         self.assertFalse(rows[first]['capabilities']['rumble'])
         json.dumps(list(rows.values()))
+        mapped = {r['id']: r for r in self.session.navigation_snapshot()}
+        self.assertNotIn(second, mapped)
+        self.assertEqual(mapped[first]['axes']['leftx'], 16384)
+        self.assertTrue(mapped[first]['buttons']['south'])
         self.assertTrue(self.sdl.SDL_DetachVirtualJoystick(first))
         self.ids.remove(first)
         after = self.session.snapshot()

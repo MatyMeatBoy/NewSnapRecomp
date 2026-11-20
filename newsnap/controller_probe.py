@@ -172,6 +172,34 @@ class Session:
             if joystick:
                 self._sdl.SDL_CloseJoystick(joystick)
 
+    def navigation_snapshot(self):
+        """Mapped controls only, without diagnostic mapping/capability allocations."""
+        self.pump()
+        sdl, count = self._sdl, C.c_int()
+        ids = sdl.SDL_GetJoysticks(C.byref(count))
+        if not ids:
+            raise ProbeError('No se pudieron enumerar los mandos: ' + self._error())
+        try:
+            if not 0 <= count.value <= 256: raise ProbeError('Cantidad de mandos inválida')
+            present = [int(ids[i]) for i in range(count.value)]
+        finally:
+            sdl.SDL_free(ids)
+        for instance in list(self._handles):
+            if instance not in present: self._close_device(self._handles.pop(instance))
+        rows = []
+        for instance in present:
+            if not sdl.SDL_IsGamepad(instance): continue
+            if instance not in self._handles:
+                joy = sdl.SDL_OpenJoystick(instance)
+                pad = sdl.SDL_OpenGamepad(instance) if joy else None
+                if joy: self._handles[instance] = (joy, pad)
+            joy, pad = self._handles.get(instance, (None, None))
+            if not pad: continue
+            rows.append({'id':instance, 'recognized':True, 'connected':bool(sdl.SDL_JoystickConnected(joy)),
+                         'buttons':{name:bool(sdl.SDL_GetGamepadButton(pad,i)) for i,name in enumerate(BUTTONS)},
+                         'axes':{name:int(sdl.SDL_GetGamepadAxis(pad,i)) for i,name in enumerate(AXES[:2])}})
+        return rows
+
     def snapshot(self):
         self.pump()
         sdl = self._sdl
@@ -282,3 +310,15 @@ class Session:
 
     def __exit__(self, *exception):
         self.close()
+
+
+def launcher_runtime(root):
+    """Resolve a pinned public DLL even before the first game build exists."""
+    import hashlib, json
+    root = Path(root)
+    pin = json.loads((root/'assets/controllers/launcher-sdl.json').read_text(encoding='utf-8'))
+    for directory in (root/'tools/launcher-sdl', root/'toolchain/launcher-sdl'):
+        dll = directory/'SDL3.dll'
+        if dll.is_file() and not dll.is_symlink() and hashlib.sha256(dll.read_bytes()).hexdigest() == pin['sha256']:
+            return directory
+    raise ProbeError('Falta el SDL3 verificado del launcher; reinstala el paquete completo.')

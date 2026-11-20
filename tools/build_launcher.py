@@ -15,9 +15,9 @@ from newsnap.version import VERSION
 
 def source_fingerprints(root=ROOT):
     files = []
-    for pattern in ('newsnap/**/*.py', 'newsnap/overlays/*', 'assets/icons/*', 'assets/controllers/*', 'assets/launcher/*', 'assets/fonts/*', 'profiles/*.json',
+    for pattern in ('newsnap/**/*.py', 'newsnap/overlays/*', 'assets/icons/*', 'assets/controllers/*', 'assets/launcher/*', 'assets/fonts/*', 'assets/game-fingerprints/*', 'profiles/*.json', 'third_party/recomp_achievements/**/*',
                     'tools/fetch_*.py', 'tools/package_build_kit.py', 'tools/triage_game_log.py',
-                    'toolchain/hactool/*'):
+                    'toolchain/hactool/*', 'toolchain/launcher-sdl/*'):
         files.extend(p for p in root.glob(pattern) if p.is_file())
     files.extend(root / name for name in ('tools/launcher_entry.py', 'tools/build_launcher.py',
                  'requirements-release.txt', 'requirements.txt', 'LICENSE', 'THIRD_PARTY_NOTICES.md',
@@ -40,7 +40,7 @@ def build():
     # the launcher never reads (its texts are its own, it formats no dates through Tcl); the package lists shorter.
     for unused in ('_tcl_data/tzdata', '_tcl_data/msgs', '_tk_data/msgs', '_tk_data/images'):
         shutil.rmtree(application / '_internal' / unused, ignore_errors=True)
-    for folder in ('assets/icons', 'assets/controllers', 'assets/launcher', 'assets/fonts', 'licenses'):
+    for folder in ('assets/icons', 'assets/controllers', 'assets/launcher', 'assets/fonts', 'assets/game-fingerprints', 'licenses'):
         shutil.copytree(ROOT / folder, application / folder, dirs_exist_ok=True)
     # Older installed updaters accept only the curated Snap specifications here.
     # Native shader pins belong to the separate build kit, not the launcher.
@@ -53,6 +53,12 @@ def build():
         shutil.copy2(hactool, application / 'tools/hactool.exe')
         (application / 'licenses').mkdir(parents=True, exist_ok=True)
         shutil.copy2(ROOT / 'toolchain/hactool/LICENSE', application / 'licenses/hactool-LICENSE.txt')
+    sdl = ROOT / 'toolchain/launcher-sdl/SDL3.dll'
+    pin = json.loads((ROOT / 'assets/controllers/launcher-sdl.json').read_text(encoding='utf-8'))
+    if not sdl.is_file() or hashlib.sha256(sdl.read_bytes()).hexdigest() != pin['sha256']:
+        raise ValueError('Provision the exact pinned launcher SDL3 runtime before freezing')
+    (application / 'tools/launcher-sdl').mkdir(parents=True, exist_ok=True)
+    shutil.copy2(sdl, application / 'tools/launcher-sdl/SDL3.dll')
     for name in ('LICENSE', 'THIRD_PARTY_NOTICES.md', 'recomplauncher.json'):
         shutil.copy2(ROOT / name, application / name)
     for name in ('nso.py',):

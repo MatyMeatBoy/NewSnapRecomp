@@ -1,0 +1,17 @@
+{
+  "format": 1,
+  "game": "newsnaprecomp",
+  "source": "events",
+  "console": "switch",
+  "versions": ">=0.9.25",
+  "achievements": [
+    {
+      "id": 1,
+      "title": "Field Notes Recorded",
+      "description": "Complete a changed save-data commit during live play.",
+      "points": 5,
+      "bonus": true,
+      "event": "save_committed"
+    }
+  ]
+}

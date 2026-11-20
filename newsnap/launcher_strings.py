@@ -1968,3 +1968,60 @@ ENGLISH[_HD_SHADOW_PROMPT] = ("Prepare HD shadows?\n\nIncludes scenery shadow ma
     "Choose No to use original shadows. You can enable HD shadows later in Enhancements.")
 
 ENGLISH['Las sombras de plantas, rocas, casas, escaleras y escenario están pintadas en texturas de cada nivel, de baja resolución (por eso se ven pixeladas). Activado: el launcher las lee de tu propio juego y las amplía en este PC para todos los niveles, sin tener que jugarlos antes, conservando la luz y el color del juego. Se prepara automáticamente antes de iniciar el juego: tarda unos 35 minutos, ocupa unos 6 GB junto al juego y la herramienta de escalado se descarga una vez. Si falla, el próximo inicio continúa lo pendiente. Incluye también las sombras en tiempo real al máximo (4×). «Generar sombras HD» lo inicia o lo detiene a mano.'] = 'One switch for enhanced scenery shadow maps and 4x real-time shadows. When maps are missing, startup asks once before the download and local preparation (about 35 minutes, up to 6 GB). Declining uses original shadows; enable later to retry. Interrupted preparation resumes. Light and colour are preserved.'
+
+ENGLISH['Aspecto original'] = 'Original appearance'
+ENGLISH['Importar NSP/XCI/NSZ/NUP…'] = 'Import NSP/XCI/NSZ/NUP…'
+from .graphics_presets import DESCRIPTION as _GRAPHICS_PRESET_DESCRIPTION
+ENGLISH[_GRAPHICS_PRESET_DESCRIPTION] = ('Recommended remains the default. Original appearance is optional: native resolution and filtering, 30 FPS, no HD enhancements, frame generation or menu interpolation, neutral colour. Existing Original/Low/Medium/High/Ultra profiles remain available. Applying a preset changes only its stated options; nothing changes until you choose it.')
+
+
+# Controller-owned dialogs, local file pickers and complete profile backups.
+ENGLISH.update({
+    'Abrir': 'Open',
+    'Aceptar': 'OK',
+    'Activado: se crea una copia completa después de cada sesión de juego.': 'Enabled: a full backup is made after each game session.',
+    'Activar copias completas del perfil': 'Enable full-profile backups',
+    'Cancelar': 'Cancel',
+    'Cancelar copia/restauración': 'Cancel backup/restore',
+    'Carpeta de copias: ': 'Backup folder: ',
+    'Carpeta personal': 'Home',
+    'Carpeta superior': 'Parent folder',
+    'Copia completa del perfil guardada: ': 'Complete profile backup saved: ',
+    'Copia/restauración del perfil': 'Profile backup/restore',
+    'Copias completas del perfil': 'Complete profile backups',
+    'Copias del perfil': 'Profile backups',
+    'Copias futuras desactivadas. Se conservan los archivos existentes.': 'Future backups disabled. Existing archives are kept.',
+    'Creando una copia completa del perfil…': 'Backing up complete profile…',
+    'Crear copia ahora': 'Back up now',
+    'Desactivar copias': 'Disable backups',
+    'Elegir carpeta de copias': 'Choose backup folder',
+    'Elige dónde crear el perfil restaurado': 'Choose where to create the restored profile',
+    'Elige un archivo': 'Choose a file',
+    'Elige un archivo en una carpeta existente.': 'Choose a file in an existing folder.',
+    'Elige un archivo existente.': 'Choose an existing file.',
+    'Elige un archivo.': 'Choose a file.',
+    'Elige un nombre de archivo.': 'Choose a file name.',
+    'Elige una carpeta de copias local o sincronizada': 'Choose a local or synced backup folder',
+    'Elige una carpeta.': 'Choose a folder.',
+    'Elige una copia completa del perfil': 'Choose a complete profile backup',
+    'Guardar': 'Save',
+    'Las copias completas del perfil están desactivadas.': 'Full-profile backups are disabled.',
+    'Nombre del archivo': 'File name',
+    'Opcional: elige una carpeta local o sincronizada. Se incluyen los archivos grandes de partidas y fotos; se conservan tres copias completas por perfil.': 'Optional: choose a local or synced folder. Large save/photo files are included; three complete copies per profile are retained.',
+    'Perfil nuevo restaurado y seleccionado: ': 'Restored and selected new profile: ',
+    'Reemplazar archivo': 'Replace file',
+    'Restaurando el perfil completo…': 'Restoring complete profile…',
+    'Restaurar copia': 'Restore backup',
+    'Restaurar perfil completo': 'Restore complete profile',
+    'Revisa los ajustes de las copias: ': 'Backup settings need attention: ',
+    'Se conservó el perfil restaurado, pero no se pudo seleccionar: ': 'The restored profile was preserved, but could not be selected: ',
+    'Seleccionar esta carpeta': 'Select this folder',
+    'Sur: abrir/seleccionar · Este: cancelar · Izquierda/Derecha: mover el foco': 'South: open/select · East: cancel · Left/Right: move focus',
+    'Sur: seleccionar · Este: volver': 'South: select · East: back',
+    'Sí': 'Yes',
+    'Todos los archivos': 'All files',
+    'Verificando y restaurando el perfil completo…': 'Verifying and restoring the complete profile…',
+    '¿Activar las copias completas del perfil en esta carpeta?\n\nIncluyen las partidas confirmadas, las fotos y la identidad de la cuenta, también los archivos de más de 64 MB. Se conservan las últimas tres copias de cada perfil.\n\nSi la carpeta está sincronizada, tu proveedor de nube gestiona las subidas y el almacenamiento. RecompLauncher no sube estas copias completas del perfil. Puedes desactivar las copias futuras sin borrar las existentes.': 'Enable complete profile backups in this folder?\n\nThey include committed saves, photos and account identity, including files larger than 64 MB. The latest three backups for each profile are retained.\n\nIf this folder is synced, your own cloud provider handles uploads and storage. RecompLauncher does not upload these full-profile backups. You can disable future backups without deleting existing copies.',
+    '¿Reemplazar este archivo?': 'Replace this file?',
+    '¿Restaurar en un perfil nuevo y seleccionarlo después de verificarlo? Se conservará tu perfil actual.': 'Restore into a new profile and select it after verification? Your current profile will be preserved.',
+})
