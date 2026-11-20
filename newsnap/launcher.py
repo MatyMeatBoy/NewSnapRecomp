@@ -10,7 +10,9 @@ import threading
 import time
 import tkinter as tk
 import uuid
-from tkinter import filedialog, messagebox, ttk
+from tkinter import ttk
+from . import controller_file_picker as filedialog
+from . import controller_dialogs as messagebox
 
 from . import fonts
 from . import launcher_settings as settings
@@ -114,8 +116,26 @@ class Launcher:
         self.updates = UpdatePanel(self, update_content, automatic=check_updates)
         self._fit_labels(update_content)
         self.tabs.bind('<<NotebookTabChanged>>',self._tab_changed,add='+')
+        from .controller_navigation import Navigation
+        from .controller_probe import Session, launcher_runtime
+        self.navigation = Navigation(root,
+            lambda: Session(launcher_runtime(self.project), env={'SDL_JOYSTICK_ALLOW_BACKGROUND_EVENTS':'1'}),
+            enabled=lambda: self.process is None and not getattr(self, 'hidden_for_game', False))
+        self.navigation.start()
+        root.bind('<Destroy>', lambda event: self.navigation.close() if event.widget is root else None, add='+')
         self.root.after(100, self._poll)
         self.album_status.set(tr('Abre el álbum para cargar las fotografías del perfil.'))
+        if check_updates:
+            self.root.after(300,self._initial_data_location)
+
+    def _initial_data_location(self):
+        if self.busy:return
+        import os
+        pending=os.environ.get('NEWSNAP_PENDING_DATA')
+        if pending and not self.home.refresh()['loaded']:
+            self.home._use_data(pending)
+        elif self.home.refresh()['loaded']:
+            self.home.ensure_writable_data()
 
     def _change_launcher_language(self, event=None):
         if self.busy or self.diagnostics_running:
@@ -385,6 +405,8 @@ class Launcher:
         self.profile_label.pack(anchor='w', pady=4)
         self.profile_button = ttk.Button(profile, text=tr('Elegir perfil…'), command=self.choose_profile)
         self.profile_button.pack(anchor='w', pady=4)
+        from .backup_ui import BackupPanel
+        self.backups=BackupPanel(self, content)
         from .tooltip import Tooltip
         self.diagnostics_button = ttk.Button(content, text=tr('Exportar diagnóstico…'), command=self.export_diagnostics)
         self.diagnostics_button.pack(anchor='w', pady=(0, 12))
@@ -697,10 +719,14 @@ class Launcher:
     def show_controller_test(self):
         if self.busy:return
         from .controller_ui import ControllerTest
-        try:settings.validate_runtime_data(self.project)
-        except (OSError,ValueError) as error:
-            self.status.set(str(error));return
-        self.controller_test=ControllerTest(self)
+        navigation=getattr(self,'navigation',None)
+        if navigation is not None:navigation.pause()
+        try:
+            self.controller_test=ControllerTest(self)
+            self.controller_test.window.grab_set()
+        except Exception:
+            if navigation is not None:navigation.resume()
+            raise
 
     def _set_busy(self, busy):
         self.busy = busy
@@ -721,7 +747,10 @@ class Launcher:
         if self.busy:
             return
         from .play_action import play_action
-        selected = play_action(self.home.refresh())
+        state=self.home.refresh()
+        guard=getattr(self.home,'ensure_writable_data',None)
+        if state.get('loaded') and guard is not None and guard():return
+        selected = play_action(state)
         if not selected['enabled']:
             return
         action = selected['action']
@@ -739,6 +768,9 @@ class Launcher:
             self.status.set(tr('Espera a que termine la preparación de sombras HD.'))
             return
         data=self.home.refresh()
+        if data['loaded']:
+            guard=getattr(self.home,'ensure_writable_data',None)
+            if guard is not None and guard(resume_game=True):return
         if not data['loaded']:
             self.home.choose_data();return
         if not data['verified']:
@@ -836,6 +868,8 @@ class Launcher:
                 write_record(log,'exit',exit_code=code)
                 return code
         code = settings.supervise_game(run_attempt)
+        from .backup_settings import backup_after_session
+        backup_after_session(self.project,profile,report=lambda text:self.events.put(('progress',text)))
         if code:
             raise RuntimeError(settings.game_failure_message(code, logfile))
 
@@ -978,6 +1012,8 @@ class Launcher:
         elif kind == 'progress':
             self.home.progress.report(event[1])
         elif kind == 'game_started':
+            navigation=getattr(self,'navigation',None)
+            if navigation is not None:navigation.pause()
             # the game is up: the launcher steps out of the way; it keeps the session's log in the background,
             # comes back if the game fails, and closes when the game ends
             self.home.progress.finish(tr('Juego iniciado'))
@@ -1001,6 +1037,8 @@ class Launcher:
         elif kind == 'display_file':
             self.display.observe(*event[1:])
         elif kind == 'finished':
+            navigation=getattr(self,'navigation',None)
+            if navigation is not None:navigation.resume()
             self._discord().stop()
             self._set_busy(False)
             self.reload_options()
@@ -1063,6 +1101,8 @@ class Launcher:
             self.status.set(tr('Deteniendo la generación de sombras HD…'))
             self.root.after(300, self.close)
             return
+        navigation=getattr(self,'navigation',None)
+        if navigation is not None:navigation.close()
         self.root.destroy()
 
 

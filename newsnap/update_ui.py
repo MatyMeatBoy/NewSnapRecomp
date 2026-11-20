@@ -8,7 +8,8 @@ import subprocess
 import sys
 import tempfile
 import threading
-from tkinter import messagebox, simpledialog, ttk
+from tkinter import simpledialog, ttk
+from . import controller_dialogs as messagebox
 
 from . import updater
 from . import launcher_settings as settings

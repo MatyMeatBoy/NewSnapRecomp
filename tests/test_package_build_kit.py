@@ -37,6 +37,7 @@ class BuildKitProducerTests(unittest.TestCase):
                 'fsr3_spv_sha256': hashlib.sha256(header).hexdigest(),
                 'fsr3_recipe_sha256': self.recipe}).encode(),
             'assets/icons/icon.txt': b'public icon fixture',
+            'assets/game-fingerprints/manifest.json': b'{"public_fingerprints":true}',
             'LICENSE': b'public license', 'THIRD_PARTY_NOTICES.md': b'public notices',
             'tools/fetch_upscaler_sdk.py': b'# public fixture',
             'tools/fetch_dlss.py': b'# public fixture',
@@ -48,6 +49,8 @@ class BuildKitProducerTests(unittest.TestCase):
                 ('def recipe_hash(): return ' + repr(self.recipe) + '\n').encode(),
             'third_party/astral/LICENSE': b'public license',
             'third_party/astral/THIRD_PARTY_NOTICES.md': b'public notices',
+            'third_party/recomp_achievements/LICENSE': b'public game SDK license fixture',
+            'third_party/recomp_achievements/include/rl_achievements.h': b'/* public SDK fixture */',
             'build/updated/fsr3_spv.h': header,
             'build/source/toolchain/ffx-sdk/c6efa6bf7f2027b3ec94f28578bb5965eabb9e55/LICENSE.txt': b'public license',
             'portable/python/python.exe': b'public portable Python fixture',
@@ -104,6 +107,9 @@ class BuildKitProducerTests(unittest.TestCase):
         self.assertEqual(entries['sdk/precompiled/fsr3_spv.h'], (self.root / 'build/updated/fsr3_spv.h').read_bytes())
         self.assertEqual(entries['source/third_party/astral/tools/ffx_sdk.py'],
                          (self.root / 'third_party/astral/tools/ffx_sdk.py').read_bytes())
+        for relative in ('assets/game-fingerprints/manifest.json', 'third_party/recomp_achievements/LICENSE',
+                         'third_party/recomp_achievements/include/rl_achievements.h'):
+            self.assertEqual(entries['source/' + relative], (self.root / relative).read_bytes())
 
     def test_only_pinned_vendor_files_and_deterministic_receipt_enter_zip(self):
         for module in (fsr, dlss):

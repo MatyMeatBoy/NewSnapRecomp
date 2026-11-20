@@ -3,7 +3,8 @@
 from .launcher_language import tr
 import sys
 from pathlib import Path
-from tkinter import messagebox, ttk
+from tkinter import ttk
+from . import controller_dialogs as messagebox
 
 
 class ShortcutButtons:

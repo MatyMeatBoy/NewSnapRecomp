@@ -12,9 +12,11 @@ def main():
     parser = argparse.ArgumentParser(description='NewSnapRecomp private build tools')
     commands = parser.add_subparsers(dest='command', required=True)
     imp = commands.add_parser('import', help='verify and import your own base/update')
-    imp.add_argument('--base', type=Path, required=True)
-    imp.add_argument('--update', type=Path, required=True)
-    imp.add_argument('--keys', type=Path, required=True)
+    source = imp.add_mutually_exclusive_group(required=True)
+    source.add_argument('--base', type=Path)
+    source.add_argument('--nup', type=Path, help='decrypted supported NUP; no keys required')
+    imp.add_argument('--update', type=Path)
+    imp.add_argument('--keys', type=Path)
     imp.add_argument('--work', type=Path, default=Path('build/extracted'))
     imp.add_argument('--hactool', type=Path)
     imp.add_argument('--exefs-only', action='store_true')
@@ -35,8 +37,12 @@ def main():
     args = parser.parse_args()
     try:
         if args.command == 'import':
-            import_game(args.base, args.update, args.keys, args.work,
-                        hactool=args.hactool, exefs_only=args.exefs_only)
+            if args.nup is not None:
+                from .nup_import import import_nup
+                import_nup(args.nup, args.work)
+            else:
+                import_game(args.base, args.update, args.keys, args.work,
+                            hactool=args.hactool, exefs_only=args.exefs_only)
         elif args.command == 'adapt':
             print(adapt_sources(args.out, patch_output=Path('patches/001-snap-bringup.patch')))
         elif args.command == 'build':

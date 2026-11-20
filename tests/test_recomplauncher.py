@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 import tempfile
+import shutil
 import unittest
 from unittest.mock import patch
 
@@ -15,6 +16,68 @@ except ModuleNotFoundError:
 
 
 class RecompLauncherTests(unittest.TestCase):
+    def readonly_selection(self, root):
+        source = root/'existing'
+        for name in ('exefs/main', 'exefs/sdk', 'romfs/romfs.bin'):
+            path = source/name; path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(b'original fixture')
+        adapter.select_data_dir(root, source)
+        return source
+
+    def test_prepare_existing_readonly_selection_without_game_argument_is_copied(self):
+        from newsnap.paths import data_dir
+        with tempfile.TemporaryDirectory() as folder, patch.dict(os.environ, {}, clear=True):
+            root = Path(folder); source = self.readonly_selection(root)
+            def clone(original, destination, **kwargs):
+                self.assertEqual(original, source)
+                self.assertFalse(destination.exists())
+                return Path(shutil.copytree(original, destination))
+            with patch('newsnap.data_location.is_writable_data', side_effect=lambda path: path != source), \
+                 patch('newsnap.data_location.estimate_copy_bytes', return_value=1024), \
+                 patch('newsnap.data_location.clone_readonly_data', side_effect=clone) as copy, \
+                 patch('newsnap.home_state.verify') as verify, \
+                 patch('newsnap.maintenance.assess_runtime', return_value={'needs_rebuild':False}), \
+                 patch('newsnap.launcher_settings.validate_runtime_data'):
+                adapter.prepare(root, adapter.arguments(['--recomplauncher-prepare']))
+            copy.assert_called_once()
+            verify.assert_called_once_with(root)
+            self.assertNotEqual(data_dir(root), source)
+            self.assertEqual((source/'exefs/main').read_bytes(), b'original fixture')
+
+    def test_play_copies_readonly_selection_even_when_old_runtime_is_current(self):
+        from newsnap.paths import data_dir
+        with tempfile.TemporaryDirectory() as folder, patch.dict(os.environ, {}, clear=True):
+            root = Path(folder); source = self.readonly_selection(root)
+            with patch('newsnap.data_location.is_writable_data', side_effect=lambda path: path != source), \
+                 patch('newsnap.data_location.estimate_copy_bytes', return_value=1024), \
+                 patch('newsnap.data_location.clone_readonly_data', side_effect=lambda original, destination, **kw: Path(shutil.copytree(original, destination))) as copy, \
+                 patch.object(adapter, 'prepare') as prepare, \
+                 patch('newsnap.maintenance.assess_runtime', return_value={'needs_rebuild':False}), \
+                 patch('newsnap.launcher_settings.validate_runtime_data'), \
+                 patch('newsnap.startup_assets.prepare_hd_shadows'), \
+                 patch.object(adapter.subprocess, 'Popen') as process:
+                process.return_value.wait.return_value = 0
+                self.assertEqual(adapter.play(root, {}), 0)
+            copy.assert_called_once()
+            prepare.assert_called_once()
+            self.assertNotEqual(data_dir(root), source)
+
+    def test_failed_readonly_copy_never_verifies_or_starts_old_selection(self):
+        from newsnap.paths import data_dir
+        with tempfile.TemporaryDirectory() as folder, patch.dict(os.environ, {}, clear=True):
+            root = Path(folder); source = self.readonly_selection(root)
+            with patch('newsnap.data_location.is_writable_data', return_value=False), \
+                 patch('newsnap.data_location.estimate_copy_bytes', return_value=1024), \
+                 patch('newsnap.data_location.clone_readonly_data', side_effect=ValueError('copy failed')), \
+                 patch('newsnap.home_state.verify') as verify, \
+                 patch.object(adapter.subprocess, 'Popen') as process:
+                with self.assertRaisesRegex(ValueError, 'copy failed'):
+                    adapter.prepare(root, adapter.arguments(['--recomplauncher-prepare']))
+                with self.assertRaisesRegex(ValueError, 'copy failed'):
+                    adapter.play(root, {})
+            self.assertEqual(data_dir(root), source)
+            verify.assert_not_called(); process.assert_not_called()
+
     def setUp(self):
         self.assertIsNotNone(adapter, 'RecompLauncher opt-in adapter is missing')
 
@@ -162,6 +225,22 @@ class RecompLauncherTests(unittest.TestCase):
             self.assertNotIn('--boot',calls[0])
             self.assertFalse(state['locked'])
             self.assertEqual(len(list((root/'logs').glob('recomplauncher-game-*.log'))),2)
+
+
+    def test_nup_prepare_needs_no_console_keys_and_uses_content_detection(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root=Path(temporary); game=root/'renamed.bin'; game.write_bytes(b'NUP\x01'+bytes(124))
+            args=adapter.arguments(['--recomplauncher-prepare','--game',str(game)])
+            with patch.object(adapter,'offline_kit',return_value=root/'kit'), \
+                 patch('newsnap.maintenance.run_build_command') as run, \
+                 patch.object(adapter,'select_data_dir'), \
+                 patch('newsnap.home_state.verify'), \
+                 patch('newsnap.maintenance.assess_runtime',return_value={'needs_rebuild':False}), \
+                 patch('newsnap.launcher_settings.validate_runtime_data'):
+                adapter.prepare(root,args)
+            command=run.call_args.args[0]
+            self.assertIn('--nup',command)
+            self.assertNotIn('--keys',command)
 
 
 if __name__ == '__main__':unittest.main()

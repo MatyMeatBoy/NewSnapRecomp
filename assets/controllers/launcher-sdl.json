@@ -1,0 +1,7 @@
+{
+  "format": 1,
+  "file": "SDL3.dll",
+  "version": "3.4.18",
+  "sha256": "2b4b128d8d510cc2d442693cf848c050d700d43dc667afe9e5fd82b0570d667e",
+  "provenance": "Pinned public SDL3 runtime from newsnap-14patches-sdk; included with its SDL zlib license."
+}

@@ -13,6 +13,13 @@ def check_hash(path, expected):
 
 
 def verify_import(extracted):
+    if (extracted/'nup-import.json').is_file():
+        from .maintenance import verify_owner_inputs
+        from .upstream import ROOT
+        profile=json.loads((ROOT/'profiles/snap-2.0.1.json').read_text(encoding='utf-8'))
+        manifest,control=verify_owner_inputs(extracted,profile)
+        manifest['romfs_sha256']=source_digest(extracted/'romfs/romfs.bin')
+        return manifest,control
     manifests = {tag: json.loads((extracted.parent / tag / 'extraction-manifest.json').read_text(encoding='utf-8'))
                  for tag in ('base', 'updated')}
     for item in manifests['updated']['files']:

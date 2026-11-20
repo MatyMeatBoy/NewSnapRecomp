@@ -48,25 +48,60 @@ def offline_kit(root):
     return Path(ensure_build_kit(root))
 
 
+def _ensure_writable_selection(root):
+    """Copy a previously selected protected GameData before writes or play.
+
+    Explicit --game folders already use this same owner-data copy protocol.
+    Publish the new selection only after copying and validation succeed; never
+    overwrite an existing data folder or mutate the original protected inputs.
+    """
+    from .paths import data_dir, find_data_dir
+    from .data_location import is_writable_data, clone_readonly_data, estimate_copy_bytes
+    source = find_data_dir(data_dir(root))
+    if source is None or is_writable_data(source):
+        return False
+    destination = root / ('GameData-copy-' + uuid.uuid4().hex[:10])
+    emit(.1, f'Copying read-only inputs to {destination} ({estimate_copy_bytes(source)/(1<<30):.2f} GiB)')
+    copied = clone_readonly_data(source, destination, report=lambda text: emit(.2, text))
+    select_data_dir(root, copied)
+    return True
+
+
 def prepare(root, args):
     from . import home_state, maintenance
-    if args.game is not None:
-        if args.game.is_dir():
-            select_data_dir(root, args.game)
+    game=args.game
+    if game is None and os.environ.get('NEWSNAP_PENDING_DATA'):
+        from .paths import has_game_data
+        if not has_game_data(root):game=Path(os.environ['NEWSNAP_PENDING_DATA'])
+    if game is not None:
+        if game.is_dir():
+            from .paths import find_data_dir
+            from .data_location import is_writable_data,clone_readonly_data,estimate_copy_bytes
+            source=find_data_dir(game)
+            if source is None:raise ValueError('Select a supported imported GameData folder')
+            if not is_writable_data(source):
+                destination=root/('GameData-copy-'+uuid.uuid4().hex[:10])
+                emit(.1,f'Copying read-only inputs to {destination} ({estimate_copy_bytes(source)/(1<<30):.2f} GiB)')
+                source=clone_readonly_data(source,destination,report=lambda text:emit(.2,text))
+            select_data_dir(root, source)
         else:
-            if not args.update or not args.keys or not all(p.is_file() for p in (args.game, args.update, args.keys)):
+            from .importer import is_nup
+            decrypted = is_nup(args.game)
+            if not decrypted and (not args.update or not args.keys or not all(p.is_file() for p in (args.game,args.update,args.keys))):
                 raise ValueError('A packaged base game needs --update (2.0.1) and --keys (your prod.keys).')
             kit = offline_kit(root)
-            hactool = next((p for p in (root / 'tools/hactool.exe', root / 'toolchain/hactool/hactool.exe')
-                            if p.is_file()), None)
-            if hactool is None:
-                raise ValueError('The complete release package must include hactool.exe.')
             work = root / 'GameData-import'
-            emit(.1, 'Importing your game and 2.0.1 update')
-            maintenance.run_build_command([kit / 'python/python.exe', '-B', '-E', '-s', '-m', 'newsnap',
-                'import', '--base', args.game, '--update', args.update, '--keys', args.keys,
-                '--work', work, '--hactool', hactool], kit / 'source', root / 'logs/recomplauncher-import.log')
+            command = [kit/'python/python.exe','-B','-E','-s','-m','newsnap','import']
+            if decrypted:
+                command += ['--nup',args.game,'--work',work]
+            else:
+                hactool=next((p for p in (root/'tools/hactool.exe',root/'toolchain/hactool/hactool.exe') if p.is_file()),None)
+                if hactool is None: raise ValueError('The complete release package must include hactool.exe.')
+                command += ['--base',args.game,'--update',args.update,'--keys',args.keys,'--work',work,'--hactool',hactool]
+            emit(.1,'Importing verified game content')
+            maintenance.run_build_command(command,kit/'source',root/'logs/recomplauncher-import.log')
             select_data_dir(root, work / 'updated')
+    _ensure_writable_selection(root)
     emit(.35, 'Verifying your game data')
     with settings.ProfileLock(settings.load_profile(root)):
         home_state.verify(root)
@@ -95,7 +130,8 @@ def game_environment(root, overrides):
 
 def play(root, overrides):
     from .maintenance import assess_runtime
-    if assess_runtime(root)['needs_rebuild']:
+    copied = _ensure_writable_selection(root)
+    if copied or assess_runtime(root)['needs_rebuild']:
         # Release updates keep imported data. Rebuild from it with this release's
         # bundled kit, without asking the player for their original containers again.
         prepare(root, argparse.Namespace(game=None))
@@ -122,7 +158,10 @@ def play(root, overrides):
                     creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
                 return process.wait()
 
-        return settings.supervise_game(attempt)
+        code=settings.supervise_game(attempt)
+        from .backup_settings import backup_after_session
+        backup_after_session(root,profile,report=lambda text:emit(.99,text))
+        return code
 
 
 def emit(ratio, text):

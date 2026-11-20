@@ -75,7 +75,21 @@ def import_exefs(source, keys, destination, *, update=False):
     return manifest
 
 
+def is_nup(path):
+    """Detect the decrypted format by content, not its extension."""
+    try:
+        with Path(path).open('rb') as stream: return stream.read(4) == b'NUP\x01'
+    except (OSError, TypeError):
+        return False
+
+
 def import_game(base, update, keys, work, *, hactool=None, exefs_only=False):
+    if is_nup(base):
+        if exefs_only: raise ValueError('NUP import requires its complete supported game trees')
+        from .nup_import import import_nup
+        return import_nup(base, work)
+    if update is None or keys is None:
+        raise ValueError('A base container requires the 2.0.1 update and your prod.keys')
     e = extractor()
     base, update, keys, work = (Path(p).resolve() for p in (base, update, keys, work))
     for source in (base, update, keys):

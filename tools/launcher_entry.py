@@ -7,6 +7,10 @@ from pathlib import Path
 def main():
     from newsnap.upstream import ROOT
     from newsnap.paths import runtime_dir
+    if getattr(sys,'frozen',False):
+        from newsnap.launcher_bootstrap import relocate_if_needed
+        relocated=relocate_if_needed(ROOT,sys.argv[1:])
+        if relocated is not None:return relocated
     os.chdir(ROOT)
     from newsnap import recomplauncher
     if recomplauncher.handles(sys.argv[1:]):

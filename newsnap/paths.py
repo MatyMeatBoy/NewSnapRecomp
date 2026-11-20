@@ -24,11 +24,15 @@ def _selected_data_dir(root):
     return None
 
 
+def find_data_dir(selected):
+    selected=Path(selected).resolve()
+    return next((p for p in (selected,selected/'GameData',selected/'newsnapGameData') if _has_inputs(p)),None)
+
+
 def select_data_dir(root, selected):
     """Select existing owner inputs without copying, moving or modifying them."""
     root,selected=Path(root).resolve(),Path(selected).resolve()
-    candidates=[selected,selected/'GameData',selected/'newsnapGameData']
-    selected=next((p for p in candidates if _has_inputs(p)),None)
+    selected=find_data_dir(selected)
     if selected is None:
         raise ValueError('Elige una carpeta GameData con ExeFS y RomFS importados de tu juego.')
     path=root/'launcher-settings.json'

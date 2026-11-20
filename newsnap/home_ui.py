@@ -5,7 +5,8 @@ from datetime import datetime
 import queue
 import threading
 import tkinter as tk
-from tkinter import filedialog,ttk
+from tkinter import ttk
+from . import controller_file_picker as filedialog
 
 from . import fonts,home_state,launcher_settings as settings
 from .paths import data_dir,runtime_dir,select_data_dir
@@ -36,7 +37,7 @@ class HomePanel:
         actions=ttk.Frame(card);actions.pack(anchor='w')
         self.load_button=ttk.Button(actions,text=tr('Cargar GameData…'),command=self.choose_data)
         self.load_button.grid(row=0,column=0,sticky='w',padx=(0,8),pady=(0,4))
-        self.import_button=ttk.Button(actions,text=tr('Importar NSP/XCI/NSZ…'),command=self.import_dump)
+        self.import_button=ttk.Button(actions,text=tr('Importar NSP/XCI/NSZ/NUP…'),command=self.import_dump)
         self.import_button.grid(row=0,column=1,sticky='w',pady=(0,4))
         self.verify_button=ttk.Button(actions,text=tr('Verificar datos'),command=self.verify)
         self.verify_button.grid(row=1,column=0,sticky='w',padx=(0,8))
@@ -165,20 +166,24 @@ class HomePanel:
         bundled hactool for the update RomFS; the owner's files are only read."""
         if self.launcher.busy:return
         ask=lambda title,types:filedialog.askopenfilename(parent=self.launcher.root,title=title,filetypes=types)
-        base=ask(tr('Juego base de New Pokémon Snap'),[(tr('Volcado del juego'),'*.nsp *.nsz *.xci *.xcz'),(tr('Todos'),'*.*')])
+        base=ask(tr('Juego base de New Pokémon Snap'),[(tr('Volcado del juego'),'*.nup *.nsp *.nsz *.xci *.xcz'),(tr('Todos'),'*.*')])
         if not base:return
-        update=ask(tr('Actualización 2.0.1'),[(tr('Actualización'),'*.nsp *.nsz'),(tr('Todos'),'*.*')])
-        if not update:return
-        keys=ask(tr('Tus claves de consola (prod.keys)'),[(tr('Claves'),'*.keys'),(tr('Todos'),'*.*')])
-        if not keys:return
+        from .importer import is_nup
+        decrypted=is_nup(base)
+        update=keys=None
+        if not decrypted:
+            update=ask(tr('Actualización 2.0.1'),[(tr('Actualización'),'*.nsp *.nsz'),(tr('Todos'),'*.*')])
+            if not update:return
+            keys=ask(tr('Tus claves de consola (prod.keys)'),[(tr('Claves'),'*.keys'),(tr('Todos'),'*.*')])
+            if not keys:return
         from pathlib import Path
         from .upstream import ROOT
         hactool=ROOT/'tools/hactool.exe'
         if not hactool.is_file():hactool=ROOT/'toolchain/hactool/hactool.exe'
-        if not hactool.is_file():
+        if not decrypted and not hactool.is_file():
             self.launcher.status.set(tr('Falta hactool.exe junto al launcher: reinstala el paquete.'));return
         work=Path(self.launcher.project)/'GameData-import'
-        from tkinter import messagebox
+        from . import controller_dialogs as messagebox
         if not messagebox.askokcancel(tr('Confirmar importación'), tr('Los archivos importados se guardarán en: ')+str((work/'updated').resolve()), parent=self.launcher.root):return
         self.verifying=True;self.cancel.clear();self.launcher._set_busy(True)
         self.progress.report(tr('Importando tu juego (ExeFS y RomFS)… puede tardar varios minutos'))
@@ -187,14 +192,45 @@ class HomePanel:
                 from .build_kit import ensure_build_kit
                 from .maintenance import run_build_command
                 kit=Path(ensure_build_kit(self.launcher.project,cancel_event=self.cancel))
-                command=[kit/'python/python.exe','-B','-E','-s','-m','newsnap','import','--base',base,'--update',update,
-                         '--keys',keys,'--work',work,'--hactool',hactool]
+                command=[kit/'python/python.exe','-B','-E','-s','-m','newsnap','import']
+                command += (['--nup',base,'--work',work] if decrypted else
+                            ['--base',base,'--update',update,'--keys',keys,'--work',work,'--hactool',hactool])
                 run_build_command(command,kit/'source',Path(self.launcher.project)/'logs/import.log',self.cancel)
                 self.events.put(('imported',str(work/'updated')))
             except Exception as error:self.events.put(('error',tr('Importación sin completar: ')+str(error)))
         threading.Thread(target=job,daemon=True).start()
 
+    def ensure_writable_data(self,selected=None,*,resume_game=False):
+        from .paths import find_data_dir
+        from .data_location import is_writable_data, estimate_copy_bytes, clone_readonly_data
+        from . import controller_dialogs as dialogs
+        from pathlib import Path
+        import uuid
+        source=find_data_dir(selected) if selected is not None else find_data_dir(data_dir(self.launcher.project))
+        if source is None or is_writable_data(source):return False
+        try:
+            size=estimate_copy_bytes(source)
+            question=(tr('Esta carpeta es de solo lectura. Se necesita una copia escribible para recompilar, guardar ajustes y conservar tu perfil. Los originales no se cambiarán.')+
+                      f'\n\n{source}\n'+tr('Tamaño aproximado de la copia: ')+f'{size/(1<<30):.2f} GiB\n\n'+
+                      tr('¿Quieres elegir dónde crearla?'))
+            if not dialogs.askyesno(tr('Datos de solo lectura'),question,parent=self.launcher.root):return True
+            parent=filedialog.askdirectory(parent=self.launcher.root,title=tr('Destino escribible para tu juego'),initialdir=str(self.launcher.project))
+            if not parent:return True
+            destination=Path(parent)/('NewSnapGameData-'+uuid.uuid4().hex[:10])
+            self.verifying=True;self.resume=resume_game;self.cancel.clear();self.launcher._set_busy(True)
+            self.progress.report(tr('Copiando tus datos a una carpeta escribible…'))
+            def job():
+                try:
+                    result=clone_readonly_data(source,destination,cancel=self.cancel,
+                        report=lambda text:self.events.put(('copy_progress',text)))
+                    self.events.put(('readonly_cloned',str(result)))
+                except Exception as error:self.events.put(('error',str(error)))
+            threading.Thread(target=job,daemon=True).start()
+        except (OSError,ValueError,RuntimeError) as error:self.launcher.status.set(str(error))
+        return True
+
     def _use_data(self,chosen):
+        if HomePanel.ensure_writable_data(self,chosen):return
         try:
             selected=select_data_dir(self.launcher.project,chosen)
             self.launcher.ini=runtime_dir(self.launcher.project)/'newsnap.ini'
@@ -211,6 +247,7 @@ class HomePanel:
         if self.launcher.busy:return False
         if not self.refresh()['loaded']:
             self.choose_data();return False
+        if self.ensure_writable_data(resume_game=resume_game):return False
         self.verifying=self.checking=True;self.resume=resume_game;self.cancel.clear()
         self.launcher._set_busy(True)
         self.launcher.status.set(tr('Verificando ExeFS y RomFS de tu juego…'))
@@ -230,6 +267,8 @@ class HomePanel:
         try:
             while True:
                 kind,value=self.events.get_nowait()
+                if kind == 'copy_progress':
+                    self.progress.report(value);continue
                 if kind == 'runtime_assessed':
                     if value[0] == getattr(self, '_runtime_pending_key', None):
                         self._runtime_assessment = value
@@ -237,6 +276,11 @@ class HomePanel:
                         self.refresh()
                     continue
                 self.verifying=self.checking=False;self.launcher._set_busy(False)
+                if kind=='readonly_cloned':
+                    resume=self.resume;self.resume=False
+                    self._use_data(value);self.progress.finish(tr('Copia escribible lista'))
+                    if resume:self.launcher.root.after(50,self.launcher.launch)
+                    continue
                 if kind=='imported':
                     self._use_data(value);self.progress.finish(tr('Juego importado'));continue
                 self.refresh()

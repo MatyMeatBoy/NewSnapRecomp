@@ -130,6 +130,19 @@ def validate_owner_modules(directory, expected):
             raise ValueError(f'Unexpected ExeFS module {name}; use the verified game 2.0.1 inputs')
 
 
+def accepted_romfs_hashes(profile):
+    """Only independently pinned complete-image identities, never an import marker."""
+    values = {profile['romfs_sha256']}
+    normalized = profile.get('romfs_normalized')
+    if normalized is not None:
+        value = normalized.get('sha256') if isinstance(normalized, dict) else None
+        if (not isinstance(value, str) or len(value) != 64 or any(c not in '0123456789abcdef' for c in value)
+                or type(normalized.get('size')) is not int or normalized['size'] <= 0):
+            raise ValueError('Invalid trusted normalized RomFS identity')
+        values.add(value)
+    return values
+
+
 def verify_owner_inputs(directory, profile, cancel_event=None, receipts=None, full=False):
     """Verify original bytes against the public supported-version fingerprints.
 
@@ -150,7 +163,8 @@ def verify_owner_inputs(directory, profile, cancel_event=None, receipts=None, fu
         if _digest(path, cancel_event, receipts, full) != checksum:
             raise ValueError(f'ExeFS {name} differs from the supported verified game 2.0.1')
         files.append({'name': name, 'sha256': checksum, 'size': path.stat().st_size})
-    if _digest(directory / 'romfs/romfs.bin', cancel_event, receipts, full) != profile['romfs_sha256']:
+    image_hash = _digest(directory / 'romfs/romfs.bin', cancel_event, receipts, full)
+    if image_hash not in accepted_romfs_hashes(profile):
         raise ValueError('RomFS differs from the supported verified game 2.0.1')
     control = profile['verified_control']
     if control.get('display_version') != '2.0.1' or any(type(control.get(k)) is not int or control[k] <= 0
