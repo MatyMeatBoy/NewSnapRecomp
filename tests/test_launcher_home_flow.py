@@ -51,7 +51,7 @@ class HomeLaunchFlowTests(TestCase):
             self.assertIn(('finished',None),events)
             self.assertFalse(any(e[0]=='maintenance_needed' for e in events))
 
-    def test_available_preparation_failure_stops_before_game_and_keeps_pending_marker(self):
+    def test_available_preparation_failure_continues_and_keeps_pending_marker(self):
         self.preparation_outcome(1)
 
     def test_available_preparation_success_clears_pending_only_before_game(self):
@@ -64,24 +64,24 @@ class HomeLaunchFlowTests(TestCase):
             marker.write_text('{"shader_preparation_required": true}',encoding='utf-8')
             original=marker.read_bytes();app=Launcher.__new__(Launcher)
             app.project=root;app.ini=data/'newsnap.ini';app.events=queue.Queue();app.process=None;app.home=SimpleNamespace(cancel=Mock())
-            process=SimpleNamespace(wait=Mock(return_value=code),pid=42)
             calls=[]
+            stages=[]
             def popen(command,**kwargs):
+                stages.append(command[0])
                 calls.append((command,settings.shader_preparation_required(root)))
-                return process
+                return SimpleNamespace(wait=Mock(return_value=code if command[0]=='preparation-worker' else 0),pid=42)
             with patch('newsnap.launcher.subprocess.Popen',side_effect=popen), \
                  patch('newsnap.launcher.settings.game_environment',return_value={}), \
                  patch('newsnap.launcher.settings.game_command',return_value=['native-game']), \
                  patch('newsnap.session_log.runtime_identity',return_value={}), \
-                 patch('newsnap.startup_assets.prepare_hd_shadows'):
+                 patch('newsnap.startup_assets.prepare_hd_shadows', side_effect=lambda *a, **kw: stages.append('shadows')), \
+                 patch('newsnap.startup_assets.warm_hd_assets', side_effect=lambda *a, **kw: stages.append('textures')):
+                app._execute_game(root/'profile',['preparation-worker'])
+                self.assertEqual(calls,[(['preparation-worker'],True),(['native-game'],bool(code))])
+                self.assertEqual(stages, ['preparation-worker', 'shadows', 'textures', 'native-game'])
                 if code:
-                    with self.assertRaisesRegex(RuntimeError,'preparación'):
-                        app._execute_game(root/'profile',['preparation-worker'])
                     self.assertEqual(marker.read_bytes(),original)
-                    self.assertEqual(calls,[(['preparation-worker'],True)])
-                else:
-                    app._execute_game(root/'profile',['preparation-worker'])
-                    self.assertEqual(calls,[(['preparation-worker'],True),(['native-game'],False)])
+                    self.assertTrue(any(event[0]=='preparation_fallback' for event in app.events.queue))
 
     def test_unloaded_home_loads_data_without_navigating_to_updates(self):
         app=SimpleNamespace(busy=False,home=SimpleNamespace(

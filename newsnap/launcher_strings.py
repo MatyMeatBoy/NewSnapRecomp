@@ -529,7 +529,7 @@ ENGLISH = {'\n\nF1, F8, F10, F11 y Escape están reservadas por el runtime.': '\
                                                                                                                                                                                                    'prerelease '
                                                                                                                                                                                                    'versions.',
  'Conservar proporciones': 'Keep aspect ratio',
- 'Construir juego': 'Build game',
+ 'Construir y jugar': 'Build and play',
  'Construyendo…': 'Building…',
  'Consulta las versiones publicadas en GitHub.': 'Check the versions published on GitHub.',
  'Consultando versiones publicadas en GitHub…': 'Checking published versions on GitHub…',
@@ -2024,6 +2024,9 @@ ENGLISH.update({
     '¿Activar las copias completas del perfil en esta carpeta?\n\nIncluyen las partidas confirmadas, las fotos y la identidad de la cuenta, también los archivos de más de 64 MB. Se conservan las últimas tres copias de cada perfil.\n\nSi la carpeta está sincronizada, tu proveedor de nube gestiona las subidas y el almacenamiento. RecompLauncher no sube estas copias completas del perfil. Puedes desactivar las copias futuras sin borrar las existentes.': 'Enable complete profile backups in this folder?\n\nThey include committed saves, photos and account identity, including files larger than 64 MB. The latest three backups for each profile are retained.\n\nIf this folder is synced, your own cloud provider handles uploads and storage. RecompLauncher does not upload these full-profile backups. You can disable future backups without deleting existing copies.',
     '¿Reemplazar este archivo?': 'Replace this file?',
     '¿Restaurar en un perfil nuevo y seleccionarlo después de verificarlo? Se conservará tu perfil actual.': 'Restore into a new profile and select it after verification? Your current profile will be preserved.',
+    'Los shaders pendientes se compilarán durante el juego. Registro: ': 'Pending shaders will compile during play. Log: ',
+    'Preparando texturas HD instaladas…': 'Preparing installed HD textures…',
+    'Preparación de texturas HD cancelada.': 'HD texture preparation cancelled.',
     'Bibliotecas de pipelines Vulkan (GPL)': 'Vulkan pipeline libraries (GPL)',
     'Automático · según el controlador': 'Automatic · based on the driver',
     'Activado · experimental': 'Enabled · experimental',

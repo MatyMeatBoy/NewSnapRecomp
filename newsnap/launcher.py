@@ -299,36 +299,6 @@ class Launcher:
         for key in ('render_scale', 'aniso', 'upscaling', 'anti_aliasing'):
             self.variables[key].trace_add('write', self._quality_preset_changed)
 
-    def _hd_shadows_pending(self):
-        """The button of the HD shadows mode when the mode is on and some level is not built yet, else None."""
-        if self.variables.get('hd_shadows') is None or self.variables['hd_shadows'].get() != '1':
-            return None
-        button = getattr(self, 'hd_shadows_button', None)
-        return button if button is not None and not button.running and button.waiting() else None
-
-    def _auto_hd_shadows(self):
-        """Modo Sombras HD: after the game, the build of every level's HD shadows goes on by itself (hdshadows_ui)."""
-        button = self._hd_shadows_pending()
-        if button is None or getattr(self, 'hd_shadows_stopped', False):
-            return False
-        leaving = getattr(self, 'autoplay', False) or getattr(self, 'hidden_for_game', False)
-        if leaving:
-            self.root.deiconify()
-            self.tabs.select(self.mods_tab)
-        return button.start(after=(lambda: self.root.after(1500, self.close)) if leaving else None)
-
-    def _build_hd_shadows(self):
-        """Modo Sombras HD on with levels left to build (the option was just saved, the launcher just opened, an
-        update came): the build starts by itself, once per launcher session unless the player stops it."""
-        button = self._hd_shadows_pending()
-        if button is None or self.busy or getattr(self, 'hd_shadows_started', False):
-            return
-        try:
-            settings.validate_runtime_data(self.project)
-        except (OSError, ValueError):
-            return
-        self.hd_shadows_started = button.start()
-
     def _vrr_mode(self, frame):
         """«Modo VRR»: VSync (FIFO) and the frame limit just under the monitor's refresh («VRR», 138 at 144 Hz), the
         combination that keeps a FreeSync / G-SYNC display inside its range: no tearing, no V-Sync stalls. The driver turns
@@ -760,7 +730,7 @@ class Launcher:
         if action == 'verify':
             self.home.verify()
         elif action == 'build':
-            self.updates.maintenance.start(resume_game=False)
+            self.updates.maintenance.start(resume_game=True)
         else:
             self.launch()
 
@@ -785,8 +755,7 @@ class Launcher:
             self.status.set(str(error));return
         profile = self.profile
         self._session_diagnostic_env=({'AC_SNAP_PRESENT_TRACE':'1'} if self.trace_present.get() else {})
-        required = settings.shader_preparation_required(self.project)
-        command = settings.preparation_command(self.project) if self.prepare.get() or required else None
+        command = settings.preparation_command(self.project)
         self.home.cancel.clear()
         self._set_busy(True)
         self.status.set(tr('Comprobando el runtime antes de la expedición…'))
@@ -815,7 +784,7 @@ class Launcher:
             error = str(failure)
         finally:
             self.process = None
-        if not deferred:self.events.put(('finished', error))
+        if not deferred:self.events.put(('finished', tr(error) if error else None))
 
     def _ask_hd_shadows(self, text):
         done, answer = threading.Event(), []
@@ -838,18 +807,22 @@ class Launcher:
                 self.process = subprocess.Popen(preparation, cwd=self.project, env=env, stdout=log, stderr=subprocess.STDOUT, creationflags=hidden)
                 code = self.process.wait()
             if code:
-                raise RuntimeError(''.join((tr('La preparación no terminó correctamente. Revisa '), f'{logfile}', tr('.'),)))
-            settings.clear_shader_preparation_required(self.project)
+                self.events.put(('preparation_fallback',
+                                 tr('Los shaders pendientes se compilarán durante el juego. Registro: ') + str(logfile)))
+            else:
+                settings.clear_shader_preparation_required(self.project)
         logfile = None
         def run_attempt(attempt):
             nonlocal logfile
-            from .startup_assets import prepare_hd_shadows
+            from .startup_assets import prepare_hd_shadows, warm_hd_assets
             env.pop('AC_HD_SHADOWS', None)
             self.events.put(('hd_shadow_loading', True))
             try:
-                prepare_hd_shadows(self.project, env,
-                                   report=lambda text: self.events.put(('progress', text)),
+                report = lambda text: self.events.put(('progress', tr(text)))
+                prepare_hd_shadows(self.project, env, report=report,
                                    ask=self._ask_hd_shadows, cancel=self.home.cancel)
+                if attempt == 1:
+                    warm_hd_assets(self.project, env, report=report, cancel=self.home.cancel)
             finally:
                 self.events.put(('hd_shadow_loading', False))
             self.events.put(('settings_saved', settings.load_settings(self.ini)))
@@ -1054,9 +1027,7 @@ class Launcher:
                 messagebox.showerror(tr('No se pudo completar el inicio'), event[1], parent=self.root)
             else:
                 self.home.progress.finish(tr('Juego cerrado · listo para iniciar otra expedición'))
-                if self._auto_hd_shadows():
-                    pass   # it closes (or shows the launcher again) when the light maps are done
-                elif getattr(self, 'autoplay', False) or getattr(self, 'hidden_for_game', False):
+                if getattr(self, 'autoplay', False) or getattr(self, 'hidden_for_game', False):
                     self.root.after(300, self.close)   # the game was its reason to stay: back to the desktop
             self._album_loaded=False
             self.display.stop();self.home.refresh();self._tab_changed()

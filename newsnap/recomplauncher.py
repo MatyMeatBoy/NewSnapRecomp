@@ -144,18 +144,32 @@ def play(root, overrides):
         logs = root / 'logs'
         logs.mkdir(parents=True, exist_ok=True)
         session = datetime.now().strftime('%Y%m%d-%H%M%S') + '-' + uuid.uuid4().hex[:8]
+        hidden = getattr(subprocess, 'CREATE_NO_WINDOW', 0)
+        preparation = settings.preparation_command(root)
+        if preparation:
+            emit(0.9, 'Preparing shaders and pipelines for this GPU')
+            path = logs / f'recomplauncher-prepare-{session}.log'
+            with path.open('x', encoding='utf-8') as log:
+                result = subprocess.run(preparation, cwd=root, env=env, stdout=log, stderr=subprocess.STDOUT,
+                                        creationflags=hidden)
+            if result.returncode:
+                emit(0.91, f'Pending shaders will compile during play. See {path}.')
+            else:
+                settings.clear_shader_preparation_required(root)
 
         def attempt(number):
-            from .startup_assets import prepare_hd_shadows
+            from .startup_assets import prepare_hd_shadows, warm_hd_assets
             if 'hd_shadows' not in overrides:
                 env.pop('AC_HD_SHADOWS', None)
-            prepare_hd_shadows(root, env, report=lambda text: emit(0.95, text),
-                               explicit=overrides.get('hd_shadows') == '1')
+            report = lambda text: emit(0.95, text)
+            prepare_hd_shadows(root, env, report=report, explicit=overrides.get('hd_shadows') == '1')
+            if number == 1:
+                warm_hd_assets(root, env, report=report)
             path = logs / f'recomplauncher-game-{session}-{number:03d}.log'
             with path.open('x', encoding='utf-8') as log:
                 process = subprocess.Popen(settings.game_command(root, profile), cwd=root, env=env,
                     stdout=log, stderr=subprocess.STDOUT,
-                    creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
+                    creationflags=hidden)
                 return process.wait()
 
         code=settings.supervise_game(attempt)

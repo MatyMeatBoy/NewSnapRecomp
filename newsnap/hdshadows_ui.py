@@ -80,8 +80,7 @@ class HdShadowsButton:
         return not complete(self.folder())
 
     def toggle(self):
-        """The button: start, or stop. A build the player stopped does not start again by itself in this session."""
-        self.launcher.hd_shadows_stopped = self.running
+        """Start or stop manual generation."""
         if self.running:
             self.stop()
         else:

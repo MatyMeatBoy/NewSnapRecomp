@@ -83,3 +83,40 @@ class StartupAssetsTests(unittest.TestCase):
                 with self.assertRaisesRegex(RuntimeError,'cancelled'):
                     prepare_hd_shadows(root,{},ask=lambda _: True,cancel=cancel)
                 self.assertTrue((runtime_dir(root)/'hdshadows/startup-consent.json').is_file())
+
+    def test_installed_dds_packs_are_warmed_without_opening_other_assets(self):
+        from newsnap.paths import runtime_dir
+        from newsnap.startup_assets import warm_hd_assets
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            runtime = runtime_dir(root)
+            files = [('texpack', '0000000000000001.dds'), ('hdshadows', '0000000000000002.dds'),
+                     ('texpack', 'readme.dds'), ('texpack/src', '0000000000000003.dds')]
+            for folder, name in files:
+                path = runtime / folder / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(b'DDS ' + bytes(12))
+            reports = []
+            with patch('newsnap.startup_assets.HD_WARM_BYTES_PER_PACK', 10):
+                self.assertEqual(warm_hd_assets(root, {'AC_HD_SHADOWS': '1'}, reports.append), (10, 10))
+                self.assertEqual(len(reports), 1)
+                self.assertEqual(warm_hd_assets(root, {'AC_TEX_PACK': '0', 'AC_HD_SHADOWS': '0'}), (0, 0))
+                settings.save_settings(runtime / 'newsnap.ini', {'tex_pack': '0'})
+                self.assertEqual(warm_hd_assets(root, {'AC_HD_SHADOWS': '1'}, reports.append), (0, 10))
+                self.assertEqual(warm_hd_assets(root, {'AC_TEX_PACK': '1'}, reports.append), (10, 0))
+
+    def test_cancelling_hd_warm_aborts_startup(self):
+        from threading import Event
+        from newsnap.paths import runtime_dir
+        from newsnap.startup_assets import warm_hd_assets
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            pack = runtime_dir(root) / 'texpack'
+            pack.mkdir(parents=True)
+            (pack / '0000000000000001.dds').write_bytes(b'DDS ' + bytes(12))
+            cancel = Event()
+            cancel.set()
+            with self.assertRaisesRegex(RuntimeError, 'cancel'):
+                warm_hd_assets(root, {}, cancel=cancel)
