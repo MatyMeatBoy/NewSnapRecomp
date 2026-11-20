@@ -42,6 +42,7 @@ from .smaa_adapt import edits as smaa_edits
 from .dlssg_adapt import edits as dlssg_edits
 from .ui_pace_adapt import edits as ui_pace_edits
 from .crc_isa_adapt import edits as crc_isa_edits
+from .shader_cache_io_adapt import edits as shader_cache_io_edits
 from .xlate_semantics_adapt import edits as xlate_semantics_edits, stage_patches as stage_xlate_patches
 from .version import VERSION
 
@@ -241,7 +242,7 @@ def adapt_sources(destination, *, patch_output=None):
     for adapter in (temporal_edits, upscaler_edits, neutral_edits, vrr_edits,
                     menu_edits, color_transfer_edits, photo_readback_edits, camera_input_edits,
                     graphics_effects_edits, random_range_edits, console_edits, branding_edits,
-                    present_trace_edits, pool_bounds_edits, crc_isa_edits, xlate_semantics_edits,
+                    present_trace_edits, pool_bounds_edits, crc_isa_edits, shader_cache_io_edits, xlate_semantics_edits,
                     bc_block_views_edits, hid_six_axis_edits, spirv_nminmax_edits,
                     pipe_mo_keys_edits, gyro_sens_edits, windowed_present_edits, fps_text_edits,
                     high_fps_edits, framegen_edits, hd_photo_edits, wide_edits, texpack_edits, snap_menu_edits,
