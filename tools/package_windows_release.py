@@ -23,7 +23,7 @@ def _public_kit_member(name):
     parts = tuple(part.casefold() for part in path.parts)
     if (any(part in ('gamedata', 'newsnapgamedata', 'exefs', 'romfs') for part in parts)
             or parts[0] == 'source' and any(part in ('generated', 'extracted', 'profile') for part in parts)
-            or path.suffix.casefold() in ('.nsp', '.nsz', '.xci', '.xcz', '.nca', '.nso', '.npdm', '.keys', '.drp', '.nushdb', '.bin')
+            or path.suffix.casefold() in ('.nup', '.nsp', '.nsz', '.xci', '.xcz', '.nca', '.nso', '.npdm', '.keys', '.drp', '.nushdb', '.bin')
             or path.name.casefold() in ('main', 'sdk', 'newsnap.exe', 'romfs.bin', '.env', 'credentials')):
         raise ValueError('Private content in bundled build kit')
     return path
@@ -95,7 +95,7 @@ def digest(path):
 
 
 def verify_public_tree(folder):
-    forbidden = {'.nsp', '.nsz', '.xci', '.nca', '.keys', '.nso', '.npdm', '.drp', '.nushdb', '.bin'}
+    forbidden = {'.nup', '.nsp', '.nsz', '.xci', '.xcz', '.nca', '.keys', '.nso', '.npdm', '.drp', '.nushdb', '.bin'}
     for file in folder.rglob('*'):
         if file.is_symlink() or (hasattr(file, 'is_junction') and file.is_junction()):
             raise ValueError('Release links are not permitted')
@@ -144,8 +144,8 @@ def package():
         'No Python installation is needed. Your own game data and console keys are not included.\n\n'
         'The launcher follows the Windows display language. Use Language / Idioma to select English or Spanish.\n'
         'Use the single main button at the bottom left: Load game, Verify, Build game if needed, then Play.\n'
-        'Load game selects an existing GameData folder without moving it. To import your own dump instead,\n'
-        'use Import NSP/XCI/NSZ; the destination is shown before importing.\n'
+        'Load game uses writable GameData in place; protected data can be copied into a new writable folder.\n'
+        'use Import NSP/XCI/NSZ/NUP; a complete supported decrypted NUP needs no keys.\n'
         'The included public build kit builds the game locally from your verified inputs. Saves and photos are kept.\n'
         'First-time shader preparation may take a while.\n\n'
         'Requires Windows x64, x86-64-v3 CPU (AVX2/FMA/BMI) and a compatible Vulkan 1.3 GPU/driver.\n',
